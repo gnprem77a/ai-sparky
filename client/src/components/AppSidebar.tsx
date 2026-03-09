@@ -700,19 +700,6 @@ export function AppSidebar({
                 <p className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
                   <Crown className="w-2.5 h-2.5" /> Pro
                 </p>
-              ) : usage ? (
-                <div className="space-y-0.5 mt-0.5">
-                  <p className="text-[10px] text-muted-foreground">{usage.count} / {usage.limit} today</p>
-                  <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        usage.count >= usage.limit ? "bg-destructive" : "bg-primary/50"
-                      )}
-                      style={{ width: `${Math.min((usage.count / usage.limit) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
               ) : (
                 <p className="text-[10px] text-muted-foreground">Free plan</p>
               )}
