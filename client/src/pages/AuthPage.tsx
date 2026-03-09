@@ -48,12 +48,7 @@ export default function AuthPage() {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/25 mb-4">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
-              <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
-            </svg>
-          </div>
+          <img src="/logo.png" alt="AI Sparky" className="w-16 h-16 rounded-2xl shadow-2xl shadow-primary/30 mb-4 object-cover" />
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {isLogin ? t("auth.login") : t("auth.register")}
           </h1>

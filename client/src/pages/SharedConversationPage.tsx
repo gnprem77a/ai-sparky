@@ -58,11 +58,7 @@ export default function SharedConversationPage() {
           </button>
           <div className="h-4 w-px bg-border" />
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-primary to-violet-400 flex items-center justify-center">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-                <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
-              </svg>
-            </div>
+            <img src="/logo.png" alt="AI Sparky" className="w-5 h-5 rounded-md object-cover shadow-sm" />
             <span className="font-semibold text-sm text-foreground">
               {data?.title ?? "Shared Conversation"}
             </span>
