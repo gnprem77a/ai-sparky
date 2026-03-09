@@ -1,9 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   username: string;
+  isAdmin: boolean;
 }
 
 export function useAuth() {

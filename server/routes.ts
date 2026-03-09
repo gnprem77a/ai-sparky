@@ -14,6 +14,13 @@ function requireAuth(req: Request, res: Response, next: () => void) {
   next();
 }
 
+async function requireAdmin(req: Request, res: Response, next: () => void) {
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+  const user = await storage.getUser(req.session.userId);
+  if (!user?.isAdmin) return res.status(403).json({ error: "Forbidden" });
+  next();
+}
+
 /* ─── bedrock client ─────────────────────────────────────────── */
 function getClient() {
   return new BedrockRuntimeClient({
@@ -203,9 +210,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const hashed = await bcrypt.hash(password, 12);
+    // First registered user becomes admin automatically
+    const allUsers = await storage.getAllUsers();
+    const isFirstUser = allUsers.length === 0;
     const user = await storage.createUser({ username, password: hashed });
-    req.session.userId = user.id;
-    return res.status(201).json({ id: user.id, username: user.username });
+    if (isFirstUser) await storage.setAdmin(user.id, true);
+    const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
+    req.session.userId = finalUser.id;
+    return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin });
   });
 
   /* ── auth: login ── */
@@ -227,7 +239,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     req.session.userId = user.id;
-    return res.json({ id: user.id, username: user.username });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
   });
 
   /* ── auth: logout ── */
@@ -248,7 +260,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       req.session.destroy(() => {});
       return res.status(401).json({ error: "User not found" });
     }
-    return res.json({ id: user.id, username: user.username });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
+  });
+
+  /* ── admin: list users ── */
+  app.get("/api/admin/users", requireAdmin as any, async (req: Request, res: Response) => {
+    const allUsers = await storage.getAllUsers();
+    return res.json(allUsers.map((u) => ({ id: u.id, username: u.username, isAdmin: u.isAdmin })));
+  });
+
+  /* ── admin: toggle admin ── */
+  app.patch("/api/admin/users/:id/admin", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params;
+    if (id === req.session.userId) {
+      return res.status(400).json({ error: "Cannot change your own admin status." });
+    }
+    const { isAdmin } = req.body;
+    const user = await storage.setAdmin(id, Boolean(isAdmin));
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
+  });
+
+  /* ── admin: delete user ── */
+  app.delete("/api/admin/users/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params;
+    if (id === req.session.userId) {
+      return res.status(400).json({ error: "Cannot delete your own account." });
+    }
+    await storage.deleteUser(id);
+    return res.json({ ok: true });
   });
 
   /* ── chat (protected) ── */

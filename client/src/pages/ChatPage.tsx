@@ -7,7 +7,8 @@ import { ChatInput } from "@/components/ChatInput";
 import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
-import { Moon, Sun, Plus, LogOut } from "lucide-react";
+import { useLocation } from "wouter";
+import { Moon, Sun, Plus, LogOut, Shield, ChevronDown } from "lucide-react";
 import {
   type Conversation,
   type Message,
@@ -32,6 +33,19 @@ export default function ChatPage() {
 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
@@ -346,16 +360,54 @@ export default function ChatPage() {
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             {user && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => logout.mutate()}
-                data-testid="button-logout"
-                title={`Sign out (${user.username})`}
-                className="h-9 w-9 text-muted-foreground"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen((o) => !o)}
+                  data-testid="button-profile-menu"
+                  className="flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-sm"
+                >
+                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[11px] font-bold text-primary">
+                    {user.username[0].toUpperCase()}
+                  </div>
+                  <span className="hidden sm:block max-w-[100px] truncate font-medium">{user.username}</span>
+                  {user.isAdmin && <Shield className="w-3 h-3 text-violet-500 flex-shrink-0" />}
+                  <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${profileOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {profileOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-52 z-50 rounded-xl border border-border/60 bg-popover shadow-xl overflow-hidden py-1">
+                    <div className="px-3 py-2.5 border-b border-border/40">
+                      <p className="text-xs text-muted-foreground">Signed in as</p>
+                      <p className="font-semibold text-sm text-foreground truncate">{user.username}</p>
+                      {user.isAdmin && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-500">
+                          <Shield className="w-2.5 h-2.5" /> Admin
+                        </span>
+                      )}
+                    </div>
+
+                    {user.isAdmin && (
+                      <button
+                        onClick={() => { setProfileOpen(false); navigate("/admin"); }}
+                        data-testid="button-admin-dashboard"
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
+                      >
+                        <Shield className="w-4 h-4 text-violet-500" />
+                        Admin Dashboard
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => { setProfileOpen(false); logout.mutate(); }}
+                      data-testid="button-logout"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 text-muted-foreground" />
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </header>

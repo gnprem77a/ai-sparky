@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
+const AdminPage = lazy(() => import("@/pages/AdminPage"));
 
 function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -49,16 +50,20 @@ function AppInner() {
   }
 
   return (
-    <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
-        <Suspense fallback={null}>
-          <Switch>
-            <Route path="/" component={ChatPage} />
-            <Route component={ChatPage} />
-          </Switch>
-        </Suspense>
-      </div>
-    </SidebarProvider>
+    <Suspense fallback={null}>
+      <Switch>
+        <Route path="/admin">
+          <AdminPage />
+        </Route>
+        <Route>
+          <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
+            <div className="flex h-screen w-full overflow-hidden bg-background">
+              <ChatPage />
+            </div>
+          </SidebarProvider>
+        </Route>
+      </Switch>
+    </Suspense>
   );
 }
 
