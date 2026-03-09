@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 
 function initTheme() {
@@ -65,6 +66,9 @@ function AppInner() {
       <Switch>
         <Route path="/admin">
           <AdminPage />
+        </Route>
+        <Route path="/profile">
+          <ProfilePage />
         </Route>
         <Route>
           <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>

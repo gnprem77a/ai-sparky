@@ -7,6 +7,7 @@ export interface AuthUser {
   isAdmin: boolean;
   plan: "free" | "pro";
   planExpiresAt: string | null;
+  createdAt: string | null;
 }
 
 export function useAuth() {

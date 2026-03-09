@@ -11,7 +11,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical } from "lucide-react";
+import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type Conversation,
@@ -589,6 +589,15 @@ export default function ChatPage() {
                       </div>
                     </div>
 
+                    <button
+                      onClick={() => { setProfileOpen(false); navigate("/profile"); }}
+                      data-testid="button-view-profile"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      <UserCircle className="w-4 h-4 text-muted-foreground" />
+                      View Profile
+                    </button>
+
                     {user.isAdmin && (
                       <button
                         onClick={() => { setProfileOpen(false); navigate("/admin"); }}
@@ -609,12 +618,14 @@ export default function ChatPage() {
                       Settings
                     </button>
 
+                    <div className="mx-2 my-1 border-t border-border/40" />
+
                     <button
                       onClick={() => { setProfileOpen(false); logout.mutate(); }}
                       data-testid="button-logout"
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive/80 hover:text-destructive hover:bg-destructive/5 transition-colors"
                     >
-                      <LogOut className="w-4 h-4 text-muted-foreground" />
+                      <LogOut className="w-4 h-4" />
                       Sign out
                     </button>
                   </div>

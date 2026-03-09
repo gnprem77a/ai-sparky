@@ -255,7 +255,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.session.userId) return res.status(401).json({ error: "Not logged in" });
     const user = await storage.getUser(req.session.userId);
     if (!user) { req.session.destroy(() => {}); return res.status(401).json({ error: "User not found" }); }
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt, createdAt: user.createdAt });
   });
 
   /* ── auth: change password ── */
