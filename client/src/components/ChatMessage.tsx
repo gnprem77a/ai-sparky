@@ -1,7 +1,7 @@
-import { useState, memo, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, memo, lazy, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Check, User, RefreshCw, FileText } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
@@ -40,13 +40,24 @@ interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
   onRegenerate?: () => void;
+  onEdit?: (messageId: string, newContent: string) => void;
   isLast?: boolean;
 }
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, isLast }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(message.content);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isEditing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.setSelectionRange(editRef.current.value.length, editRef.current.value.length);
+    }
+  }, [isEditing]);
 
   const handleCopyResponse = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -54,9 +65,37 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, isLast }: ChatMe
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleEditSave = () => {
+    const trimmed = editValue.trim();
+    if (!trimmed || trimmed === message.content) {
+      setIsEditing(false);
+      return;
+    }
+    onEdit?.(message.id, trimmed);
+    setIsEditing(false);
+  };
+
+  const handleEditCancel = () => {
+    setEditValue(message.content);
+    setIsEditing(false);
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleEditSave();
+    }
+    if (e.key === "Escape") handleEditCancel();
+  };
+
   if (isUser) {
     return (
-      <div data-testid={`message-${message.id}`} className="flex justify-end px-4 py-2 animate-fade-up">
+      <div
+        data-testid={`message-${message.id}`}
+        className="flex justify-end px-4 py-2 animate-fade-up group/user-msg"
+        onMouseEnter={() => setActionsVisible(true)}
+        onMouseLeave={() => setActionsVisible(false)}
+      >
         <div className="flex items-end gap-2.5 max-w-[78%]">
           <div className="flex flex-col gap-2">
             {message.attachments?.filter(a => a.type === "image").map(att => (
@@ -75,15 +114,64 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, isLast }: ChatMe
                 </div>
               </div>
             ))}
-            {message.content && (
-              <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-md" data-testid="content-user">
-                <p className="whitespace-pre-wrap break-words font-[450]">{message.content}</p>
+
+            {isEditing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  ref={editRef}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={handleEditKeyDown}
+                  rows={Math.max(2, editValue.split("\n").length)}
+                  data-testid="input-edit-message"
+                  className="px-4 py-3 rounded-2xl rounded-br-sm border border-primary/40 bg-primary/10 text-sm text-foreground leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[200px] max-w-[360px]"
+                />
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    onClick={handleEditCancel}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                  <button
+                    onClick={handleEditSave}
+                    data-testid="button-save-edit"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity"
+                  >
+                    <Check className="w-3 h-3" /> Save & Resend
+                  </button>
+                </div>
               </div>
+            ) : (
+              <>
+                {message.content && (
+                  <div className="relative group/bubble">
+                    <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-md" data-testid="content-user">
+                      <p className="whitespace-pre-wrap break-words font-[450]">{message.content}</p>
+                    </div>
+                    {onEdit && (
+                      <button
+                        onClick={() => { setEditValue(message.content); setIsEditing(true); }}
+                        data-testid={`button-edit-message-${message.id}`}
+                        title="Edit message"
+                        className={cn(
+                          "absolute -left-8 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all",
+                          actionsVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
-          <div className="w-7 h-7 rounded-full bg-foreground/10 border border-border flex items-center justify-center flex-shrink-0 mb-0.5">
-            <User className="w-3.5 h-3.5 text-foreground/60" />
-          </div>
+          {!isEditing && (
+            <div className="w-7 h-7 rounded-full bg-foreground/10 border border-border flex items-center justify-center flex-shrink-0 mb-0.5">
+              <User className="w-3.5 h-3.5 text-foreground/60" />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -230,5 +318,6 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.message.modelUsed === next.message.modelUsed &&
   prev.isStreaming === next.isStreaming &&
   prev.isLast === next.isLast &&
-  prev.onRegenerate === next.onRegenerate
+  prev.onRegenerate === next.onRegenerate &&
+  prev.onEdit === next.onEdit
 );

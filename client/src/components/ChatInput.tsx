@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 import { type ModelId, MODELS } from "@/components/ModelSelector";
+import { PromptLibrary } from "@/components/PromptLibrary";
 
 /* ─── accepted file types ────────────────────────────────────── */
 const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
@@ -304,6 +305,9 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   </div>
                 )}
               </div>
+
+              {/* Prompt library */}
+              <PromptLibrary currentInput={value} onInsert={(content) => onChange(content)} />
 
               {/* divider */}
               <div className="w-px h-4 bg-border/40" />

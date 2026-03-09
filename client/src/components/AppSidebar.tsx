@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/lib/chat-storage";
 import type { AuthUser } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
+
+interface UsageData {
+  count: number;
+  limit: number;
+  isPro: boolean;
+  date: string;
+}
 
 interface AppSidebarProps {
   conversations: Conversation[];
@@ -23,6 +31,9 @@ interface AppSidebarProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   onDeleteConversation: (id: string) => void;
+  onRenameConversation: (id: string, title: string) => void;
+  onPinConversation: (id: string, isPinned: boolean) => void;
+  onShareConversation: (id: string) => Promise<string | null>;
   user: AuthUser | null;
 }
 
@@ -32,10 +43,33 @@ export function AppSidebar({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
+  onRenameConversation,
+  onPinConversation,
+  onShareConversation,
   user,
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [sharePopoverId, setSharePopoverId] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: usage } = useQuery<UsageData>({
+    queryKey: ["/api/settings/usage"],
+  });
+
+  const isPro = usage?.isPro ?? user?.plan === "pro";
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
 
   const filtered = search.trim()
     ? conversations.filter((c) =>
@@ -43,8 +77,171 @@ export function AppSidebar({
       )
     : conversations;
 
-  const grouped = groupByDate(filtered);
-  const isPro = user?.plan === "pro";
+  const pinned = filtered.filter((c) => c.isPinned);
+  const unpinned = filtered.filter((c) => !c.isPinned);
+  const grouped = groupByDate(unpinned);
+
+  const startRename = (conv: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+  };
+
+  const commitRename = (id: string) => {
+    const trimmed = renameValue.trim();
+    if (trimmed) onRenameConversation(id, trimmed);
+    setRenamingId(null);
+  };
+
+  const handleShareClick = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (sharePopoverId === convId) {
+      setSharePopoverId(null);
+      setShareUrl(null);
+      return;
+    }
+    setShareLoading(true);
+    setSharePopoverId(convId);
+    setShareUrl(null);
+    setShareCopied(false);
+    const url = await onShareConversation(convId);
+    setShareUrl(url);
+    setShareLoading(false);
+  };
+
+  const handleCopyShareUrl = () => {
+    if (!shareUrl) return;
+    const full = `${window.location.origin}${shareUrl}`;
+    navigator.clipboard.writeText(full);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
+
+  const renderConvItem = (conv: Conversation) => {
+    const isRenaming = renamingId === conv.id;
+    return (
+      <SidebarMenuItem key={conv.id} className="relative">
+        <SidebarMenuButton
+          isActive={conv.id === activeId}
+          onClick={() => !isRenaming && onSelectConversation(conv.id)}
+          onMouseEnter={() => setHoveredId(conv.id)}
+          onMouseLeave={() => setHoveredId(null)}
+          data-testid={`button-conversation-${conv.id}`}
+          className={cn(
+            "relative flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm w-full transition-colors",
+            conv.id === activeId
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70"
+          )}
+        >
+          {conv.isPinned && !isRenaming && (
+            <Pin className="w-2.5 h-2.5 text-primary/50 flex-shrink-0" />
+          )}
+
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={() => commitRename(conv.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitRename(conv.id); }
+                if (e.key === "Escape") { setRenamingId(null); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`input-rename-${conv.id}`}
+              className="flex-1 bg-transparent border-0 border-b border-primary/50 text-[13px] text-foreground focus:outline-none px-0 py-0 min-w-0"
+            />
+          ) : (
+            <span
+              className="flex-1 truncate text-left text-[13px] font-normal leading-snug"
+              onDoubleClick={(e) => startRename(conv, e)}
+              title="Double-click to rename"
+            >
+              {conv.title}
+            </span>
+          )}
+
+          {!isRenaming && (hoveredId === conv.id || conv.id === activeId) && (
+            <div className="flex items-center gap-0.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {/* Pin */}
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); onPinConversation(conv.id, !conv.isPinned); }}
+                data-testid={`button-pin-${conv.id}`}
+                title={conv.isPinned ? "Unpin" : "Pin"}
+                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                {conv.isPinned
+                  ? <PinOff className="w-3.5 h-3.5" />
+                  : <Pin className="w-3.5 h-3.5" />
+                }
+              </span>
+
+              {/* Share */}
+              <span
+                role="button"
+                onClick={(e) => handleShareClick(conv.id, e)}
+                data-testid={`button-share-${conv.id}`}
+                title="Share conversation"
+                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </span>
+
+              {/* Delete */}
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); onDeleteConversation(conv.id); }}
+                data-testid={`button-delete-${conv.id}`}
+                title="Delete"
+                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          )}
+        </SidebarMenuButton>
+
+        {/* Share popover */}
+        {sharePopoverId === conv.id && (
+          <div
+            className="absolute left-0 right-0 z-50 mt-0.5 px-3 py-2.5 rounded-xl border border-border/60 bg-popover shadow-xl"
+            style={{ top: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs font-semibold text-foreground mb-1.5 flex items-center gap-1.5">
+              <Link className="w-3 h-3 text-primary" /> Share conversation
+            </p>
+            {shareLoading ? (
+              <p className="text-[11px] text-muted-foreground animate-pulse">Generating link…</p>
+            ) : shareUrl ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2 py-1.5">
+                  <span className="text-[11px] text-muted-foreground flex-1 truncate">
+                    {window.location.origin}{shareUrl}
+                  </span>
+                </div>
+                <button
+                  onClick={handleCopyShareUrl}
+                  data-testid={`button-copy-share-${conv.id}`}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/15 transition-colors"
+                >
+                  {shareCopied ? <><Check className="w-3 h-3" /> Copied!</> : <><Link className="w-3 h-3" /> Copy link</>}
+                </button>
+                <button
+                  onClick={() => { setSharePopoverId(null); setShareUrl(null); }}
+                  className="w-full text-[11px] text-muted-foreground hover:text-foreground text-center transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <Sidebar>
@@ -105,53 +302,35 @@ export function AppSidebar({
             </div>
           </div>
         ) : (
-          Object.entries(grouped).map(([label, convs]) => (
-            <SidebarGroup key={label} className="py-0.5">
-              <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold">
-                {label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {convs.map((conv) => (
-                    <SidebarMenuItem key={conv.id}>
-                      <SidebarMenuButton
-                        isActive={conv.id === activeId}
-                        onClick={() => onSelectConversation(conv.id)}
-                        onMouseEnter={() => setHoveredId(conv.id)}
-                        onMouseLeave={() => setHoveredId(null)}
-                        data-testid={`button-conversation-${conv.id}`}
-                        className={cn(
-                          "relative flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm w-full transition-colors",
-                          conv.id === activeId
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/70"
-                        )}
-                      >
-                        <span className="flex-1 truncate text-left text-[13px] font-normal leading-snug">
-                          {conv.title}
-                        </span>
-                        <span
-                          role="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteConversation(conv.id);
-                          }}
-                          data-testid={`button-delete-${conv.id}`}
-                          title="Delete"
-                          style={{
-                            visibility: hoveredId === conv.id || conv.id === activeId ? "visible" : "hidden",
-                          }}
-                          className="flex-shrink-0 p-0.5 rounded-md text-muted-foreground/60 hover-elevate"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ))
+          <>
+            {/* Pinned */}
+            {pinned.length > 0 && (
+              <SidebarGroup className="py-0.5">
+                <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold flex items-center gap-1">
+                  <Pin className="w-2.5 h-2.5" /> Pinned
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">
+                    {pinned.map(renderConvItem)}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
+
+            {/* Date-grouped */}
+            {Object.entries(grouped).map(([label, convs]) => (
+              <SidebarGroup key={label} className="py-0.5">
+                <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold">
+                  {label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">
+                    {convs.map(renderConvItem)}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
+          </>
         )}
       </SidebarContent>
 
@@ -167,14 +346,28 @@ export function AppSidebar({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-foreground/80 truncate">{user?.username ?? "User"}</p>
-            <p className="text-[10px] text-muted-foreground truncate flex items-center gap-1">
-              {isPro ? (
-                <>
-                  <Crown className="w-2.5 h-2.5 text-amber-500" />
-                  <span className="text-amber-500 font-medium">Pro</span>
-                </>
-              ) : "Free plan"}
-            </p>
+            {isPro ? (
+              <p className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
+                <Crown className="w-2.5 h-2.5" /> Pro
+              </p>
+            ) : usage ? (
+              <div className="space-y-0.5 mt-0.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] text-muted-foreground">{usage.count} / {usage.limit} today</p>
+                </div>
+                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all",
+                      usage.count >= usage.limit ? "bg-destructive" : "bg-primary/50"
+                    )}
+                    style={{ width: `${Math.min((usage.count / usage.limit) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-muted-foreground">Free plan</p>
+            )}
           </div>
         </div>
       </SidebarFooter>

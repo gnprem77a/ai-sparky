@@ -347,6 +347,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(settings);
   });
 
+  /* ── settings: usage counter ── */
+  app.get("/api/settings/usage", requireAuth as any, async (req: Request, res: Response) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const pro = isProActive(user);
+    const settings = await storage.getUserSettings(req.session.userId!);
+    const today = new Date().toISOString().split("T")[0];
+    const count = settings.lastMessageDate === today ? settings.dailyMessageCount : 0;
+    return res.json({ count, limit: 20, isPro: pro, date: today });
+  });
+
+  /* ── conversations: pin/unpin ── */
+  app.patch("/api/conversations/:id/pin", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { isPinned } = req.body;
+    const updated = await storage.updateConversation(conv.id, { isPinned: Boolean(isPinned) });
+    return res.json(updated);
+  });
+
+  /* ── conversations: generate share link ── */
+  app.post("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const token = conv.shareToken ?? crypto.randomUUID();
+    const updated = await storage.updateConversation(conv.id, { shareToken: token });
+    return res.json({ shareToken: token, shareUrl: `/share/${token}` });
+  });
+
+  /* ── conversations: remove share link ── */
+  app.delete("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    await storage.updateConversation(conv.id, { shareToken: null as any });
+    return res.json({ ok: true });
+  });
+
+  /* ── conversations: delete messages from index ── */
+  app.delete("/api/conversations/:id/messages/from/:messageId", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    await storage.deleteMessagesFromId(conv.id, req.params.messageId);
+    return res.json({ ok: true });
+  });
+
+  /* ── public share: view conversation (no auth) ── */
+  app.get("/api/share/:token", async (req: Request, res: Response) => {
+    const conv = await storage.getConversationByShareToken(req.params.token);
+    if (!conv) return res.status(404).json({ error: "Shared conversation not found" });
+    const msgs = await storage.getMessages(conv.id);
+    return res.json({ id: conv.id, title: conv.title, model: conv.model, messages: msgs });
+  });
+
+  /* ── prompts: list ── */
+  app.get("/api/prompts", requireAuth as any, async (req: Request, res: Response) => {
+    const prompts = await storage.getSavedPrompts(req.session.userId!);
+    return res.json(prompts);
+  });
+
+  /* ── prompts: create ── */
+  app.post("/api/prompts", requireAuth as any, async (req: Request, res: Response) => {
+    const { title = "", content } = req.body;
+    if (!content) return res.status(400).json({ error: "content is required" });
+    const prompt = await storage.createSavedPrompt(req.session.userId!, title, content);
+    return res.status(201).json(prompt);
+  });
+
+  /* ── prompts: delete ── */
+  app.delete("/api/prompts/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteSavedPrompt(req.params.id);
+    return res.json({ ok: true });
+  });
+
   /* ── admin: list users ── */
   app.get("/api/admin/users", requireAdmin as any, async (req: Request, res: Response) => {
     const allUsers = await storage.getAllUsers();

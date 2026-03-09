@@ -18,6 +18,8 @@ export const conversations = pgTable("conversations", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("New Chat"),
   model: text("model").notNull().default("auto"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  shareToken: varchar("share_token"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
@@ -39,6 +41,14 @@ export const userSettings = pgTable("user_settings", {
   lastMessageDate: text("last_message_date"),
 });
 
+export const savedPrompts = pgTable("saved_prompts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default(""),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -49,3 +59,4 @@ export type User = typeof users.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
+export type SavedPrompt = typeof savedPrompts.$inferSelect;

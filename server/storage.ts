@@ -3,9 +3,10 @@ import {
   type Conversation, conversations,
   type Message, messages,
   type UserSettings, userSettings,
+  type SavedPrompt, savedPrompts,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, asc, and, gte } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -19,15 +20,21 @@ export interface IStorage {
 
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
+  getConversationByShareToken(token: string): Promise<Conversation | undefined>;
   createConversation(userId: string, title: string, model: string): Promise<Conversation>;
-  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt">>): Promise<Conversation | undefined>;
+  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken">>): Promise<Conversation | undefined>;
   deleteConversation(id: string): Promise<void>;
 
   getMessages(conversationId: string): Promise<Message[]>;
   createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string }): Promise<Message>;
+  deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
   updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate">>): Promise<UserSettings>;
+
+  getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
+  createSavedPrompt(userId: string, title: string, content: string): Promise<SavedPrompt>;
+  deleteSavedPrompt(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -71,11 +78,16 @@ export class DatabaseStorage implements IStorage {
   async getConversations(userId: string): Promise<Conversation[]> {
     return db.select().from(conversations)
       .where(eq(conversations.userId, userId))
-      .orderBy(desc(conversations.updatedAt));
+      .orderBy(desc(conversations.isPinned), desc(conversations.updatedAt));
   }
 
   async getConversation(id: string): Promise<Conversation | undefined> {
     const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conv;
+  }
+
+  async getConversationByShareToken(token: string): Promise<Conversation | undefined> {
+    const [conv] = await db.select().from(conversations).where(eq(conversations.shareToken, token));
     return conv;
   }
 
@@ -84,7 +96,7 @@ export class DatabaseStorage implements IStorage {
     return conv;
   }
 
-  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt">>): Promise<Conversation | undefined> {
+  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken">>): Promise<Conversation | undefined> {
     const [conv] = await db.update(conversations).set(data).where(eq(conversations.id, id)).returning();
     return conv;
   }
@@ -96,12 +108,22 @@ export class DatabaseStorage implements IStorage {
   async getMessages(conversationId: string): Promise<Message[]> {
     return db.select().from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(messages.createdAt);
+      .orderBy(asc(messages.createdAt));
   }
 
   async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string }): Promise<Message> {
     const [msg] = await db.insert(messages).values(data).returning();
     return msg;
+  }
+
+  async deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void> {
+    const allMsgs = await this.getMessages(conversationId);
+    const idx = allMsgs.findIndex((m) => m.id === fromMessageId);
+    if (idx === -1) return;
+    const toDelete = allMsgs.slice(idx);
+    for (const msg of toDelete) {
+      await db.delete(messages).where(eq(messages.id, msg.id));
+    }
   }
 
   async getUserSettings(userId: string): Promise<UserSettings> {
@@ -117,6 +139,21 @@ export class DatabaseStorage implements IStorage {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;
+  }
+
+  async getSavedPrompts(userId: string): Promise<SavedPrompt[]> {
+    return db.select().from(savedPrompts)
+      .where(eq(savedPrompts.userId, userId))
+      .orderBy(desc(savedPrompts.createdAt));
+  }
+
+  async createSavedPrompt(userId: string, title: string, content: string): Promise<SavedPrompt> {
+    const [prompt] = await db.insert(savedPrompts).values({ userId, title, content }).returning();
+    return prompt;
+  }
+
+  async deleteSavedPrompt(id: string): Promise<void> {
+    await db.delete(savedPrompts).where(eq(savedPrompts.id, id));
   }
 }
 

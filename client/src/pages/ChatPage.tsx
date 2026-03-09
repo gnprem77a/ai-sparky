@@ -159,6 +159,71 @@ export default function ChatPage() {
     }
   };
 
+  const handleRenameConversation = async (id: string, title: string) => {
+    await apiRequest("PATCH", `/api/conversations/${id}`, { title });
+    queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+  };
+
+  const handlePinConversation = async (id: string, isPinned: boolean) => {
+    await apiRequest("PATCH", `/api/conversations/${id}/pin`, { isPinned });
+    queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+  };
+
+  const handleShareConversation = async (id: string): Promise<string | null> => {
+    try {
+      const res = await apiRequest("POST", `/api/conversations/${id}/share`);
+      const data = await res.json();
+      return data.shareUrl as string;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!activeId || isStreaming || isSubmittingRef.current) return;
+
+    isSubmittingRef.current = true;
+    setError(null);
+
+    /* Delete from that message onward in DB */
+    try {
+      await apiRequest("DELETE", `/api/conversations/${activeId}/messages/from/${messageId}`);
+    } catch { /* continue */ }
+
+    /* Rebuild local messages: remove from the edited message onward */
+    const idx = messages.findIndex((m) => m.id === messageId);
+    const priorMsgs = idx >= 0 ? messages.slice(0, idx) : messages;
+
+    const newUserMsgId = crypto.randomUUID();
+    const newAssistantMsgId = crypto.randomUUID();
+
+    const newUserMsg: Message = {
+      id: newUserMsgId,
+      role: "user",
+      content: newContent,
+      timestamp: Date.now(),
+    };
+    const newAssistantMsg: Message = {
+      id: newAssistantMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+    };
+
+    const updatedMsgs = [...priorMsgs, newUserMsg, newAssistantMsg];
+    setMessages(updatedMsgs);
+
+    /* Save the edited user message to DB */
+    try {
+      await apiRequest("POST", `/api/conversations/${activeId}/messages`, {
+        role: "user",
+        content: newContent,
+      });
+    } catch { /* non-fatal */ }
+
+    await streamAssistantReply(activeId, updatedMsgs, newAssistantMsgId);
+  };
+
   const handleStop = () => {
     abortRef.current?.abort();
     setIsStreaming(false);
@@ -276,6 +341,7 @@ export default function ChatPage() {
           modelUsed: finalModelUsed,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
       }
     } catch (err: unknown) {
       const error = err as Error;
@@ -398,6 +464,9 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
         onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
+        onPinConversation={handlePinConversation}
+        onShareConversation={handleShareConversation}
         user={user}
       />
 
@@ -544,6 +613,7 @@ export default function ChatPage() {
                       ? handleRegenerate
                       : undefined
                   }
+                  onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
                 />
               ))}
               {error && (

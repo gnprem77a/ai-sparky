@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
+const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 
 function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -28,6 +29,16 @@ const style = {
 
 function AppInner() {
   const { user, isLoading } = useAuth();
+  const [location] = useLocation();
+
+  /* Share pages are public — no auth required */
+  if (location.startsWith("/share/")) {
+    return (
+      <Suspense fallback={null}>
+        <SharedConversationPage />
+      </Suspense>
+    );
+  }
 
   if (isLoading) {
     return (

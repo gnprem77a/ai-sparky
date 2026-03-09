@@ -17,16 +17,18 @@ A modern, personal AI chat application powered by Claude via Amazon Bedrock.
 ```
 client/src/
   components/
-    AppSidebar.tsx      - Left sidebar with conversation history + search
-    ChatMessage.tsx     - Individual message with markdown/code rendering (React.memo)
-    ChatInput.tsx       - Bottom input with attach menu, model selector, plan enforcement
+    AppSidebar.tsx      - Left sidebar: search, pin, rename, share, usage counter
+    ChatMessage.tsx     - Individual message with markdown/code/edit mode (React.memo)
+    ChatInput.tsx       - Bottom input with attach menu, prompt library, model selector
     ModelSelector.tsx   - Model options with proOnly flags
     CodeBlock.tsx       - Lazy-loaded syntax highlighter (Prism)
     SettingsModal.tsx   - System prompt + change password modal
+    PromptLibrary.tsx   - Saved prompt library popover (CRUD + insert into input)
   pages/
-    ChatPage.tsx        - Main chat interface (cloud storage, keyboard shortcuts, export)
+    ChatPage.tsx        - Main chat interface (cloud, keyboard shortcuts, export, edit msgs)
     AuthPage.tsx        - Login / Sign up page
     AdminPage.tsx       - Admin dashboard with user + plan management
+    SharedConversationPage.tsx - Public read-only view of shared conversations (/share/:token)
   hooks/
     use-theme.ts        - Dark/light mode toggle
     use-auth.ts         - Auth state (me, login, register, logout) with plan info
@@ -34,7 +36,7 @@ client/src/
     chat-storage.ts     - Type definitions, utilities, export helpers
 shared/
   models.ts             - Single source of truth for model registry
-  schema.ts             - Drizzle schema (users, conversations, messages, userSettings)
+  schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts)
 server/
   db.ts                 - Drizzle + pg pool
   storage.ts            - DatabaseStorage (users, conversations, messages, settings)

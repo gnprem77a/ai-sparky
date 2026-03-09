@@ -21,6 +21,8 @@ export interface Conversation {
   title: string;
   model: string;
   userId?: string;
+  isPinned: boolean;
+  shareToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }
