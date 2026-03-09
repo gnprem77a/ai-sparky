@@ -26,8 +26,9 @@ export interface IStorage {
   deleteConversation(id: string): Promise<void>;
 
   getMessages(conversationId: string): Promise<Message[]>;
-  createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string }): Promise<Message>;
+  createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message>;
   deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void>;
+  getTokenStats(): Promise<{ totalInputTokens: number; totalOutputTokens: number; byUser: { userId: string; username: string; inputTokens: number; outputTokens: number }[] }>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
   updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate">>): Promise<UserSettings>;
@@ -111,9 +112,43 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(messages.createdAt));
   }
 
-  async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string }): Promise<Message> {
+  async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message> {
     const [msg] = await db.insert(messages).values(data).returning();
     return msg;
+  }
+
+  async getTokenStats(): Promise<{ totalInputTokens: number; totalOutputTokens: number; byUser: { userId: string; username: string; inputTokens: number; outputTokens: number }[] }> {
+    const allUsers = await db.select().from(users);
+    const allConvs = await db.select().from(conversations);
+    const allMsgs = await db.select().from(messages).where(eq(messages.role, "assistant"));
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    const userTokenMap: Record<string, { inputTokens: number; outputTokens: number }> = {};
+
+    for (const msg of allMsgs) {
+      const input = msg.inputTokens ?? 0;
+      const output = msg.outputTokens ?? 0;
+      totalInputTokens += input;
+      totalOutputTokens += output;
+
+      const conv = allConvs.find((c) => c.id === msg.conversationId);
+      if (conv) {
+        if (!userTokenMap[conv.userId]) userTokenMap[conv.userId] = { inputTokens: 0, outputTokens: 0 };
+        userTokenMap[conv.userId].inputTokens += input;
+        userTokenMap[conv.userId].outputTokens += output;
+      }
+    }
+
+    const byUser = allUsers.map((u) => ({
+      userId: u.id,
+      username: u.username,
+      inputTokens: userTokenMap[u.id]?.inputTokens ?? 0,
+      outputTokens: userTokenMap[u.id]?.outputTokens ?? 0,
+    }));
+
+    return { totalInputTokens, totalOutputTokens, byUser };
   }
 
   async deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void> {

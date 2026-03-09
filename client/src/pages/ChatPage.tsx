@@ -263,6 +263,8 @@ export default function ChatPage() {
 
     let accumulated = "";
     let finalModelUsed: string | undefined;
+    let finalInputTokens: number | undefined;
+    let finalOutputTokens: number | undefined;
 
     try {
       const response = await fetch("/api/chat", {
@@ -308,6 +310,10 @@ export default function ChatPage() {
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) throw new Error(parsed.error);
+            if (parsed.done) {
+              finalInputTokens = parsed.inputTokens ?? undefined;
+              finalOutputTokens = parsed.outputTokens ?? undefined;
+            }
             if (parsed.modelUsed) {
               finalModelUsed = parsed.modelUsed;
               if (flushTimeout) { clearTimeout(flushTimeout); flush(); }
@@ -339,9 +345,12 @@ export default function ChatPage() {
           role: "assistant",
           content: accumulated,
           modelUsed: finalModelUsed,
+          inputTokens: finalInputTokens,
+          outputTokens: finalOutputTokens,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/stats/tokens"] });
       }
     } catch (err: unknown) {
       const error = err as Error;

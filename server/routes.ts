@@ -143,26 +143,7 @@ function buildLlamaBody(messages: RawMessage[], maxTokens: number, systemPrompt?
   };
 }
 
-/* ─── stream parsers ─────────────────────────────────────────── */
-function parseClaudeChunk(decoded: string): string | null {
-  try {
-    const parsed = JSON.parse(decoded);
-    if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-      return parsed.delta.text as string;
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-function parseLlamaChunk(decoded: string): string | null {
-  try {
-    const parsed = JSON.parse(decoded);
-    if (parsed.generation) return parsed.generation as string;
-  } catch { /* ignore */ }
-  return null;
-}
-
-/* ─── stream runner ──────────────────────────────────────────── */
+/* ─── stream runner (returns token counts) ───────────────────── */
 async function streamModel(
   client: BedrockRuntimeClient,
   entry: ModelDefinition,
@@ -171,7 +152,7 @@ async function streamModel(
   res: Response,
   sendHeader: boolean,
   systemPrompt?: string,
-): Promise<void> {
+): Promise<{ inputTokens: number; outputTokens: number }> {
   const body = entry.provider === "anthropic"
     ? buildClaudeBody(messages, maxTokens, systemPrompt)
     : buildLlamaBody(messages, maxTokens, systemPrompt);
@@ -191,15 +172,36 @@ async function streamModel(
   }
 
   const decoder = new TextDecoder();
+  let inputTokens = 0;
+  let outputTokens = 0;
+
   for await (const event of response.body) {
     if (event.chunk?.bytes) {
       const decoded = decoder.decode(event.chunk.bytes);
-      const text = entry.provider === "anthropic"
-        ? parseClaudeChunk(decoded)
-        : parseLlamaChunk(decoded);
-      if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      try {
+        const parsed = JSON.parse(decoded);
+        if (entry.provider === "anthropic") {
+          if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+            res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
+          }
+          if (parsed.type === "message_start" && parsed.message?.usage) {
+            inputTokens = parsed.message.usage.input_tokens ?? 0;
+          }
+          if (parsed.type === "message_delta" && parsed.usage) {
+            outputTokens = parsed.usage.output_tokens ?? 0;
+          }
+        } else {
+          if (parsed.generation) {
+            res.write(`data: ${JSON.stringify({ text: parsed.generation })}\n\n`);
+          }
+          if (parsed.prompt_token_count) inputTokens = parsed.prompt_token_count;
+          if (parsed.generation_token_count) outputTokens = parsed.generation_token_count;
+        }
+      } catch { /* ignore parse errors */ }
     }
   }
+
+  return { inputTokens, outputTokens };
 }
 
 /* ─── route registration ─────────────────────────────────────── */
@@ -319,7 +321,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/conversations/:id/messages", requireAuth as any, async (req: Request, res: Response) => {
     const conv = await storage.getConversation(req.params.id);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
-    const { role, content, modelUsed, attachments } = req.body;
+    const { role, content, modelUsed, attachments, inputTokens, outputTokens } = req.body;
     if (!role || content === undefined) return res.status(400).json({ error: "role and content are required" });
     const msg = await storage.createMessage({
       conversationId: conv.id,
@@ -327,6 +329,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       content,
       modelUsed,
       attachments: attachments ? JSON.stringify(attachments) : undefined,
+      inputTokens: typeof inputTokens === "number" ? inputTokens : undefined,
+      outputTokens: typeof outputTokens === "number" ? outputTokens : undefined,
     });
     await storage.updateConversation(conv.id, { updatedAt: new Date() });
     return res.status(201).json(msg);
@@ -418,6 +422,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/prompts/:id", requireAuth as any, async (req: Request, res: Response) => {
     await storage.deleteSavedPrompt(req.params.id);
     return res.json({ ok: true });
+  });
+
+  /* ── admin: token stats ── */
+  app.get("/api/admin/stats/tokens", requireAdmin as any, async (req: Request, res: Response) => {
+    const stats = await storage.getTokenStats();
+    return res.json(stats);
   });
 
   /* ── admin: list users ── */
@@ -515,8 +525,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const client = getClient();
 
     try {
-      await streamModel(client, selected, recentMessages, maxTokens, res, true, systemPrompt);
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      const { inputTokens, outputTokens } = await streamModel(client, selected, recentMessages, maxTokens, res, true, systemPrompt);
+      res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
@@ -525,8 +535,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (selected.bedrockId !== FALLBACK_MODEL.bedrockId) {
         console.log(`[bedrock] Falling back to ${FALLBACK_MODEL.exactName}…`);
         try {
-          await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false, systemPrompt);
-          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          const { inputTokens, outputTokens } = await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false, systemPrompt);
+          res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
           res.end();
           return;
         } catch (fallbackErr: unknown) {

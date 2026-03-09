@@ -31,6 +31,8 @@ export const messages = pgTable("messages", {
   content: text("content").notNull().default(""),
   modelUsed: text("model_used"),
   attachments: text("attachments"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 

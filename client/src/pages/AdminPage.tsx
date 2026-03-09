@@ -6,9 +6,28 @@ import { useEffect, useState } from "react";
 import {
   Shield, Trash2, UserCheck, UserX, ArrowLeft,
   Users, ShieldCheck, Crown, UserCircle, Calendar,
-  ChevronDown, X, Check,
+  ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface TokenStats {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  byUser: { userId: string; username: string; inputTokens: number; outputTokens: number }[];
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function estimateCost(inputTokens: number, outputTokens: number): string {
+  const costUsd = (inputTokens / 1000) * 0.003 + (outputTokens / 1000) * 0.015;
+  if (costUsd < 0.001) return "< $0.001";
+  if (costUsd < 1) return `$${costUsd.toFixed(3)}`;
+  return `$${costUsd.toFixed(2)}`;
+}
 
 interface AdminUser {
   id: string;
@@ -194,6 +213,12 @@ export default function AdminPage() {
     enabled: !!user?.isAdmin,
   });
 
+  const { data: tokenStats } = useQuery<TokenStats>({
+    queryKey: ["/api/admin/stats/tokens"],
+    queryFn: () => fetch("/api/admin/stats/tokens", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user?.isAdmin,
+  });
+
   const toggleAdminMutation = useMutation({
     mutationFn: ({ id, isAdmin }: { id: string; isAdmin: boolean }) =>
       apiRequest("PATCH", `/api/admin/users/${id}/admin`, { isAdmin }).then((r) => r.json()),
@@ -258,6 +283,59 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Token Usage Section */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-foreground">Token Usage</h2>
+            </div>
+            <span className="text-[11px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
+              ≈ Sonnet pricing — estimate only
+            </span>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-3 gap-4 mb-0">
+              {/* Input tokens */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4" data-testid="stat-input-tokens">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <ArrowDownUp className="w-3.5 h-3.5 text-blue-500" />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium">Input Tokens</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">
+                  {tokenStats ? fmtTokens(tokenStats.totalInputTokens) : "—"}
+                </p>
+              </div>
+              {/* Output tokens */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4" data-testid="stat-output-tokens">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                    <Zap className="w-3.5 h-3.5 text-violet-500" />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium">Output Tokens</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">
+                  {tokenStats ? fmtTokens(tokenStats.totalOutputTokens) : "—"}
+                </p>
+              </div>
+              {/* Estimated cost */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4" data-testid="stat-estimated-cost">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium">Est. Cost</span>
+                </div>
+                <p className="text-2xl font-bold text-foreground">
+                  {tokenStats ? estimateCost(tokenStats.totalInputTokens, tokenStats.totalOutputTokens) : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Plan Features Reference */}
@@ -377,6 +455,19 @@ export default function AdminPage() {
                                   : "Pro — no expiry"}
                             </span>
                           )}
+                          {(() => {
+                            const ut = tokenStats?.byUser.find((b) => b.userId === u.id);
+                            if (!ut || (ut.inputTokens === 0 && ut.outputTokens === 0)) return null;
+                            return (
+                              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Zap className="w-3 h-3 text-primary/60" />
+                                {fmtTokens(ut.inputTokens + ut.outputTokens)} tokens
+                                <span className="text-muted-foreground/50">
+                                  ({estimateCost(ut.inputTokens, ut.outputTokens)})
+                                </span>
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
 
