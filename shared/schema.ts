@@ -46,6 +46,7 @@ export const messages = pgTable("messages", {
   reaction: text("reaction"),
   isPinned: boolean("is_pinned").notNull().default(false),
   toolCalls: text("tool_calls"),
+  sources: text("sources"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 

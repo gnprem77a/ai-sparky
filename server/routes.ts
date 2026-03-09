@@ -5,7 +5,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { insertUserSchema } from "../shared/schema";
-import { TOOL_DEFINITIONS, executeTool } from "./tools";
+import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
@@ -467,7 +467,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/conversations/:id/messages", requireAuth as any, async (req: Request, res: Response) => {
     const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
-    const { role, content, modelUsed, attachments, inputTokens, outputTokens, toolCalls } = req.body;
+    const { role, content, modelUsed, attachments, inputTokens, outputTokens, toolCalls, sources } = req.body;
     if (!role || content === undefined) return res.status(400).json({ error: "role and content are required" });
     const msg = await storage.createMessage({
       conversationId: conv.id,
@@ -478,6 +478,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       inputTokens: typeof inputTokens === "number" ? inputTokens : undefined,
       outputTokens: typeof outputTokens === "number" ? outputTokens : undefined,
       toolCalls: toolCalls ? JSON.stringify(toolCalls) : undefined,
+      sources: sources ? JSON.stringify(sources) : undefined,
     });
     await storage.updateConversation(conv.id, { updatedAt: new Date() });
     return res.status(201).json(msg);
@@ -730,7 +731,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── chat (protected) ── */
   app.post("/api/chat", requireAuth as any, async (req: Request, res: Response) => {
-    const { messages, model = "auto", maxTokens = 4096 } = req.body;
+    const { messages, model = "auto", maxTokens = 4096, webSearch = false } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "messages array is required" });
@@ -797,11 +798,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.write(`data: ${JSON.stringify({ planEnforced: true })}\n\n`);
     }
 
+    /* ── Web search grounding ── */
+    let searchSources: Array<{ title: string; url: string; snippet?: string }> = [];
+    if (webSearch) {
+      const lastUser = [...recentMessages].reverse().find((m) => m.role === "user");
+      const query = (lastUser?.content ?? "").slice(0, 200).trim();
+      if (query) {
+        res.write(`data: ${JSON.stringify({ searching: true, query })}\n\n`);
+        const { context, sources } = await executeWebSearchStructured(query);
+        searchSources = sources;
+        const searchBlock = `\n\n[Web search results]\n${context}\n[End of web search results]\n\nUse the above search results to inform your answer. Cite sources naturally in your response when relevant.`;
+        systemPrompt = systemPrompt ? `${systemPrompt}${searchBlock}` : searchBlock.trim();
+      }
+    }
+
     const client = getClient();
 
     try {
       const { inputTokens, outputTokens } = await streamModelWithTools(client, selected, recentMessages, maxTokens, res, systemPrompt);
-      res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;

@@ -13,6 +13,11 @@ export interface ToolCall {
   result?: string;
 }
 
+export interface WebSource {
+  title: string;
+  url: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -26,6 +31,8 @@ export interface Message {
   outputTokens?: number | null;
   isPinned: boolean;
   toolCalls?: ToolCall[];
+  sources?: WebSource[];
+  searching?: string;
 }
 
 export interface Conversation {
@@ -53,6 +60,7 @@ export interface ApiMessage {
   outputTokens?: number | null;
   isPinned: boolean;
   toolCalls?: string | null;
+  sources?: string | null;
 }
 
 export function apiMessageToLocal(m: ApiMessage): Message {
@@ -68,6 +76,7 @@ export function apiMessageToLocal(m: ApiMessage): Message {
     outputTokens: m.outputTokens ?? null,
     isPinned: m.isPinned ?? false,
     toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
+    sources: m.sources ? JSON.parse(m.sources) : undefined,
   };
 }
 

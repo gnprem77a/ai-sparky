@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
   ClipboardPaste, Plus, File as FileIcon, ChevronDown, Lock,
-  Table as TableIcon, Eye, Sparkles, Mic, MicOff,
+  Table as TableIcon, Eye, Sparkles, Mic, MicOff, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
@@ -79,10 +79,12 @@ interface ChatInputProps {
   onClearQuote?: () => void;
   isImageMode?: boolean;
   onToggleImageMode?: () => void;
+  isWebSearch?: boolean;
+  onToggleWebSearch?: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode, isWebSearch = false, onToggleWebSearch }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -570,6 +572,22 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   )}
                 >
                   {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
+              {onToggleWebSearch && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={onToggleWebSearch}
+                  data-testid="button-web-search"
+                  title={isWebSearch ? "Web search on — click to disable" : "Enable web search grounding"}
+                  className={cn(
+                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
+                    isWebSearch
+                      ? "bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/40"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <Globe className="w-4 h-4" />
                 </button>
               )}
               {onToggleImageMode && !isStreaming && (

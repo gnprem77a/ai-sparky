@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message, ToolCall } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
@@ -638,7 +638,13 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
           {message.toolCalls && message.toolCalls.length > 0 && (
             <ToolCallsDisplay toolCalls={message.toolCalls} isStreaming={isStreaming} />
           )}
-          {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) ? (
+          {message.searching && (
+            <div className="flex items-center gap-2 py-2 text-sky-400/80 text-sm" data-testid="status-searching">
+              <Globe className="w-3.5 h-3.5 animate-pulse" />
+              <span>Searching the web for <em className="font-medium not-italic">{message.searching}</em>…</span>
+            </div>
+          )}
+          {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
             <div className="flex items-center gap-1.5 py-2">
               <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
               <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
@@ -841,6 +847,37 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
             </div>
           )}
         </div>
+
+        {/* Web search source cards */}
+        {message.sources && message.sources.length > 0 && (
+          <div className="mt-3 space-y-1.5" data-testid="section-sources">
+            <div className="flex items-center gap-1.5 text-[11px] text-sky-400/70 font-medium uppercase tracking-wide mb-2">
+              <Globe className="w-3 h-3" />
+              Sources
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {message.sources.map((src, i) => (
+                <a
+                  key={i}
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid={`link-source-${i}`}
+                  className="group flex flex-col gap-0.5 p-2.5 rounded-lg border border-border/30 bg-muted/20 hover:bg-muted/40 hover:border-sky-500/30 transition-all text-xs"
+                >
+                  <span className="flex items-center gap-1 text-foreground/80 font-medium line-clamp-1 group-hover:text-sky-400 transition-colors">
+                    <ExternalLink className="w-3 h-3 shrink-0 text-muted-foreground/60 group-hover:text-sky-400" />
+                    {src.title || src.url}
+                  </span>
+                  {src.snippet && (
+                    <span className="text-muted-foreground/60 line-clamp-2 leading-relaxed">{src.snippet}</span>
+                  )}
+                  <span className="text-muted-foreground/40 truncate mt-0.5">{src.url}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Stopped indicator */}
         {message.stopped && (

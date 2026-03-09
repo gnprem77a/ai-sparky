@@ -78,7 +78,17 @@ export async function executeCalculator(expression: string): Promise<string> {
 }
 
 /* ── Web Search (DuckDuckGo, no API key required) ──────────── */
-export async function executeWebSearch(query: string): Promise<string> {
+interface DdgTopic { Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }
+interface DdgData {
+  Answer?: string; Abstract?: string; AbstractURL?: string; AbstractTitle?: string;
+  Definition?: string; DefinitionURL?: string; RelatedTopics?: DdgTopic[];
+}
+
+export interface WebSource { title: string; url: string; snippet?: string }
+
+export interface WebSearchResult { context: string; sources: WebSource[] }
+
+export async function executeWebSearchStructured(query: string): Promise<WebSearchResult> {
   try {
     const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1&t=aichat`;
     const res = await fetch(apiUrl, {
@@ -86,34 +96,65 @@ export async function executeWebSearch(query: string): Promise<string> {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json() as Record<string, unknown>;
+    const data = await res.json() as DdgData;
 
     const parts: string[] = [];
-    if (data.Answer) parts.push(`Answer: ${data.Answer}`);
-    if (data.Abstract && typeof data.Abstract === "string" && data.Abstract.length > 0) {
+    const sources: WebSource[] = [];
+
+    if (data.Answer) parts.push(`Quick Answer: ${data.Answer}`);
+
+    if (data.Abstract && data.Abstract.length > 0) {
       parts.push(`Summary: ${data.Abstract}`);
-      if (data.AbstractURL) parts.push(`Source: ${data.AbstractURL}`);
+      if (data.AbstractURL) {
+        sources.push({ title: data.AbstractTitle || "Wikipedia", url: data.AbstractURL, snippet: data.Abstract.slice(0, 120) });
+      }
     }
-    if (data.Definition && typeof data.Definition === "string" && data.Definition.length > 0) {
+    if (data.Definition && data.Definition.length > 0) {
       parts.push(`Definition: ${data.Definition}`);
-      if (data.DefinitionURL) parts.push(`Source: ${data.DefinitionURL}`);
+      if (data.DefinitionURL) {
+        sources.push({ title: "Definition", url: data.DefinitionURL, snippet: data.Definition.slice(0, 120) });
+      }
     }
-    const topics = (data.RelatedTopics as Array<{ Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }> | undefined) ?? [];
-    const topicResults: string[] = [];
-    for (const topic of topics.slice(0, 6)) {
-      if (topic.Text) {
-        topicResults.push(`• ${topic.Text}${topic.FirstURL ? ` — ${topic.FirstURL}` : ""}`);
+
+    const topics = data.RelatedTopics ?? [];
+    const topicLines: string[] = [];
+    for (const topic of topics.slice(0, 8)) {
+      if (topic.Text && topic.FirstURL) {
+        topicLines.push(`• ${topic.Text}`);
+        const label = topic.Text.split(" — ")[0]?.trim().slice(0, 60) || "Result";
+        if (!sources.find(s => s.url === topic.FirstURL)) {
+          sources.push({ title: label, url: topic.FirstURL, snippet: topic.Text.slice(0, 120) });
+        }
       } else if (topic.Topics) {
         for (const sub of topic.Topics.slice(0, 3)) {
-          if (sub.Text) topicResults.push(`• ${sub.Text}${sub.FirstURL ? ` — ${sub.FirstURL}` : ""}`);
+          if (sub.Text && sub.FirstURL) {
+            topicLines.push(`• ${sub.Text}`);
+            const label = sub.Text.split(" — ")[0]?.trim().slice(0, 60) || "Result";
+            if (!sources.find(s => s.url === sub.FirstURL)) {
+              sources.push({ title: label, url: sub.FirstURL, snippet: sub.Text.slice(0, 120) });
+            }
+          }
         }
       }
     }
-    if (topicResults.length > 0) parts.push(`Related Results:\n${topicResults.join("\n")}`);
-    return parts.length > 0 ? parts.join("\n\n") : `No direct results found for "${query}". Answer from training knowledge.`;
+    if (topicLines.length > 0) parts.push(`Related:\n${topicLines.join("\n")}`);
+
+    const context = parts.length > 0
+      ? `Web search results for "${query}":\n\n${parts.join("\n\n")}`
+      : `No direct results found for "${query}". Answer from your training knowledge.`;
+
+    return { context, sources: sources.slice(0, 6) };
   } catch (e) {
-    return `Web search failed: ${(e as Error).message}. Please answer from training knowledge.`;
+    return {
+      context: `Web search unavailable: ${(e as Error).message}. Answer from training knowledge.`,
+      sources: [],
+    };
   }
+}
+
+export async function executeWebSearch(query: string): Promise<string> {
+  const { context } = await executeWebSearchStructured(query);
+  return context;
 }
 
 /* ── Weather (wttr.in, no API key required) ────────────────── */

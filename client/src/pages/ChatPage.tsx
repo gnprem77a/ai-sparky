@@ -65,6 +65,9 @@ export default function ChatPage() {
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
+  /* ── Web search grounding state ── */
+  const [webSearchMode, setWebSearchMode] = useState(false);
+
   /* ── Search state ── */
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -527,13 +530,14 @@ export default function ChatPage() {
     let finalModelUsed: string | undefined;
     let finalInputTokens: number | undefined;
     let finalOutputTokens: number | undefined;
+    let finalSources: import("@/lib/chat-storage").WebSource[] | undefined;
     const pendingToolCalls: import("@/lib/chat-storage").ToolCall[] = [];
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: historyForApi, model: isPro ? model : "fast", maxTokens: 4096 }),
+        body: JSON.stringify({ messages: historyForApi, model: isPro ? model : "fast", maxTokens: 4096, webSearch: webSearchMode }),
         signal: controller.signal,
       });
 
@@ -573,9 +577,24 @@ export default function ChatPage() {
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) throw new Error(parsed.error);
+            if (parsed.searching) {
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantMsgId ? { ...m, searching: parsed.query as string } : m)
+              );
+            }
             if (parsed.done) {
               finalInputTokens = parsed.inputTokens ?? undefined;
               finalOutputTokens = parsed.outputTokens ?? undefined;
+              if (parsed.sources?.length) {
+                finalSources = parsed.sources;
+                setMessages((prev) =>
+                  prev.map((m) => m.id === assistantMsgId ? { ...m, sources: parsed.sources, searching: undefined } : m)
+                );
+              } else {
+                setMessages((prev) =>
+                  prev.map((m) => m.id === assistantMsgId ? { ...m, searching: undefined } : m)
+                );
+              }
             }
             if (parsed.modelUsed) {
               finalModelUsed = parsed.modelUsed;
@@ -624,6 +643,7 @@ export default function ChatPage() {
           inputTokens: finalInputTokens,
           outputTokens: finalOutputTokens,
           toolCalls: pendingToolCalls.length > 0 ? pendingToolCalls : undefined,
+          sources: finalSources,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
@@ -1065,6 +1085,8 @@ export default function ChatPage() {
                 onClearQuote={() => setQuotedMessage(null)}
                 isImageMode={isImageMode}
                 onToggleImageMode={() => setIsImageMode((m) => !m)}
+                isWebSearch={webSearchMode}
+                onToggleWebSearch={() => setWebSearchMode((m) => !m)}
               />
             </div>
           </div>
