@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
@@ -13,7 +13,32 @@ import { useMutation } from "@tanstack/react-query";
 
 const CodeBlock = lazy(() => import("@/components/CodeBlock"));
 
-function CopyCodeButton({ text }: { text: string }) {
+const LANG_COLORS: Record<string, string> = {
+  python: "text-blue-400",
+  javascript: "text-yellow-400",
+  typescript: "text-blue-300",
+  js: "text-yellow-400",
+  ts: "text-blue-300",
+  jsx: "text-cyan-400",
+  tsx: "text-cyan-300",
+  html: "text-orange-400",
+  css: "text-pink-400",
+  sql: "text-emerald-400",
+  bash: "text-green-400",
+  sh: "text-green-400",
+  json: "text-amber-400",
+  rust: "text-orange-500",
+  go: "text-cyan-400",
+  java: "text-red-400",
+  cpp: "text-purple-400",
+  c: "text-purple-300",
+  ruby: "text-red-500",
+  php: "text-violet-400",
+  swift: "text-orange-400",
+  kotlin: "text-violet-500",
+};
+
+function CopyCodeButton({ text, always = false }: { text: string; always?: boolean }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text);
@@ -21,17 +46,27 @@ function CopyCodeButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <button onClick={handleCopy} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all">
-      {copied
-        ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
-        : <><Copy className="w-3 h-3" /><span>Copy</span></>
-      }
+    <button
+      onClick={handleCopy}
+      data-testid="button-copy-code"
+      title="Copy code"
+      className={cn(
+        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all",
+        copied
+          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+          : "bg-white/5 text-zinc-400 border border-white/8 hover:bg-white/10 hover:text-zinc-200 hover:border-white/15"
+      )}
+    >
+      {copied ? (
+        <><Check className="w-3 h-3" /><span>Copied!</span></>
+      ) : (
+        <><Copy className="w-3 h-3" /><span>Copy</span></>
+      )}
     </button>
   );
 }
 
 function MermaidBlock({ code }: { code: string }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -59,14 +94,15 @@ function MermaidBlock({ code }: { code: string }) {
   }
   if (!svg) {
     return (
-      <div className="my-4 rounded-xl border border-border bg-muted/20 p-6 flex items-center justify-center text-xs text-muted-foreground">
+      <div className="my-4 rounded-xl border border-border bg-muted/20 p-6 flex items-center justify-center text-xs text-muted-foreground gap-2">
+        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
         Rendering diagram…
       </div>
     );
   }
   return (
     <div
-      className="my-4 rounded-xl border border-border bg-muted/10 p-4 overflow-x-auto"
+      className="my-4 rounded-xl border border-border/60 bg-muted/10 p-4 overflow-x-auto"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
@@ -127,9 +163,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
       if (!conversationId) return Promise.resolve();
       return apiRequest("PATCH", `/api/conversations/${conversationId}/messages/${message.id}/reaction`, { reaction });
     },
-    onMutate: (reaction) => {
-      setLocalReaction(reaction);
-    },
+    onMutate: (reaction) => { setLocalReaction(reaction); },
     onSuccess: () => {
       if (conversationId) {
         queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
@@ -150,10 +184,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
 
   const handleEditSave = () => {
     const trimmed = editValue.trim();
-    if (!trimmed || trimmed === message.content) {
-      setIsEditing(false);
-      return;
-    }
+    if (!trimmed || trimmed === message.content) { setIsEditing(false); return; }
     onEdit?.(message.id, trimmed);
     setIsEditing(false);
   };
@@ -164,10 +195,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
   };
 
   const handleEditKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      handleEditSave();
-    }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleEditSave(); }
     if (e.key === "Escape") handleEditCancel();
   };
 
@@ -210,17 +238,10 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
                   className="px-4 py-3 rounded-2xl rounded-br-sm border border-primary/40 bg-primary/10 text-sm text-foreground leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[200px] max-w-[360px]"
                 />
                 <div className="flex items-center gap-2 justify-end">
-                  <button
-                    onClick={handleEditCancel}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
+                  <button onClick={handleEditCancel} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors">
                     <X className="w-3 h-3" /> Cancel
                   </button>
-                  <button
-                    onClick={handleEditSave}
-                    data-testid="button-save-edit"
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity"
-                  >
+                  <button onClick={handleEditSave} data-testid="button-save-edit" className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity">
                     <Check className="w-3 h-3" /> Save & Resend
                   </button>
                 </div>
@@ -263,18 +284,23 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
   return (
     <div
       data-testid={`message-${message.id}`}
-      className="flex gap-3 px-4 py-3 animate-fade-up group/message"
+      className="flex gap-3 px-4 py-4 animate-fade-up group/message"
       onMouseEnter={() => setActionsVisible(true)}
       onMouseLeave={() => setActionsVisible(false)}
     >
       <AILogo />
       <div className="flex-1 min-w-0 pt-0.5">
+        {/* Assistant name row */}
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[11px] font-semibold text-foreground/50 uppercase tracking-widest">{assistantName}</span>
+        </div>
+
         <div className={cn("leading-relaxed text-foreground/90", fontClass)} data-testid="content-assistant">
           {message.content === "" && isStreaming ? (
             <div className="flex items-center gap-1.5 py-2">
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
+              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
             </div>
           ) : (
             <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -292,56 +318,150 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
 
                     if (!match) {
                       return (
-                        <code className="bg-muted/80 text-foreground/90 rounded-md px-1.5 py-0.5 font-mono text-[0.8em] border border-border/50" {...props}>
+                        <code className="bg-primary/8 text-primary/90 rounded-md px-1.5 py-0.5 font-mono text-[0.8em] border border-primary/15" {...props}>
                           {children}
                         </code>
                       );
                     }
+
+                    const lang = match[1].toLowerCase();
+                    const langColor = LANG_COLORS[lang] ?? "text-zinc-400";
+
                     return (
-                      <div className="relative rounded-xl overflow-hidden my-4 border border-white/5 shadow-lg">
-                        <div className="flex items-center justify-between bg-[#0a0a12] border-b border-white/5 px-4 py-2">
-                          <div className="flex items-center gap-2">
+                      <div className="relative rounded-xl overflow-hidden my-4 border border-white/8 shadow-xl bg-[#0d0d18]" data-testid={`code-block-${lang}`}>
+                        {/* Header bar */}
+                        <div className="flex items-center justify-between bg-[#0a0a15] border-b border-white/6 px-4 py-2.5">
+                          <div className="flex items-center gap-3">
+                            {/* Traffic lights */}
                             <div className="flex gap-1.5">
-                              <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-                              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-                              <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                              <div className="w-3 h-3 rounded-full bg-red-500/70 hover:bg-red-500 transition-colors" />
+                              <div className="w-3 h-3 rounded-full bg-yellow-500/70 hover:bg-yellow-500 transition-colors" />
+                              <div className="w-3 h-3 rounded-full bg-green-500/70 hover:bg-green-500 transition-colors" />
                             </div>
-                            <span className="text-[11px] text-zinc-500 font-mono ml-1.5 uppercase tracking-wider">{match[1]}</span>
+                            {/* Language badge */}
+                            <div className="flex items-center gap-1.5">
+                              <Terminal className="w-3 h-3 text-zinc-500" />
+                              <span className={cn("text-[11px] font-mono font-semibold tracking-wider uppercase", langColor)}>
+                                {lang}
+                              </span>
+                            </div>
                           </div>
-                          <CopyCodeButton text={codeString} />
+                          {/* Copy button — always visible */}
+                          <CopyCodeButton text={codeString} always />
                         </div>
+
+                        {/* Code content */}
                         <Suspense fallback={
-                          <pre className="bg-[#0a0a12] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">
+                          <pre className="bg-[#0d0d18] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">
                             {codeString}
                           </pre>
                         }>
-                          <CodeBlock code={codeString} language={match[1]} />
+                          <CodeBlock code={codeString} language={lang} />
                         </Suspense>
+
+                        {/* Bottom bar with line count */}
+                        <div className="flex items-center justify-between bg-[#0a0a15] border-t border-white/5 px-4 py-1.5">
+                          <span className="text-[10px] text-zinc-600 font-mono">
+                            {codeString.split("\n").length} line{codeString.split("\n").length !== 1 ? "s" : ""}
+                          </span>
+                          <span className="text-[10px] text-zinc-600">
+                            {codeString.length} chars
+                          </span>
+                        </div>
                       </div>
                     );
                   },
                   pre({ children }) { return <>{children}</>; },
-                  p({ children }) { return <p className="mb-3 last:mb-0 leading-7">{children}</p>; },
-                  ul({ children }) { return <ul className="mb-3 last:mb-0 ml-5 list-disc space-y-1.5">{children}</ul>; },
-                  ol({ children }) { return <ol className="mb-3 last:mb-0 ml-5 list-decimal space-y-1.5">{children}</ol>; },
-                  li({ children }) { return <li className="leading-7">{children}</li>; },
-                  h1({ children }) { return <h1 className="text-xl font-semibold mb-4 mt-6 first:mt-0 tracking-tight">{children}</h1>; },
-                  h2({ children }) { return <h2 className="text-lg font-semibold mb-3 mt-5 first:mt-0 tracking-tight">{children}</h2>; },
-                  h3({ children }) { return <h3 className="text-base font-semibold mb-2 mt-4 first:mt-0">{children}</h3>; },
-                  blockquote({ children }) { return <blockquote className="border-l-2 border-primary/40 pl-4 italic text-muted-foreground my-4 leading-7">{children}</blockquote>; },
-                  hr() { return <hr className="border-border my-6" />; },
+                  p({ children }) {
+                    return <p className="mb-3.5 last:mb-0 leading-7 text-foreground/85">{children}</p>;
+                  },
+                  ul({ children }) {
+                    return <ul className="mb-3.5 last:mb-0 ml-1 space-y-1.5 list-none">{children}</ul>;
+                  },
+                  ol({ children }) {
+                    return <ol className="mb-3.5 last:mb-0 ml-1 space-y-1.5 list-none counter-reset-item">{children}</ol>;
+                  },
+                  li({ children, ...props }) {
+                    return (
+                      <li className="flex items-start gap-2.5 leading-7 text-foreground/85" {...props}>
+                        <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
+                        <span>{children}</span>
+                      </li>
+                    );
+                  },
+                  h1({ children }) {
+                    return (
+                      <h1 className="text-xl font-bold mb-4 mt-6 first:mt-0 tracking-tight text-foreground pb-2 border-b border-border/50">
+                        {children}
+                      </h1>
+                    );
+                  },
+                  h2({ children }) {
+                    return (
+                      <h2 className="text-lg font-semibold mb-3 mt-5 first:mt-0 tracking-tight text-foreground">
+                        {children}
+                      </h2>
+                    );
+                  },
+                  h3({ children }) {
+                    return (
+                      <h3 className="text-base font-semibold mb-2.5 mt-4 first:mt-0 text-foreground/90">
+                        {children}
+                      </h3>
+                    );
+                  },
+                  blockquote({ children }) {
+                    return (
+                      <blockquote className="relative border-l-[3px] border-primary/50 pl-4 pr-3 py-2 my-4 bg-primary/5 rounded-r-lg">
+                        <div className="text-sm text-foreground/75 leading-relaxed italic">{children}</div>
+                      </blockquote>
+                    );
+                  },
+                  hr() { return <hr className="border-border/40 my-6" />; },
                   table({ children }) {
                     return (
-                      <div className="overflow-x-auto my-4 rounded-lg border border-border">
+                      <div className="overflow-x-auto my-4 rounded-xl border border-border/60 shadow-sm">
                         <table className="min-w-full text-sm border-collapse">{children}</table>
                       </div>
                     );
                   },
-                  thead({ children }) { return <thead className="bg-muted/50">{children}</thead>; },
-                  th({ children }) { return <th className="px-4 py-2.5 text-left font-semibold text-foreground/80 border-b border-border text-xs uppercase tracking-wide">{children}</th>; },
-                  td({ children }) { return <td className="px-4 py-2.5 border-b border-border/50 last:border-0 text-foreground/80">{children}</td>; },
-                  a({ href, children }) { return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 decoration-primary/40 hover:decoration-primary transition-colors">{children}</a>; },
-                  strong({ children }) { return <strong className="font-semibold text-foreground">{children}</strong>; },
+                  thead({ children }) {
+                    return <thead className="bg-muted/60 border-b border-border">{children}</thead>;
+                  },
+                  tbody({ children }) {
+                    return <tbody className="divide-y divide-border/40">{children}</tbody>;
+                  },
+                  tr({ children }) {
+                    return <tr className="hover:bg-muted/30 transition-colors">{children}</tr>;
+                  },
+                  th({ children }) {
+                    return (
+                      <th className="px-4 py-3 text-left font-semibold text-foreground/70 text-xs uppercase tracking-wider">
+                        {children}
+                      </th>
+                    );
+                  },
+                  td({ children }) {
+                    return (
+                      <td className="px-4 py-3 text-foreground/80">
+                        {children}
+                      </td>
+                    );
+                  },
+                  a({ href, children }) {
+                    return (
+                      <a href={href} target="_blank" rel="noopener noreferrer"
+                        className="text-primary underline underline-offset-2 decoration-primary/40 hover:decoration-primary transition-colors">
+                        {children}
+                      </a>
+                    );
+                  },
+                  strong({ children }) {
+                    return <strong className="font-semibold text-foreground">{children}</strong>;
+                  },
+                  em({ children }) {
+                    return <em className="italic text-foreground/80">{children}</em>;
+                  },
                 }}
               >
                 {message.content}
@@ -353,24 +473,27 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
           )}
         </div>
 
+        {/* Stopped indicator */}
         {message.stopped && (
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-500/80">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500/60 inline-block" />
-            Response stopped
+          <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-amber-500/80 bg-amber-500/8 border border-amber-500/15 rounded-lg px-3 py-1.5 w-fit">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500/70 inline-block" />
+            Response stopped early
           </div>
         )}
 
+        {/* Action bar */}
         {!isStreaming && message.content && (
           <div
             className={cn(
-              "flex items-center gap-0.5 mt-2 transition-all duration-150",
+              "flex items-center gap-0.5 mt-3 pt-2 border-t border-border/20 transition-all duration-150",
               actionsVisible || isLast ? "opacity-100" : "opacity-0"
             )}
           >
+            {/* Copy */}
             <button
               onClick={handleCopyResponse}
               data-testid="button-copy-response"
-              title="Copy response"
+              title="Copy full response"
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 text-xs transition-all"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -405,6 +528,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
               <ThumbsDown className="w-3.5 h-3.5" />
             </button>
 
+            {/* Regenerate */}
             {onRegenerate && isLast && (
               <button
                 onClick={onRegenerate}
@@ -417,6 +541,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
               </button>
             )}
 
+            {/* Model badge */}
             {message.modelUsed && (() => {
               const style = BADGE_STYLE[message.modelUsed];
               if (!style) return null;
@@ -437,10 +562,10 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
             {(message.outputTokens ?? 0) > 0 && (
               <span
                 data-testid="badge-token-count"
-                className="ml-auto text-[10px] text-muted-foreground/40 tabular-nums"
+                className="ml-auto text-[10px] text-muted-foreground/35 tabular-nums"
                 title={`${message.inputTokens ?? 0} input / ${message.outputTokens ?? 0} output tokens`}
               >
-                {fmtTokens((message.outputTokens ?? 0))} tok
+                {fmtTokens(message.outputTokens ?? 0)} tok
               </span>
             )}
           </div>
