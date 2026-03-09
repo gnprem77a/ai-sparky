@@ -1,19 +1,91 @@
-import { useRef, useEffect, KeyboardEvent, useState, useCallback, DragEvent } from "react";
+import {
+  useRef, useEffect, KeyboardEvent, useState, useCallback, DragEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowUp, Square, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import {
+  ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
+  ClipboardPaste, Plus, FileCode2, FileSpreadsheet, File,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 
-const ACCEPTED_TYPES = [
-  "image/jpeg", "image/png", "image/gif", "image/webp",
-  "text/plain", "text/markdown", "text/csv",
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+/* ─── hidden file inputs ─────────────────────────────────────── */
+const EXTS_ALL   = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml";
+const EXTS_IMG   = ".jpg,.jpeg,.png,.gif,.webp";
+const EXTS_DOCS  = ".pdf,.docx,.txt,.md,.csv,.json,.xml,.yaml,.yml";
+const EXTS_CODE  = ".py,.ts,.tsx,.js,.jsx,.html,.css,.json,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
+
+/* ─── menu items ─────────────────────────────────────────────── */
+interface MenuItem {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  accent: string;
+  action: string;
+}
+
+const MENU_ITEMS: MenuItem[] = [
+  {
+    id: "images",
+    label: "Upload images",
+    description: "JPG, PNG, GIF, WebP",
+    icon: <ImageIcon className="w-4 h-4" />,
+    accent: "text-violet-400 bg-violet-500/10",
+    action: "images",
+  },
+  {
+    id: "documents",
+    label: "Upload documents",
+    description: "PDF, DOCX, TXT, CSV, MD",
+    icon: <FileText className="w-4 h-4" />,
+    accent: "text-blue-400 bg-blue-500/10",
+    action: "documents",
+  },
+  {
+    id: "code",
+    label: "Upload code files",
+    description: "JS, TS, PY, HTML, CSS…",
+    icon: <FileCode2 className="w-4 h-4" />,
+    accent: "text-emerald-400 bg-emerald-500/10",
+    action: "code",
+  },
+  {
+    id: "spreadsheet",
+    label: "Upload spreadsheet",
+    description: "CSV, JSON, XML, YAML",
+    icon: <FileSpreadsheet className="w-4 h-4" />,
+    accent: "text-orange-400 bg-orange-500/10",
+    action: "spreadsheet",
+  },
+  {
+    id: "camera",
+    label: "Take a photo",
+    description: "Use your device camera",
+    icon: <Camera className="w-4 h-4" />,
+    accent: "text-pink-400 bg-pink-500/10",
+    action: "camera",
+  },
+  {
+    id: "clipboard",
+    label: "Paste from clipboard",
+    description: "Paste image or text",
+    icon: <ClipboardPaste className="w-4 h-4" />,
+    accent: "text-cyan-400 bg-cyan-500/10",
+    action: "clipboard",
+  },
+  {
+    id: "any",
+    label: "Any file",
+    description: "All supported formats",
+    icon: <File className="w-4 h-4" />,
+    accent: "text-muted-foreground bg-muted/60",
+    action: "any",
+  },
 ];
 
-const ACCEPTED_EXTENSIONS = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.pdf,.docx";
-
+/* ─── props ──────────────────────────────────────────────────── */
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -23,34 +95,50 @@ interface ChatInputProps {
   disabled?: boolean;
 }
 
-export function ChatInput({
-  value,
-  onChange,
-  onSubmit,
-  onStop,
-  isStreaming,
-  disabled,
-}: ChatInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+/* ═══════════════════════════════════════════════════════════════ */
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled }: ChatInputProps) {
+  const textareaRef    = useRef<HTMLTextAreaElement>(null);
+  const allInputRef    = useRef<HTMLInputElement>(null);
+  const imgInputRef    = useRef<HTMLInputElement>(null);
+  const docInputRef    = useRef<HTMLInputElement>(null);
+  const codeInputRef   = useRef<HTMLInputElement>(null);
+  const csvInputRef    = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const menuRef        = useRef<HTMLDivElement>(null);
 
+  const [attachments, setAttachments]     = useState<Attachment[]>([]);
+  const [isDragOver, setIsDragOver]       = useState(false);
+  const [isProcessing, setIsProcessing]   = useState(false);
+  const [menuOpen, setMenuOpen]           = useState(false);
+  const [clipError, setClipError]         = useState("");
+
+  /* auto-resize textarea */
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
+  /* close menu on outside click */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  /* keyboard */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!isStreaming && (value.trim() || attachments.length > 0)) {
-        handleSend();
-      }
+      if (!isStreaming && (value.trim() || attachments.length > 0)) handleSend();
     }
+    if (e.key === "Escape") setMenuOpen(false);
   };
 
   const handleSend = () => {
@@ -60,97 +148,125 @@ export function ChatInput({
     onSubmit(toSend);
   };
 
+  /* process raw files */
   const processFiles = useCallback(async (files: FileList | File[]) => {
     setIsProcessing(true);
-    const fileArray = Array.from(files).slice(0, 5);
+    const arr = Array.from(files).slice(0, 5);
     try {
-      const results = await Promise.all(fileArray.map(readFileAsAttachment));
-      setAttachments((prev) => {
-        const combined = [...prev, ...results];
-        return combined.slice(0, 5);
-      });
-    } catch (err) {
-      console.error("File read error", err);
+      const results = await Promise.all(arr.map(readFileAsAttachment));
+      setAttachments(prev => [...prev, ...results].slice(0, 5));
+    } catch (e) {
+      console.error("file read error", e);
     } finally {
       setIsProcessing(false);
     }
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) {
-      processFiles(e.target.files);
-      e.target.value = "";
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; }
+  };
+
+  /* drag-drop */
+  const handleDragOver  = (e: DragEvent) => { e.preventDefault(); setIsDragOver(true); };
+  const handleDragLeave = (e: DragEvent) => { e.preventDefault(); setIsDragOver(false); };
+  const handleDrop      = (e: DragEvent) => {
+    e.preventDefault(); setIsDragOver(false);
+    if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+  };
+
+  /* clipboard paste */
+  const handleClipboard = async () => {
+    setMenuOpen(false);
+    setClipError("");
+    try {
+      const items = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type.startsWith("image/")) {
+            const blob = await item.getType(type);
+            files.push(new File([blob], `clipboard.${type.split("/")[1]}`, { type }));
+          } else if (type === "text/plain") {
+            const blob = await item.getType(type);
+            const text = await blob.text();
+            if (text.trim()) {
+              onChange(value + (value ? "\n" : "") + text);
+            }
+          }
+        }
+      }
+      if (files.length) processFiles(files);
+      else if (!document.hasFocus()) setClipError("Focus the page then try again.");
+    } catch {
+      setClipError("Clipboard access denied. Allow clipboard permission and try again.");
     }
   };
 
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    if (e.dataTransfer.files.length) {
-      processFiles(e.dataTransfer.files);
+  /* menu action dispatch */
+  const handleMenuAction = (action: string) => {
+    setMenuOpen(false);
+    switch (action) {
+      case "images":    imgInputRef.current?.click();    break;
+      case "documents": docInputRef.current?.click();    break;
+      case "code":      codeInputRef.current?.click();   break;
+      case "spreadsheet": csvInputRef.current?.click();  break;
+      case "camera":    cameraInputRef.current?.click(); break;
+      case "clipboard": handleClipboard();               break;
+      case "any":       allInputRef.current?.click();    break;
     }
   };
 
-  const removeAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  };
-
+  const removeAttachment = (id: string) => setAttachments(prev => prev.filter(a => a.id !== id));
   const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !isStreaming && !disabled && !isProcessing;
 
   return (
     <div className="px-4 pb-5 pt-2">
       <div className="relative max-w-3xl mx-auto">
+
+        {/* ── hidden file inputs ─────────────────────────── */}
+        <input ref={allInputRef}    type="file" multiple accept={EXTS_ALL}  className="hidden" onChange={handleInputChange} />
+        <input ref={imgInputRef}    type="file" multiple accept={EXTS_IMG}  className="hidden" onChange={handleInputChange} />
+        <input ref={docInputRef}    type="file" multiple accept={EXTS_DOCS} className="hidden" onChange={handleInputChange} />
+        <input ref={codeInputRef}   type="file" multiple accept={EXTS_CODE} className="hidden" onChange={handleInputChange} />
+        <input ref={csvInputRef}    type="file" multiple accept=".csv,.json,.xml,.yaml,.yml" className="hidden" onChange={handleInputChange} />
+        <input ref={cameraInputRef} type="file" accept={EXTS_IMG} capture="environment" className="hidden" onChange={handleInputChange} />
+
+        {/* ── main input card ────────────────────────────── */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
             "relative rounded-2xl border transition-all duration-200 shadow-lg bg-card",
-            isDragOver
-              ? "border-primary/60 shadow-primary/15 ring-2 ring-primary/20"
-              : isStreaming
-              ? "border-primary/25 shadow-primary/8"
-              : "border-card-border focus-within:border-border focus-within:shadow-xl"
+            isDragOver        ? "border-primary/60 shadow-primary/15 ring-2 ring-primary/20"
+            : isStreaming     ? "border-primary/25"
+                              : "border-card-border focus-within:border-border focus-within:shadow-xl"
           )}
         >
-          {/* Drag overlay */}
+          {/* drag overlay */}
           {isDragOver && (
             <div className="absolute inset-0 z-10 rounded-2xl bg-primary/5 flex items-center justify-center pointer-events-none">
               <div className="flex flex-col items-center gap-2 text-primary/70">
-                <ImageIcon className="w-8 h-8" />
-                <p className="text-sm font-medium">Drop files here</p>
+                <ImageIcon className="w-7 h-7" />
+                <p className="text-sm font-medium">Drop to attach</p>
               </div>
             </div>
           )}
 
-          {/* Attachment previews */}
+          {/* attachment chips */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-3 pt-3 pb-1">
-              {attachments.map((att) => (
-                <AttachmentChip
-                  key={att.id}
-                  attachment={att}
-                  onRemove={() => removeAttachment(att.id)}
-                />
+              {attachments.map(att => (
+                <AttachmentChip key={att.id} attachment={att} onRemove={() => removeAttachment(att.id)} />
               ))}
             </div>
           )}
 
-          {/* Textarea */}
+          {/* textarea */}
           <Textarea
             ref={textareaRef}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={isDragOver ? "Drop to attach…" : "Message Claude…"}
             disabled={disabled}
@@ -164,32 +280,63 @@ export function ChatInput({
             )}
           />
 
-          {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-3 pb-2.5">
-            <div className="flex items-center gap-1">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPTED_EXTENSIONS}
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
+          {/* toolbar */}
+          <div className="flex items-center justify-between px-3 pb-2.5 gap-2">
+            <div className="flex items-center gap-1 relative" ref={menuRef}>
+
+              {/* "+" button */}
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setMenuOpen(o => !o)}
                 disabled={disabled || isStreaming}
-                data-testid="button-attach-file"
-                title="Attach file"
+                data-testid="button-attach-menu"
+                title="Attach"
                 className={cn(
-                  "p-1.5 rounded-lg text-muted-foreground/50 transition-colors",
-                  "hover:text-muted-foreground hover:bg-muted/40",
+                  "flex items-center justify-center w-8 h-8 rounded-xl border transition-all",
+                  menuOpen
+                    ? "bg-primary/10 border-primary/40 text-primary"
+                    : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40 hover:border-border/60",
                   "disabled:opacity-30 disabled:cursor-not-allowed"
                 )}
               >
-                <Paperclip className="w-4 h-4" />
+                <Plus className={cn("w-4 h-4 transition-transform duration-200", menuOpen && "rotate-45")} />
               </button>
+
+              {/* popup menu */}
+              {menuOpen && (
+                <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
+                  <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
+                      Attach
+                    </p>
+                    {MENU_ITEMS.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleMenuAction(item.action)}
+                        data-testid={`menu-item-${item.id}`}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition-colors group"
+                      >
+                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors", item.accent)}>
+                          {item.icon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground/90 group-hover:text-foreground leading-none mb-0.5">
+                            {item.label}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground/60 leading-none">{item.description}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {isProcessing && (
-                <span className="text-xs text-muted-foreground/50 ml-1">Reading file…</span>
+                <span className="text-[11px] text-muted-foreground/50 ml-1 animate-pulse">Reading…</span>
+              )}
+              {clipError && (
+                <span className="text-[11px] text-destructive/80 ml-1 max-w-[180px] truncate" title={clipError}>
+                  {clipError}
+                </span>
               )}
             </div>
 
@@ -213,10 +360,7 @@ export function ChatInput({
                   onClick={handleSend}
                   disabled={!canSubmit}
                   data-testid="button-send"
-                  className={cn(
-                    "h-8 w-8 rounded-xl shadow-sm transition-all duration-150",
-                    !canSubmit && "opacity-25"
-                  )}
+                  className={cn("h-8 w-8 rounded-xl shadow-sm transition-all", !canSubmit && "opacity-25")}
                 >
                   <ArrowUp className="w-4 h-4" />
                 </Button>
@@ -233,21 +377,12 @@ export function ChatInput({
   );
 }
 
-function AttachmentChip({
-  attachment,
-  onRemove,
-}: {
-  attachment: Attachment;
-  onRemove: () => void;
-}) {
+/* ─── attachment chip ─────────────────────────────────────────── */
+function AttachmentChip({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
   if (attachment.type === "image") {
     return (
-      <div className="relative group rounded-xl overflow-hidden border border-border/50 shadow-sm">
-        <img
-          src={attachment.data}
-          alt={attachment.name}
-          className="h-16 w-16 object-cover"
-        />
+      <div className="relative group rounded-xl overflow-hidden border border-border/50 shadow-sm flex-shrink-0">
+        <img src={attachment.data} alt={attachment.name} className="h-16 w-16 object-cover" />
         <button
           onClick={onRemove}
           data-testid="button-remove-attachment"
@@ -255,26 +390,32 @@ function AttachmentChip({
         >
           <X className="w-3 h-3" />
         </button>
-        <div className="absolute bottom-0 inset-x-0 bg-black/50 px-1.5 py-0.5">
+        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 px-1.5 py-0.5">
           <p className="text-[9px] text-white truncate">{attachment.name}</p>
         </div>
       </div>
     );
   }
 
+  const iconColor =
+    attachment.mimeType === "application/pdf"                              ? "text-red-400 bg-red-500/10"
+    : attachment.name.match(/\.(py|js|ts|tsx|jsx|html|css|json|yaml)$/)   ? "text-emerald-400 bg-emerald-500/10"
+    : attachment.mimeType?.includes("spreadsheet") || attachment.name.match(/\.(csv|xlsx)$/) ? "text-orange-400 bg-orange-500/10"
+    : "text-blue-400 bg-blue-500/10";
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/60 border border-border/50 group">
-      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-        <FileText className="w-3.5 h-3.5 text-primary/70" />
+    <div className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl bg-muted/40 border border-border/50 group max-w-[180px]">
+      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", iconColor)}>
+        <FileText className="w-3.5 h-3.5" />
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-foreground/80 truncate max-w-[120px]">{attachment.name}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-foreground/80 truncate">{attachment.name}</p>
         <p className="text-[10px] text-muted-foreground/60">{formatFileSize(attachment.size)}</p>
       </div>
       <button
         onClick={onRemove}
         data-testid="button-remove-attachment"
-        className="ml-1 p-0.5 rounded-md text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+        className="flex-shrink-0 p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
       >
         <X className="w-3 h-3" />
       </button>
