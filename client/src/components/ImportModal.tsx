@@ -88,7 +88,7 @@ export function ImportModal({ open, onOpenChange }: ImportModalProps) {
       // Claude format (claude_conversations.json)
       else if (Array.isArray(json) && json.length > 0 && json[0].chat_messages) {
         conversations = json.map((conv: any) => ({
-          title: conv.name || "Imported Claude Chat",
+          title: conv.name || "Imported AI Sparky",
           messages: conv.chat_messages.map((msg: any) => ({
             role: msg.sender === "assistant" ? "assistant" : "user",
             content: msg.text || "",

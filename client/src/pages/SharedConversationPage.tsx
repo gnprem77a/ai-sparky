@@ -54,7 +54,7 @@ export default function SharedConversationPage() {
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Open Claude Chat
+            Open AI Sparky
           </button>
           <div className="h-4 w-px bg-border" />
           <div className="flex items-center gap-2">
@@ -160,7 +160,7 @@ export default function SharedConversationPage() {
             ))}
 
             <div className="pt-8 text-center border-t border-border/40 mt-8">
-              <p className="text-xs text-muted-foreground mb-3">Shared via Claude Chat</p>
+              <p className="text-xs text-muted-foreground mb-3">Shared via AI Sparky</p>
               <button
                 onClick={() => navigate("/")}
                 className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"

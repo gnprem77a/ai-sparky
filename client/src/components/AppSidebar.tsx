@@ -482,7 +482,7 @@ export function AppSidebar({
                 <path d="M21 12c0-4.97-4.03-9-9-9s-9 4.03-9 9 4.03 9 9 9 9-4.03 9-9zM8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="currentColor"/>
               </svg>
             </div>
-            <span className="font-semibold text-sm text-foreground tracking-tight">Claude Chat</span>
+            <span className="font-semibold text-sm text-foreground tracking-tight">AI Sparky</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
