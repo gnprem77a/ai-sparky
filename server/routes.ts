@@ -17,6 +17,60 @@ function getBedrockClient() {
   });
 }
 
+interface Attachment {
+  type: "image" | "text" | "file";
+  name: string;
+  mimeType: string;
+  data: string;
+}
+
+interface RawMessage {
+  role: string;
+  content: string;
+  attachments?: Attachment[];
+}
+
+type ClaudeContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+
+function buildClaudeContent(msg: RawMessage): string | ClaudeContentBlock[] {
+  const hasImages = msg.attachments?.some((a) => a.type === "image");
+  const textAttachments = msg.attachments?.filter((a) => a.type === "text") ?? [];
+
+  let textContent = msg.content;
+
+  if (textAttachments.length > 0) {
+    const fileContents = textAttachments
+      .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
+      .join("");
+    textContent = textContent + fileContents;
+  }
+
+  if (!hasImages) {
+    return textContent;
+  }
+
+  const blocks: ClaudeContentBlock[] = [];
+
+  for (const att of msg.attachments ?? []) {
+    if (att.type === "image") {
+      const base64Data = att.data.includes(",") ? att.data.split(",")[1] : att.data;
+      const mediaType = att.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: mediaType, data: base64Data },
+      });
+    }
+  }
+
+  if (textContent.trim()) {
+    blocks.push({ type: "text", text: textContent });
+  }
+
+  return blocks;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -36,9 +90,9 @@ export async function registerRoutes(
 
     const modelId = MODEL_IDS[model] || MODEL_IDS["claude-sonnet"];
 
-    const formattedMessages = messages.slice(-5).map((msg: { role: string; content: string }) => ({
+    const formattedMessages = messages.slice(-5).map((msg: RawMessage) => ({
       role: msg.role,
-      content: msg.content,
+      content: buildClaudeContent(msg),
     }));
 
     const requestBody = {
@@ -73,7 +127,6 @@ export async function registerRoutes(
         if (event.chunk?.bytes) {
           const decoded = new TextDecoder().decode(event.chunk.bytes);
           const parsed = JSON.parse(decoded);
-
           if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
             res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
           } else if (parsed.type === "message_stop") {

@@ -1,0 +1,117 @@
+Build a full modern AI chat website visually and functionally similar to ChatGPT.
+
+Use:
+- Next.js (latest App Router)
+- React
+- TypeScript
+- Tailwind CSS
+
+Design requirements:
+- Make the interface very close to ChatGPT
+- Dark modern professional design
+- Left sidebar exactly like ChatGPT with:
+  - New chat button
+  - Chat history list
+  - Scrollable sidebar
+  - Sidebar collapse button
+- Main center chat area with:
+  - Assistant messages
+  - User messages
+  - Smooth spacing
+  - Markdown rendering
+  - Code blocks with copy button
+- Bottom sticky input bar like ChatGPT
+
+Main features:
+1. Chat system:
+   - New chat
+   - Multiple conversations
+   - Save chats in localStorage
+   - Rename chat automatically from first message
+   - Delete chats
+
+2. AI backend:
+   - Create /api/chat endpoint
+   - Use AWS Bedrock SDK
+   - Connect Claude through Amazon Bedrock
+   - Default model Claude Sonnet
+   - Add model switcher:
+     - Claude Sonnet
+     - Claude Opus
+
+3. File upload features:
+   - Upload files button near input
+   - Accept:
+     - PDF
+     - TXT
+     - DOCX
+     - Images
+   - Show uploaded file preview
+   - Send file content to backend if text file
+   - For images, preview before sending
+
+4. Image upload features:
+   - Drag and drop image upload
+   - Preview uploaded image
+   - Remove image option
+
+5. Input features:
+   - Multiline input
+   - Enter to send
+   - Shift+Enter new line
+   - Send button
+   - Disable while loading
+
+6. Streaming:
+   - AI response should appear token by token like ChatGPT
+
+7. Extra ChatGPT-style features:
+   - Stop generating button
+   - Regenerate response button
+   - Copy response button
+   - Auto scroll latest message
+   - Typing indicator
+
+8. Responsive:
+   - Mobile friendly
+   - Tablet friendly
+   - Desktop perfect layout
+
+9. Security:
+   - AWS keys only backend
+   - Environment variables:
+     AWS_ACCESS_KEY_ID
+     AWS_SECRET_ACCESS_KEY
+     AWS_REGION
+
+10. AWS Bedrock:
+   - Use latest Bedrock SDK syntax
+   - Correct Claude message format
+   - max_tokens configurable
+   - send last 5 messages only
+
+11. Project structure:
+   /app
+   /components
+   /lib
+   /app/api/chat
+
+12. Components:
+   - Sidebar
+   - ChatWindow
+   - ChatInput
+   - FileUploader
+   - ModelSelector
+   - MessageActions
+
+13. Add:
+   - .env.example
+   - clean reusable code
+   - production-ready structure
+
+14. Make design polished like premium AI SaaS website, not simple demo UI.
+
+15. After code generation explain:
+   - where to place AWS keys
+   - how to run npm install
+   - how to run npm run dev

@@ -10,6 +10,7 @@ import { Moon, Sun, Plus } from "lucide-react";
 import {
   type Conversation,
   type Message,
+  type Attachment,
   getConversations,
   getActiveConversationId,
   setActiveConversationId,
@@ -29,7 +30,6 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { theme, toggleTheme } = useTheme();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
@@ -103,57 +103,29 @@ export default function ChatPage() {
     setStreamingMessageId(null);
   };
 
-  const handleSubmit = async () => {
-    const text = input.trim();
-    if (!text || isStreaming || isSubmittingRef.current) return;
-
-    isSubmittingRef.current = true;
-    setError(null);
-    setInput("");
-
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-      timestamp: Date.now(),
-    };
-
-    const assistantMsgId = crypto.randomUUID();
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-    };
-
-    let currentConversation: Conversation;
-
-    if (activeConversation) {
-      currentConversation = {
-        ...activeConversation,
-        messages: [...activeConversation.messages, userMsg, assistantMsg],
-        updatedAt: Date.now(),
-      };
-    } else {
-      currentConversation = createConversation(model);
-      currentConversation.title = generateTitle(text);
-      currentConversation.messages = [userMsg, assistantMsg];
-      setActiveId(currentConversation.id);
-      setActiveConversationId(currentConversation.id);
-    }
-
-    updateConversation(currentConversation);
-    refreshConversations();
+  const streamAssistantReply = async (
+    conversation: Conversation,
+    assistantMsgId: string
+  ) => {
+    let currentConversation = conversation;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setIsStreaming(true);
     setStreamingMessageId(assistantMsgId);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     const historyForApi = currentConversation.messages
       .filter((m) => m.id !== assistantMsgId)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments?.map((a) => ({
+          type: a.type,
+          name: a.name,
+          mimeType: a.mimeType,
+          data: a.data,
+        })),
+      }));
 
     try {
       const response = await fetch("/api/chat", {
@@ -201,14 +173,14 @@ export default function ChatPage() {
             }
           } catch (parseErr: unknown) {
             const err = parseErr as Error;
-            if (err.message && err.name !== "SyntaxError") throw parseErr;
+            if (err.name !== "SyntaxError") throw parseErr;
           }
         }
       }
     } catch (err: unknown) {
       const error = err as Error;
       if (error.name === "AbortError") {
-        // User stopped
+        // stopped by user
       } else {
         setError(error.message || "Something went wrong. Please try again.");
         const errorConv = {
@@ -225,6 +197,86 @@ export default function ChatPage() {
     }
   };
 
+  const handleSubmit = async (attachments: Attachment[]) => {
+    const text = input.trim();
+    if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
+
+    isSubmittingRef.current = true;
+    setError(null);
+    setInput("");
+
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: text,
+      attachments: attachments.length > 0 ? attachments : undefined,
+      timestamp: Date.now(),
+    };
+
+    const assistantMsgId = crypto.randomUUID();
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+    };
+
+    let currentConversation: Conversation;
+
+    if (activeConversation) {
+      currentConversation = {
+        ...activeConversation,
+        messages: [...activeConversation.messages, userMsg, assistantMsg],
+        updatedAt: Date.now(),
+      };
+    } else {
+      currentConversation = createConversation(model);
+      currentConversation.title = generateTitle(text || attachments[0]?.name || "File upload");
+      currentConversation.messages = [userMsg, assistantMsg];
+      setActiveId(currentConversation.id);
+      setActiveConversationId(currentConversation.id);
+    }
+
+    updateConversation(currentConversation);
+    refreshConversations();
+
+    await streamAssistantReply(currentConversation, assistantMsgId);
+  };
+
+  const handleRegenerate = async () => {
+    if (!activeConversation || isStreaming) return;
+
+    const msgs = activeConversation.messages;
+    const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) return;
+
+    const assistantMsgId = crypto.randomUUID();
+    const newAssistantMsg: Message = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+    };
+
+    const updatedMsgs = msgs.filter((m) => m.id !== lastAssistant.id);
+    updatedMsgs.push(newAssistantMsg);
+
+    const updatedConversation: Conversation = {
+      ...activeConversation,
+      messages: updatedMsgs,
+      updatedAt: Date.now(),
+    };
+
+    isSubmittingRef.current = true;
+    setError(null);
+    updateConversation(updatedConversation);
+    refreshConversations();
+
+    await streamAssistantReply(updatedConversation, assistantMsgId);
+  };
+
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+
   return (
     <>
       <AppSidebar
@@ -239,11 +291,8 @@ export default function ChatPage() {
         {/* Header */}
         <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
           <div className="flex items-center gap-1">
-            <SidebarTrigger
-              data-testid="button-sidebar-toggle"
-              className="h-9 w-9 text-muted-foreground"
-            />
-            <div className="h-5 w-px bg-border/60 mx-1" />
+            <SidebarTrigger data-testid="button-sidebar-toggle" className="h-9 w-9 text-muted-foreground" />
+            <div className="h-5 w-px bg-border/50 mx-1" />
             <ModelSelector value={model} onChange={handleModelChange} disabled={isStreaming} />
           </div>
           <div className="flex items-center gap-1">
@@ -271,34 +320,26 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto custom-scrollbar"
-        >
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
             <EmptyState onSuggestion={(s) => setInput(s)} />
           ) : (
-            <div className="max-w-3xl mx-auto py-6 px-0">
+            <div className="max-w-3xl mx-auto py-6">
               {messages.map((msg, i) => (
-                <div
+                <ChatMessage
                   key={msg.id}
-                  style={{ animationDelay: `${Math.min(i * 30, 200)}ms` }}
-                >
-                  <ChatMessage
-                    message={msg}
-                    isStreaming={isStreaming && msg.id === streamingMessageId}
-                  />
-                </div>
+                  message={msg}
+                  isStreaming={isStreaming && msg.id === streamingMessageId}
+                  isLast={msg.id === lastAssistantMsg?.id}
+                  onRegenerate={msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming ? handleRegenerate : undefined}
+                />
               ))}
               {error && (
-                <div
-                  data-testid="error-message"
-                  className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm"
-                >
-                  <span className="font-medium">Error:</span> {error}
+                <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm">
+                  <span className="font-semibold">Error: </span>{error}
                 </div>
               )}
-              <div ref={messagesEndRef} className="h-4" />
+              <div className="h-4" />
             </div>
           )}
         </div>
@@ -319,75 +360,50 @@ export default function ChatPage() {
 }
 
 const SUGGESTIONS = [
-  {
-    icon: "✦",
-    text: "Explain quantum entanglement simply",
-    category: "Science",
-  },
-  {
-    icon: "✦",
-    text: "Write a Python script to analyze CSV data",
-    category: "Code",
-  },
-  {
-    icon: "✦",
-    text: "What makes a great product pitch deck?",
-    category: "Business",
-  },
-  {
-    icon: "✦",
-    text: "Help me refactor this code for readability",
-    category: "Code",
-  },
-  {
-    icon: "✦",
-    text: "Summarize the key ideas in clean architecture",
-    category: "Learning",
-  },
-  {
-    icon: "✦",
-    text: "Draft a professional email declining a meeting",
-    category: "Writing",
-  },
+  { text: "Explain quantum entanglement in simple terms", category: "Science" },
+  { text: "Write a Python script to scrape a website", category: "Code" },
+  { text: "What makes a great SaaS pitch deck?", category: "Business" },
+  { text: "Refactor this code for better readability", category: "Code" },
+  { text: "Summarize key ideas in clean architecture", category: "Learning" },
+  { text: "Draft a professional email declining a meeting", category: "Writing" },
 ];
 
 function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-full py-16 px-6">
-      {/* Logo mark */}
       <div className="relative mb-8">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/20">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/25">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
             <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
           </svg>
         </div>
-        <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-xl scale-150 -z-10" />
+        <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-2xl scale-150 -z-10" />
       </div>
 
       <h1 className="text-[2rem] font-semibold text-foreground mb-2 tracking-tight text-center">
         How can I help you?
       </h1>
-      <p className="text-muted-foreground text-[15px] mb-10 text-center max-w-[360px] leading-relaxed">
-        Ask me anything — code, writing, analysis, ideas, and everything in between.
+      <p className="text-muted-foreground/70 text-[15px] mb-10 text-center max-w-[360px] leading-relaxed">
+        Ask me anything — code, writing, analysis, ideas, and more.
+        You can also attach files and images.
       </p>
 
-      {/* Suggestions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-w-3xl w-full">
         {SUGGESTIONS.map((s) => (
           <button
             key={s.text}
             onClick={() => onSuggestion(s.text)}
             data-testid="button-suggestion"
-            className="group text-left px-4 py-3.5 rounded-xl border border-border/60 bg-card/60 hover-elevate transition-all duration-150 backdrop-blur-sm"
+            className="group text-left px-4 py-3.5 rounded-xl border border-border/60 bg-card/60 hover-elevate transition-all duration-150"
           >
             <div className="flex items-start gap-2.5">
-              <span className="text-primary/60 text-sm mt-0.5 font-bold select-none">✦</span>
+              <span className="text-primary/50 text-sm mt-0.5 font-bold select-none">✦</span>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium text-foreground/80 leading-snug group-hover:text-foreground transition-colors">
                   {s.text}
                 </p>
-                <p className="text-[11px] text-muted-foreground/60 mt-1 font-medium uppercase tracking-wide">
+                <p className="text-[10px] text-muted-foreground/50 mt-1 font-semibold uppercase tracking-widest">
                   {s.category}
                 </p>
               </div>

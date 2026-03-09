@@ -1,7 +1,17 @@
+export interface Attachment {
+  id: string;
+  name: string;
+  type: "image" | "text" | "file";
+  mimeType: string;
+  data: string;
+  size: number;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  attachments?: Attachment[];
   timestamp: number;
 }
 
@@ -46,14 +56,7 @@ export function setActiveConversationId(id: string | null): void {
 export function createConversation(model: string): Conversation {
   const id = crypto.randomUUID();
   const now = Date.now();
-  return {
-    id,
-    title: "New Chat",
-    messages: [],
-    model,
-    createdAt: now,
-    updatedAt: now,
-  };
+  return { id, title: "New Chat", messages: [], model, createdAt: now, updatedAt: now };
 }
 
 export function updateConversation(conversation: Conversation): void {
@@ -74,6 +77,42 @@ export function deleteConversation(id: string): void {
 
 export function generateTitle(firstMessage: string): string {
   const trimmed = firstMessage.trim();
-  if (trimmed.length <= 40) return trimmed;
-  return trimmed.substring(0, 40).trimEnd() + "…";
+  if (trimmed.length <= 45) return trimmed;
+  return trimmed.substring(0, 45).trimEnd() + "…";
+}
+
+export async function readFileAsAttachment(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const id = crypto.randomUUID();
+    const isImage = file.type.startsWith("image/");
+    const isText = file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".csv");
+
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      resolve({
+        id,
+        name: file.name,
+        type: isImage ? "image" : isText ? "text" : "file",
+        mimeType: file.type || "application/octet-stream",
+        data: result,
+        size: file.size,
+      });
+    };
+    reader.onerror = reject;
+
+    if (isImage) {
+      reader.readAsDataURL(file);
+    } else if (isText) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
