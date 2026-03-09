@@ -6,12 +6,11 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { ModelSelector, type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
-import { Moon, Sun, Plus, Sparkles } from "lucide-react";
+import { Moon, Sun, Plus } from "lucide-react";
 import {
   type Conversation,
   type Message,
   getConversations,
-  saveConversations,
   getActiveConversationId,
   setActiveConversationId,
   createConversation,
@@ -31,6 +30,7 @@ export default function ChatPage() {
 
   const { theme, toggleTheme } = useTheme();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
 
@@ -49,8 +49,13 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isStreaming]);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages.length, isStreaming]);
 
   const refreshConversations = useCallback(() => {
     setConversations(getConversations());
@@ -154,11 +159,7 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: historyForApi,
-          model,
-          maxTokens: 4096,
-        }),
+        body: JSON.stringify({ messages: historyForApi, model, maxTokens: 4096 }),
         signal: controller.signal,
       });
 
@@ -199,9 +200,8 @@ export default function ChatPage() {
               refreshConversations();
             }
           } catch (parseErr: unknown) {
-            if ((parseErr as Error).message && !(parseErr as SyntaxError).name?.includes("Syntax")) {
-              throw parseErr;
-            }
+            const err = parseErr as Error;
+            if (err.message && err.name !== "SyntaxError") throw parseErr;
           }
         }
       }
@@ -235,24 +235,25 @@ export default function ChatPage() {
         onDeleteConversation={handleDeleteConversation}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 h-screen">
-        <header className="flex items-center justify-between px-4 py-2.5 border-b border-border flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ModelSelector
-              value={model}
-              onChange={handleModelChange}
-              disabled={isStreaming}
+      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
+        {/* Header */}
+        <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
+          <div className="flex items-center gap-1">
+            <SidebarTrigger
+              data-testid="button-sidebar-toggle"
+              className="h-9 w-9 text-muted-foreground"
             />
+            <div className="h-5 w-px bg-border/60 mx-1" />
+            <ModelSelector value={model} onChange={handleModelChange} disabled={isStreaming} />
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <Button
               size="icon"
               variant="ghost"
               onClick={handleNewChat}
               data-testid="button-new-chat-header"
               title="New chat"
-              className="h-9 w-9"
+              className="h-9 w-9 text-muted-foreground"
             >
               <Plus className="w-4 h-4" />
             </Button>
@@ -262,39 +263,48 @@ export default function ChatPage() {
               onClick={toggleTheme}
               data-testid="button-theme-toggle"
               title="Toggle theme"
-              className="h-9 w-9"
+              className="h-9 w-9 text-muted-foreground"
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* Messages */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto custom-scrollbar"
+        >
           {messages.length === 0 ? (
-            <EmptyState onSuggestion={(s) => { setInput(s); }} />
+            <EmptyState onSuggestion={(s) => setInput(s)} />
           ) : (
-            <div className="max-w-3xl mx-auto py-4">
-              {messages.map((msg) => (
-                <ChatMessage
+            <div className="max-w-3xl mx-auto py-6 px-0">
+              {messages.map((msg, i) => (
+                <div
                   key={msg.id}
-                  message={msg}
-                  isStreaming={isStreaming && msg.id === streamingMessageId}
-                />
+                  style={{ animationDelay: `${Math.min(i * 30, 200)}ms` }}
+                >
+                  <ChatMessage
+                    message={msg}
+                    isStreaming={isStreaming && msg.id === streamingMessageId}
+                  />
+                </div>
               ))}
               {error && (
                 <div
                   data-testid="error-message"
-                  className="mx-4 my-2 px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                  className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm"
                 >
-                  {error}
+                  <span className="font-medium">Error:</span> {error}
                 </div>
               )}
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} className="h-4" />
             </div>
           )}
         </div>
 
-        <div className="flex-shrink-0 border-t border-border/50">
+        {/* Input */}
+        <div className="flex-shrink-0">
           <ChatInput
             value={input}
             onChange={setInput}
@@ -309,35 +319,79 @@ export default function ChatPage() {
 }
 
 const SUGGESTIONS = [
-  "Explain quantum computing in simple terms",
-  "Write a Python function to parse JSON",
-  "What are the key differences between REST and GraphQL?",
-  "Help me debug this TypeScript error",
-  "Summarize the main ideas behind clean architecture",
-  "Write a regex to validate email addresses",
+  {
+    icon: "✦",
+    text: "Explain quantum entanglement simply",
+    category: "Science",
+  },
+  {
+    icon: "✦",
+    text: "Write a Python script to analyze CSV data",
+    category: "Code",
+  },
+  {
+    icon: "✦",
+    text: "What makes a great product pitch deck?",
+    category: "Business",
+  },
+  {
+    icon: "✦",
+    text: "Help me refactor this code for readability",
+    category: "Code",
+  },
+  {
+    icon: "✦",
+    text: "Summarize the key ideas in clean architecture",
+    category: "Learning",
+  },
+  {
+    icon: "✦",
+    text: "Draft a professional email declining a meeting",
+    category: "Writing",
+  },
 ];
 
 function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-full py-16 px-4">
-      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-        <Sparkles className="w-8 h-8 text-primary" />
+    <div className="flex flex-col items-center justify-center min-h-full py-16 px-6">
+      {/* Logo mark */}
+      <div className="relative mb-8">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/20">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
+            <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
+          </svg>
+        </div>
+        <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-xl scale-150 -z-10" />
       </div>
-      <h1 className="text-2xl font-semibold text-foreground mb-2">
-        How can I help you today?
+
+      <h1 className="text-[2rem] font-semibold text-foreground mb-2 tracking-tight text-center">
+        How can I help you?
       </h1>
-      <p className="text-muted-foreground text-sm mb-10 text-center max-w-sm">
-        Ask me anything — I'm here to help with coding, writing, analysis, and more.
+      <p className="text-muted-foreground text-[15px] mb-10 text-center max-w-[360px] leading-relaxed">
+        Ask me anything — code, writing, analysis, ideas, and everything in between.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl w-full">
-        {SUGGESTIONS.map((suggestion) => (
+
+      {/* Suggestions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-w-3xl w-full">
+        {SUGGESTIONS.map((s) => (
           <button
-            key={suggestion}
-            onClick={() => onSuggestion(suggestion)}
-            data-testid={`button-suggestion`}
-            className="text-left px-4 py-3 rounded-xl border border-border bg-card text-card-foreground text-sm hover-elevate transition-all"
+            key={s.text}
+            onClick={() => onSuggestion(s.text)}
+            data-testid="button-suggestion"
+            className="group text-left px-4 py-3.5 rounded-xl border border-border/60 bg-card/60 hover-elevate transition-all duration-150 backdrop-blur-sm"
           >
-            {suggestion}
+            <div className="flex items-start gap-2.5">
+              <span className="text-primary/60 text-sm mt-0.5 font-bold select-none">✦</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-foreground/80 leading-snug group-hover:text-foreground transition-colors">
+                  {s.text}
+                </p>
+                <p className="text-[11px] text-muted-foreground/60 mt-1 font-medium uppercase tracking-wide">
+                  {s.category}
+                </p>
+              </div>
+            </div>
           </button>
         ))}
       </div>

@@ -27,7 +27,7 @@ export function ChatInput({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
   }, [value]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -42,13 +42,15 @@ export function ChatInput({
   const canSubmit = value.trim().length > 0 && !isStreaming && !disabled;
 
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="px-4 pb-5 pt-3">
       <div className="relative max-w-3xl mx-auto">
         <div
           className={cn(
-            "flex items-end gap-2 rounded-xl border bg-background px-4 py-2 transition-colors",
-            "border-border",
-            isStreaming ? "border-primary/40" : "focus-within:border-primary/60"
+            "relative flex items-end rounded-2xl border transition-all duration-200 shadow-lg",
+            "bg-card border-card-border",
+            isStreaming
+              ? "border-primary/30 shadow-primary/10"
+              : "focus-within:border-border focus-within:shadow-xl"
           )}
         >
           <Textarea
@@ -56,25 +58,26 @@ export function ChatInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message Claude… (Shift+Enter for new line)"
+            placeholder="Message Claude…"
             disabled={disabled}
             rows={1}
             data-testid="input-message"
             className={cn(
               "flex-1 resize-none border-0 bg-transparent text-sm leading-relaxed",
               "focus-visible:ring-0 focus-visible:ring-offset-0",
-              "min-h-[44px] max-h-[200px] py-2.5",
-              "placeholder:text-muted-foreground/60"
+              "min-h-[52px] max-h-[220px] py-3.5 px-4 pr-14",
+              "placeholder:text-muted-foreground/40 text-foreground/90",
+              "scrollbar-none"
             )}
           />
-          <div className="flex-shrink-0 pb-1">
+          <div className="absolute bottom-2.5 right-2.5">
             {isStreaming ? (
               <Button
                 size="icon"
-                variant="destructive"
+                variant="secondary"
                 onClick={onStop}
                 data-testid="button-stop"
-                className="h-8 w-8 rounded-lg"
+                className="h-8 w-8 rounded-xl shadow-sm"
               >
                 <Square className="w-3.5 h-3.5 fill-current" />
               </Button>
@@ -84,15 +87,18 @@ export function ChatInput({
                 onClick={onSubmit}
                 disabled={!canSubmit}
                 data-testid="button-send"
-                className="h-8 w-8 rounded-lg"
+                className={cn(
+                  "h-8 w-8 rounded-xl shadow-sm transition-all duration-150",
+                  canSubmit ? "opacity-100" : "opacity-30"
+                )}
               >
                 <ArrowUp className="w-4 h-4" />
               </Button>
             )}
           </div>
         </div>
-        <p className="text-center text-xs text-muted-foreground/50 mt-2">
-          Claude can make mistakes. Use Shift+Enter for a new line.
+        <p className="text-center text-[11px] text-muted-foreground/35 mt-2.5 select-none">
+          Claude can make mistakes. Shift + Enter for new line.
         </p>
       </div>
     </div>
