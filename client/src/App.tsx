@@ -5,8 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { lazy, Suspense, useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const AuthPage = lazy(() => import("@/pages/AuthPage"));
 
 function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -18,21 +20,47 @@ function initTheme() {
   }
 }
 
-function Router() {
-  return (
-    <Suspense fallback={null}>
-      <Switch>
-        <Route path="/" component={ChatPage} />
-        <Route component={ChatPage} />
-      </Switch>
-    </Suspense>
-  );
-}
-
 const style = {
   "--sidebar-width": "18rem",
   "--sidebar-width-icon": "3.5rem",
 };
+
+function AppInner() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex gap-1.5">
+          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Suspense fallback={null}>
+        <AuthPage />
+      </Suspense>
+    );
+  }
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
+      <div className="flex h-screen w-full overflow-hidden bg-background">
+        <Suspense fallback={null}>
+          <Switch>
+            <Route path="/" component={ChatPage} />
+            <Route component={ChatPage} />
+          </Switch>
+        </Suspense>
+      </div>
+    </SidebarProvider>
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -42,11 +70,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
-          <div className="flex h-screen w-full overflow-hidden bg-background">
-            <Router />
-          </div>
-        </SidebarProvider>
+        <AppInner />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

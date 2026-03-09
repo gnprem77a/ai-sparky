@@ -6,7 +6,8 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
-import { Moon, Sun, Plus } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Moon, Sun, Plus, LogOut } from "lucide-react";
 import {
   type Conversation,
   type Message,
@@ -30,6 +31,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
@@ -343,6 +345,18 @@ export default function ChatPage() {
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
+            {user && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => logout.mutate()}
+                data-testid="button-logout"
+                title={`Sign out (${user.username})`}
+                className="h-9 w-9 text-muted-foreground"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </header>
 

@@ -2,6 +2,17 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
+import { storage } from "./storage";
+import bcrypt from "bcrypt";
+import { insertUserSchema } from "../shared/schema";
+
+/* ─── auth middleware ─────────────────────────────────────────── */
+function requireAuth(req: Request, res: Response, next: () => void) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
 
 /* ─── bedrock client ─────────────────────────────────────────── */
 function getClient() {
@@ -177,7 +188,71 @@ async function streamModel(
 
 /* ─── route registration ─────────────────────────────────────── */
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  app.post("/api/chat", async (req: Request, res: Response) => {
+
+  /* ── auth: register ── */
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    const parsed = insertUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Username and password are required." });
+    }
+    const { username, password } = parsed.data;
+
+    const existing = await storage.getUserByUsername(username);
+    if (existing) {
+      return res.status(409).json({ error: "Username already taken." });
+    }
+
+    const hashed = await bcrypt.hash(password, 12);
+    const user = await storage.createUser({ username, password: hashed });
+    req.session.userId = user.id;
+    return res.status(201).json({ id: user.id, username: user.username });
+  });
+
+  /* ── auth: login ── */
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    const parsed = insertUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Username and password are required." });
+    }
+    const { username, password } = parsed.data;
+
+    const user = await storage.getUserByUsername(username);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    req.session.userId = user.id;
+    return res.json({ id: user.id, username: user.username });
+  });
+
+  /* ── auth: logout ── */
+  app.post("/api/auth/logout", (req: Request, res: Response) => {
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      res.json({ ok: true });
+    });
+  });
+
+  /* ── auth: me ── */
+  app.get("/api/auth/me", async (req: Request, res: Response) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Not logged in" });
+    }
+    const user = await storage.getUser(req.session.userId);
+    if (!user) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ error: "User not found" });
+    }
+    return res.json({ id: user.id, username: user.username });
+  });
+
+  /* ── chat (protected) ── */
+  app.post("/api/chat", requireAuth, async (req: Request, res: Response) => {
     const { messages, model = "auto", maxTokens = 4096 } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
