@@ -5,16 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, FileCode2, FileSpreadsheet, File,
+  ClipboardPaste, Plus, File,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 
-/* ─── hidden file inputs ─────────────────────────────────────── */
-const EXTS_ALL   = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml";
-const EXTS_IMG   = ".jpg,.jpeg,.png,.gif,.webp";
-const EXTS_DOCS  = ".pdf,.docx,.txt,.md,.csv,.json,.xml,.yaml,.yml";
-const EXTS_CODE  = ".py,.ts,.tsx,.js,.jsx,.html,.css,.json,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
+/* ─── accepted file types ────────────────────────────────────── */
+const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
+const EXTS_IMG = ".jpg,.jpeg,.png,.gif,.webp";
 
 /* ─── menu items ─────────────────────────────────────────────── */
 interface MenuItem {
@@ -29,35 +27,19 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   {
     id: "images",
-    label: "Upload images",
+    label: "Upload photos",
     description: "JPG, PNG, GIF, WebP",
     icon: <ImageIcon className="w-4 h-4" />,
     accent: "text-violet-400 bg-violet-500/10",
     action: "images",
   },
   {
-    id: "documents",
-    label: "Upload documents",
-    description: "PDF, DOCX, TXT, CSV, MD",
-    icon: <FileText className="w-4 h-4" />,
+    id: "any",
+    label: "Upload files",
+    description: "Images, PDFs, docs, code, and more",
+    icon: <File className="w-4 h-4" />,
     accent: "text-blue-400 bg-blue-500/10",
-    action: "documents",
-  },
-  {
-    id: "code",
-    label: "Upload code files",
-    description: "JS, TS, PY, HTML, CSS…",
-    icon: <FileCode2 className="w-4 h-4" />,
-    accent: "text-emerald-400 bg-emerald-500/10",
-    action: "code",
-  },
-  {
-    id: "spreadsheet",
-    label: "Upload spreadsheet",
-    description: "CSV, JSON, XML, YAML",
-    icon: <FileSpreadsheet className="w-4 h-4" />,
-    accent: "text-orange-400 bg-orange-500/10",
-    action: "spreadsheet",
+    action: "any",
   },
   {
     id: "camera",
@@ -70,18 +52,10 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: "clipboard",
     label: "Paste from clipboard",
-    description: "Paste image or text",
+    description: "Paste an image or text",
     icon: <ClipboardPaste className="w-4 h-4" />,
     accent: "text-cyan-400 bg-cyan-500/10",
     action: "clipboard",
-  },
-  {
-    id: "any",
-    label: "Any file",
-    description: "All supported formats",
-    icon: <File className="w-4 h-4" />,
-    accent: "text-muted-foreground bg-muted/60",
-    action: "any",
   },
 ];
 
@@ -100,9 +74,6 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
-  const docInputRef    = useRef<HTMLInputElement>(null);
-  const codeInputRef   = useRef<HTMLInputElement>(null);
-  const csvInputRef    = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const menuRef        = useRef<HTMLDivElement>(null);
 
@@ -207,9 +178,6 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     setMenuOpen(false);
     switch (action) {
       case "images":    imgInputRef.current?.click();    break;
-      case "documents": docInputRef.current?.click();    break;
-      case "code":      codeInputRef.current?.click();   break;
-      case "spreadsheet": csvInputRef.current?.click();  break;
       case "camera":    cameraInputRef.current?.click(); break;
       case "clipboard": handleClipboard();               break;
       case "any":       allInputRef.current?.click();    break;
@@ -224,11 +192,8 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
       <div className="relative max-w-3xl mx-auto">
 
         {/* ── hidden file inputs ─────────────────────────── */}
-        <input ref={allInputRef}    type="file" multiple accept={EXTS_ALL}  className="hidden" onChange={handleInputChange} />
-        <input ref={imgInputRef}    type="file" multiple accept={EXTS_IMG}  className="hidden" onChange={handleInputChange} />
-        <input ref={docInputRef}    type="file" multiple accept={EXTS_DOCS} className="hidden" onChange={handleInputChange} />
-        <input ref={codeInputRef}   type="file" multiple accept={EXTS_CODE} className="hidden" onChange={handleInputChange} />
-        <input ref={csvInputRef}    type="file" multiple accept=".csv,.json,.xml,.yaml,.yml" className="hidden" onChange={handleInputChange} />
+        <input ref={allInputRef}    type="file" multiple accept={EXTS_ALL} className="hidden" onChange={handleInputChange} />
+        <input ref={imgInputRef}    type="file" multiple accept={EXTS_IMG} className="hidden" onChange={handleInputChange} />
         <input ref={cameraInputRef} type="file" accept={EXTS_IMG} capture="environment" className="hidden" onChange={handleInputChange} />
 
         {/* ── main input card ────────────────────────────── */}
