@@ -1,69 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
-
-/* ─── model registry ─────────────────────────────────────────── */
-type ModelKey = "balanced" | "powerful" | "creative" | "fast";
-
-interface ModelEntry {
-  bedrockId: string;
-  displayName: string;
-  provider: "anthropic" | "meta";
-}
-
-const MODELS: Record<ModelKey, ModelEntry> = {
-  balanced: {
-    bedrockId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-    displayName: "Balanced",
-    provider: "anthropic",
-  },
-  powerful: {
-    bedrockId: "anthropic.claude-opus-4-1-20250805-v1:0",
-    displayName: "Powerful",
-    provider: "anthropic",
-  },
-  creative: {
-    bedrockId: "meta.llama3-70b-instruct-v1:0",
-    displayName: "Creative",
-    provider: "meta",
-  },
-  fast: {
-    bedrockId: "anthropic.claude-3-haiku-20240307-v1:0",
-    displayName: "Fast",
-    provider: "anthropic",
-  },
-};
-
-const FALLBACK: ModelEntry = MODELS.balanced;
-
-/* ─── auto-routing ───────────────────────────────────────────── */
-const CODING_KEYWORDS = [
-  "code", "debug", "error", "function", "class", "algorithm", "api",
-  "database", "sql", "typescript", "javascript", "python", "bug", "fix",
-  "refactor", "architecture", "implement", "compiler", "runtime", "regex",
-  "async", "promise", "import", "export", "syntax", "library", "framework",
-];
-
-const CREATIVE_KEYWORDS = [
-  "story", "creative", "write a", "poem", "brainstorm", "imagine", "fiction",
-  "character", "novel", "song", "lyrics", "narrative", "plot", "screenplay",
-  "metaphor", "describe", "invent", "fantasy", "roleplay",
-];
-
-function autoSelectModel(messages: RawMessage[]): ModelEntry {
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  const text = (lastUser?.content ?? "").toLowerCase().trim();
-
-  if (text.length < 50) return MODELS.fast;
-  if (CODING_KEYWORDS.some((k) => text.includes(k))) return MODELS.powerful;
-  if (CREATIVE_KEYWORDS.some((k) => text.includes(k))) return MODELS.creative;
-  return MODELS.balanced;
-}
-
-function resolveModel(requestedModel: string, messages: RawMessage[]): ModelEntry {
-  if (requestedModel === "auto") return autoSelectModel(messages);
-  return MODELS[requestedModel as ModelKey] ?? MODELS.balanced;
-}
+import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 
 /* ─── bedrock client ─────────────────────────────────────────── */
 function getClient() {
@@ -90,23 +28,49 @@ interface RawMessage {
   attachments?: Attachment[];
 }
 
+/* ─── auto-routing ───────────────────────────────────────────── */
+const CODING_KEYWORDS = [
+  "code", "debug", "error", "function", "class", "algorithm", "api",
+  "database", "sql", "typescript", "javascript", "python", "bug", "fix",
+  "refactor", "architecture", "implement", "compiler", "runtime", "regex",
+  "async", "promise", "syntax", "library", "framework",
+];
+
+const CREATIVE_KEYWORDS = [
+  "story", "creative", "write a", "poem", "brainstorm", "imagine", "fiction",
+  "character", "novel", "song", "lyrics", "narrative", "plot", "screenplay",
+  "metaphor", "invent", "fantasy", "roleplay",
+];
+
+function autoSelectModel(messages: RawMessage[]): ModelDefinition {
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const text = (lastUser?.content ?? "").toLowerCase().trim();
+  if (text.length < 50) return MODEL_REGISTRY.fast;
+  if (CODING_KEYWORDS.some((k) => text.includes(k))) return MODEL_REGISTRY.powerful;
+  if (CREATIVE_KEYWORDS.some((k) => text.includes(k))) return MODEL_REGISTRY.creative;
+  return MODEL_REGISTRY.balanced;
+}
+
+function resolveModel(requestedModel: string, messages: RawMessage[]): ModelDefinition {
+  if (requestedModel === "auto") return autoSelectModel(messages);
+  return getModel(requestedModel);
+}
+
+/* ─── request builders ───────────────────────────────────────── */
 type ClaudeBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 
-/* ─── request builders ───────────────────────────────────────── */
 function buildClaudeContent(msg: RawMessage): string | ClaudeBlock[] {
-  const textAttachments = msg.attachments?.filter((a) => a.type === "text") ?? [];
+  const textAtts = msg.attachments?.filter((a) => a.type === "text") ?? [];
   let text = msg.content;
-  if (textAttachments.length > 0) {
-    text += textAttachments
+  if (textAtts.length > 0) {
+    text += textAtts
       .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
       .join("");
   }
-
   const images = msg.attachments?.filter((a) => a.type === "image") ?? [];
   if (images.length === 0) return text;
-
   const blocks: ClaudeBlock[] = images.map((att) => ({
     type: "image",
     source: {
@@ -131,10 +95,10 @@ function buildLlamaPrompt(messages: RawMessage[]): string {
   let prompt = "<|begin_of_text|>";
   for (const msg of messages) {
     const role = msg.role === "user" ? "user" : "assistant";
-    const textAttachments = msg.attachments?.filter((a) => a.type === "text") ?? [];
+    const textAtts = msg.attachments?.filter((a) => a.type === "text") ?? [];
     let text = msg.content;
-    if (textAttachments.length > 0) {
-      text += textAttachments
+    if (textAtts.length > 0) {
+      text += textAtts
         .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
         .join("");
     }
@@ -175,11 +139,11 @@ function parseLlamaChunk(decoded: string): string | null {
 /* ─── stream runner ──────────────────────────────────────────── */
 async function streamModel(
   client: BedrockRuntimeClient,
-  entry: ModelEntry,
+  entry: ModelDefinition,
   messages: RawMessage[],
   maxTokens: number,
   res: Response,
-  firstChunk: boolean,
+  sendHeader: boolean,
 ): Promise<void> {
   const body = entry.provider === "anthropic"
     ? buildClaudeBody(messages, maxTokens)
@@ -195,8 +159,8 @@ async function streamModel(
   const response = await client.send(command);
   if (!response.body) throw new Error("No response body");
 
-  if (firstChunk) {
-    res.write(`data: ${JSON.stringify({ modelUsed: entry.displayName })}\n\n`);
+  if (sendHeader) {
+    res.write(`data: ${JSON.stringify({ modelUsed: entry.badgeLabel, exactName: entry.exactName })}\n\n`);
   }
 
   const decoder = new TextDecoder();
@@ -226,8 +190,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     }
 
-    const selectedModel = resolveModel(model, messages);
-    const recentMessages: RawMessage[] = messages.slice(-6);
+    const selected = resolveModel(model, messages as RawMessage[]);
+    const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-6);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -237,17 +201,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const client = getClient();
 
     try {
-      await streamModel(client, selectedModel, recentMessages, maxTokens, res, true);
+      await streamModel(client, selected, recentMessages, maxTokens, res, true);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
-      console.error(`[bedrock] ${selectedModel.displayName} failed:`, err.message);
+      console.error(`[bedrock] ${selected.exactName} failed:`, err.message);
 
-      if (selectedModel.bedrockId !== FALLBACK.bedrockId) {
-        console.log("[bedrock] Falling back to Balanced (Sonnet)…");
+      if (selected.bedrockId !== FALLBACK_MODEL.bedrockId) {
+        console.log(`[bedrock] Falling back to ${FALLBACK_MODEL.exactName}…`);
         try {
-          await streamModel(client, FALLBACK, recentMessages, maxTokens, res, false);
+          await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false);
           res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
           res.end();
           return;

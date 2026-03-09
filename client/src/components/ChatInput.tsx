@@ -276,7 +276,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                         <span className={cn("w-3.5 h-3.5 flex-shrink-0", modelOpen ? "text-primary" : selected.iconColor)}>
                           {selected.icon}
                         </span>
-                        <span>{selected.label}</span>
+                        <span>{selected.friendlyName}</span>
                       </>
                     ) : <span>Auto</span>;
                   })()}
@@ -304,9 +304,16 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                             {m.icon}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={cn("text-sm font-medium leading-none mb-0.5", m.id === model ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
-                              {m.label}
-                            </p>
+                            <div className="flex items-baseline gap-1.5 mb-0.5">
+                              <p className={cn("text-sm font-medium leading-none", m.id === model ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
+                                {m.friendlyName}
+                              </p>
+                              {m.id !== "auto" && (
+                                <span className="text-[10px] text-muted-foreground/40 leading-none font-normal">
+                                  {m.exactName}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
                           </div>
                           {m.id === model && (
