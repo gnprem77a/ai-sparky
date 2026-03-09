@@ -72,6 +72,13 @@ export const savedPrompts = pgTable("saved_prompts", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const userMemories = pgTable("user_memories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -84,3 +91,4 @@ export type Message = typeof messages.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 export type SavedPrompt = typeof savedPrompts.$inferSelect;
 export type Folder = typeof folders.$inferSelect;
+export type UserMemory = typeof userMemories.$inferSelect;

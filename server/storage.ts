@@ -5,6 +5,7 @@ import {
   type UserSettings, userSettings,
   type SavedPrompt, savedPrompts,
   type Folder, folders,
+  type UserMemory, userMemories,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, sql as drizzleSql } from "drizzle-orm";
@@ -50,6 +51,11 @@ export interface IStorage {
   getAnalyticsOverview(userId: string): Promise<{ totalConversations: number; totalMessages: number; totalTokens: number; avgTokensPerMessage: number }>;
   getAnalyticsDaily(userId: string): Promise<{ date: string; messageCount: number; tokenCount: number }[]>;
   getAnalyticsModels(userId: string): Promise<{ model: string; count: number; percentage: number }[]>;
+
+  getMemories(userId: string): Promise<UserMemory[]>;
+  createMemory(userId: string, content: string): Promise<UserMemory>;
+  deleteMemory(id: string): Promise<void>;
+  getGalleryImages(userId: string): Promise<{ messageId: string; conversationId: string; conversationTitle: string; imageData: string; createdAt: Date }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -328,6 +334,40 @@ export class DatabaseStorage implements IStorage {
     return Object.entries(modelCount)
       .sort(([, a], [, b]) => b - a)
       .map(([model, count]) => ({ model, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 }));
+  }
+
+  async getMemories(userId: string): Promise<UserMemory[]> {
+    return db.select().from(userMemories)
+      .where(eq(userMemories.userId, userId))
+      .orderBy(desc(userMemories.createdAt));
+  }
+
+  async createMemory(userId: string, content: string): Promise<UserMemory> {
+    const [mem] = await db.insert(userMemories).values({ userId, content }).returning();
+    return mem;
+  }
+
+  async deleteMemory(id: string): Promise<void> {
+    await db.delete(userMemories).where(eq(userMemories.id, id));
+  }
+
+  async getGalleryImages(userId: string): Promise<{ messageId: string; conversationId: string; conversationTitle: string; imageData: string; createdAt: Date }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(desc(conversations.createdAt));
+    const results: { messageId: string; conversationId: string; conversationTitle: string; imageData: string; createdAt: Date }[] = [];
+    for (const conv of userConvs) {
+      const msgs = await db.select().from(messages)
+        .where(eq(messages.conversationId, conv.id))
+        .orderBy(desc(messages.createdAt));
+      for (const msg of msgs) {
+        if (msg.content.includes("data:image/")) {
+          const match = msg.content.match(/!\[.*?\]\((data:image\/[^)]+)\)/);
+          if (match) {
+            results.push({ messageId: msg.id, conversationId: conv.id, conversationTitle: conv.title, imageData: match[1], createdAt: msg.createdAt });
+          }
+        }
+      }
+    }
+    return results.slice(0, 100);
   }
 }
 

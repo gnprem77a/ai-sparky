@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, BarChart2, Folder, ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, BarChart2, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -670,6 +670,14 @@ export function AppSidebar({
               <a href="/analytics" data-testid="link-analytics">
                 <BarChart2 className="w-4 h-4" />
                 <span>{t("sidebar.analytics")}</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="/gallery" data-testid="link-gallery">
+                <ImageIcon className="w-4 h-4" />
+                <span>Gallery</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

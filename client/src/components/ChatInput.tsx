@@ -169,7 +169,29 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     setIsProcessing(true);
     const arr = Array.from(files).slice(0, 5);
     try {
-      const results = await Promise.all(arr.map(readFileAsAttachment));
+      const results = await Promise.all(arr.map(async (file) => {
+        if (file.type === "application/pdf") {
+          const formData = new FormData();
+          formData.append("file", file);
+          try {
+            const resp = await fetch("/api/extract-pdf", { method: "POST", body: formData });
+            if (resp.ok) {
+              const { text, pageCount } = await resp.json();
+              return {
+                id: `${Date.now()}-${Math.random()}`,
+                name: file.name,
+                type: "file" as const,
+                mimeType: "application/pdf",
+                size: file.size,
+                data: `PDF: ${file.name} (${pageCount} page${pageCount !== 1 ? "s" : ""})\n\n${text}`,
+              };
+            }
+          } catch (e) {
+            console.error("PDF extract error", e);
+          }
+        }
+        return readFileAsAttachment(file);
+      }));
       setAttachments(prev => [...prev, ...results].slice(0, 5));
     } catch (e) {
       console.error("file read error", e);

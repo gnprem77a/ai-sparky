@@ -146,6 +146,21 @@ export function SettingsModal({ onClose }: Props) {
     },
   });
 
+  const [newMemory, setNewMemory] = useState("");
+  interface MemoryItem { id: string; content: string; createdAt: string; }
+  const { data: memories = [] } = useQuery<MemoryItem[]>({
+    queryKey: ["/api/memories"],
+    queryFn: () => fetch("/api/memories", { credentials: "include" }).then((r) => r.json()),
+  });
+  const createMemoryMutation = useMutation({
+    mutationFn: (content: string) => apiRequest("POST", "/api/memories", { content }).then((r) => r.json()),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/memories"] }); setNewMemory(""); },
+  });
+  const deleteMemoryMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/memories/${id}`).then((r) => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/memories"] }),
+  });
+
   const handleChangePassword = () => {
     setPwError("");
     if (!currentPassword || !newPassword || !confirmPassword) { setPwError("All fields are required."); return; }
@@ -266,11 +281,62 @@ export function SettingsModal({ onClose }: Props) {
 
           {/* ── Memory ── */}
           {tab === "memory" && (
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Per-fact Memories */}
               <div>
+                <p className="text-sm font-medium text-foreground mb-1">Remembered Facts</p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  These facts are silently injected into every conversation so Claude always remembers them.
+                </p>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={newMemory}
+                    onChange={(e) => setNewMemory(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && newMemory.trim()) createMemoryMutation.mutate(newMemory.trim()); }}
+                    placeholder="Add a fact, e.g. I prefer TypeScript over JavaScript"
+                    data-testid="input-new-memory"
+                    className="flex-1 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <button
+                    onClick={() => { if (newMemory.trim()) createMemoryMutation.mutate(newMemory.trim()); }}
+                    disabled={!newMemory.trim() || createMemoryMutation.isPending}
+                    data-testid="button-add-memory"
+                    className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+                  >
+                    Add
+                  </button>
+                </div>
+                {memories.length === 0 ? (
+                  <p className="text-xs text-muted-foreground/60 italic py-4 text-center">No memories yet. Add facts above.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar">
+                    {memories.map((mem) => (
+                      <div
+                        key={mem.id}
+                        data-testid={`memory-item-${mem.id}`}
+                        className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-border/40 bg-muted/20 group"
+                      >
+                        <span className="flex-1 text-xs text-foreground/80 leading-relaxed">{mem.content}</span>
+                        <button
+                          onClick={() => deleteMemoryMutation.mutate(mem.id)}
+                          data-testid={`button-delete-memory-${mem.id}`}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-2">{memories.length} fact{memories.length !== 1 ? "s" : ""} stored</p>
+              </div>
+
+              {/* Custom Instructions */}
+              <div className="border-t border-border/30 pt-5">
                 <p className="text-sm font-medium text-foreground mb-1">Custom Instructions</p>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Tell Claude about yourself and how you want it to respond. This is silently added to every conversation — separate from your system prompt.
+                  Additional free-form instructions added to every conversation.
                 </p>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   {[
@@ -293,22 +359,21 @@ export function SettingsModal({ onClose }: Props) {
                   onChange={(e) => setCustomInstructions(e.target.value)}
                   data-testid="input-custom-instructions"
                   placeholder="e.g. I'm a software engineer. Always be concise. Prefer TypeScript over JavaScript."
-                  rows={6}
+                  rows={4}
                   className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none custom-scrollbar"
                 />
-                <p className="text-xs text-muted-foreground mt-1">{customInstructions.length} characters</p>
-              </div>
-              <div className="flex items-center gap-3">
-                {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
-                <button
-                  onClick={() => saveMutation.mutate({ customInstructions })}
-                  disabled={saveMutation.isPending}
-                  data-testid="button-save-memory"
-                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {saveMutation.isPending ? "Saving…" : "Save Instructions"}
-                </button>
+                <div className="flex items-center gap-3 mt-3">
+                  {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
+                  <button
+                    onClick={() => saveMutation.mutate({ customInstructions })}
+                    disabled={saveMutation.isPending}
+                    data-testid="button-save-memory"
+                    className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {saveMutation.isPending ? "Saving…" : "Save Instructions"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

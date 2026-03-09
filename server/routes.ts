@@ -6,6 +6,10 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { insertUserSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
+import multer from "multer";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = _require("pdf-parse");
 
 /* ─── auth middleware ─────────────────────────────────────────── */
 function requireAuth(req: Request, res: Response, next: () => void) {
@@ -774,6 +778,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (customInstructions) {
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
     }
+    const memories = await storage.getMemories(user.id);
+    if (memories.length > 0) {
+      const memBlock = `Remembered facts about the user:\n${memories.map((m) => `- ${m.content}`).join("\n")}`;
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memBlock}` : memBlock;
+    }
 
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);
     const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-6);
@@ -894,22 +903,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
-  /* ── analytics: overview ── */
-  app.get("/api/analytics/overview", requireAuth as any, async (req: Request, res: Response) => {
-    const data = await storage.getAnalyticsOverview(req.session.userId!);
-    return res.json(data);
+  /* ── memories: list ── */
+  app.get("/api/memories", requireAuth as any, async (req: Request, res: Response) => {
+    const memories = await storage.getMemories(req.session.userId!);
+    return res.json(memories);
   });
 
-  /* ── analytics: daily ── */
-  app.get("/api/analytics/daily", requireAuth as any, async (req: Request, res: Response) => {
-    const data = await storage.getAnalyticsDaily(req.session.userId!);
-    return res.json(data);
+  /* ── memories: create ── */
+  app.post("/api/memories", requireAuth as any, async (req: Request, res: Response) => {
+    const { content } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: "content is required" });
+    const mem = await storage.createMemory(req.session.userId!, content.trim());
+    return res.status(201).json(mem);
   });
 
-  /* ── analytics: models ── */
-  app.get("/api/analytics/models", requireAuth as any, async (req: Request, res: Response) => {
-    const data = await storage.getAnalyticsModels(req.session.userId!);
-    return res.json(data);
+  /* ── memories: delete ── */
+  app.delete("/api/memories/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteMemory(req.params.id as string);
+    return res.json({ ok: true });
+  });
+
+  /* ── gallery: list images ── */
+  app.get("/api/gallery", requireAuth as any, async (req: Request, res: Response) => {
+    const images = await storage.getGalleryImages(req.session.userId!);
+    return res.json(images);
+  });
+
+  /* ── PDF text extraction ── */
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  app.post("/api/extract-pdf", requireAuth as any, upload.single("file") as any, async (req: Request, res: Response) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    try {
+      const result = await pdfParse(req.file.buffer);
+      return res.json({ text: result.text.slice(0, 50000), pageCount: result.numpages });
+    } catch (e) {
+      return res.status(422).json({ error: `Could not parse PDF: ${(e as Error).message}` });
+    }
   });
 
   return httpServer;

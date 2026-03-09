@@ -848,7 +848,7 @@ export default function ChatPage() {
               onClick={() => setCommandPaletteOpen(true)}
               data-testid="button-command-palette"
               title="Command palette (Ctrl+K)"
-              className="h-9 w-9 text-muted-foreground"
+              className="hidden sm:flex h-9 w-9 text-muted-foreground"
             >
               <Command className="w-4 h-4" />
             </Button>
@@ -858,7 +858,7 @@ export default function ChatPage() {
               onClick={() => setSplitView(!splitView)}
               data-testid="button-toggle-split-view"
               title={splitView ? "Single view" : "Split view"}
-              className={cn("h-9 w-9", splitView ? "text-primary bg-primary/10" : "text-muted-foreground")}
+              className={cn("hidden sm:flex h-9 w-9", splitView ? "text-primary bg-primary/10" : "text-muted-foreground")}
             >
               <Columns2 className="w-4 h-4" />
             </Button>

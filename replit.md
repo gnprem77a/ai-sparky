@@ -38,7 +38,7 @@ client/src/
     chat-storage.ts     - Type definitions, utilities, export helpers
 shared/
   models.ts             - Single source of truth for model registry
-  schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts)
+  schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts, userMemories)
 server/
   db.ts                 - Drizzle + pg pool
   storage.ts            - DatabaseStorage (CRUD for all entities + searchMessages)
@@ -83,7 +83,7 @@ server/
 - **Account tab**: change password
 - **Shortcuts, Memory, Data tabs**: additional settings
 
-### 9 Premium Features Added
+### 15 Premium Features Added
 - **Text-to-Speech (T001)**: Speaker button on assistant messages; Web Speech API; pulsing indicator while speaking
 - **Voice Input (T001)**: Mic button in chat input; SpeechRecognition API; red pulsing while recording
 - **Pinned Messages (T002)**: Pin/unpin button on messages; gold badge; slide-out panel in chat header showing all pinned messages with scroll-to capability
@@ -93,6 +93,12 @@ server/
 - **Canvas/Artifact Mode (T006)**: HTML/SVG code blocks get Code/Preview tabs; live iframe preview with sandbox; Refresh + Open in new tab buttons
 - **Split View (T007)**: Toggle two conversation panels side-by-side; secondary panel has independent conversation selector and full chat capability; persisted in localStorage
 - **Multi-Language UI (T008)**: EN/ES/FR/AR translations; `useLanguage()` hook with LanguageContext; Arabic triggers RTL layout; applied to ChatInput, AuthPage, ChatPage empty state, AppSidebar, SettingsModal
+- **Plugin/Tool System**: SSE streaming tool calls (web_search, calculator, get_weather, fetch_url); ToolCallsDisplay UI shows tool invocations inline; tools injected as system prompt definitions
+- **Per-fact Memory System**: `user_memories` DB table; per-fact list in Settings Memory tab with Add/Delete; memories injected into every conversation system prompt
+- **Image Gallery**: `/gallery` page shows all AI-generated images in a responsive grid; download + jump-to-conversation buttons; linked from sidebar
+- **PDF Chat**: Upload PDF → server extracts text via pdf-parse → extracted content sent to AI as context with page count badge
+- **More Tools**: `get_weather(location)` via wttr.in free API; `fetch_url(url)` with HTML stripping (8000 char limit)
+- **Mobile Responsive**: Non-essential header buttons hidden on small screens (sm: breakpoints); sidebar uses shadcn Sheet for mobile drawer
 
 ### Admin
 - **User management**: list users, change plans (Free/Pro with duration)
