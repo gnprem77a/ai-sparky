@@ -463,6 +463,7 @@ export default function ChatPage() {
     let finalModelUsed: string | undefined;
     let finalInputTokens: number | undefined;
     let finalOutputTokens: number | undefined;
+    const pendingToolCalls: import("@/lib/chat-storage").ToolCall[] = [];
 
     try {
       const response = await fetch("/api/chat", {
@@ -527,6 +528,19 @@ export default function ChatPage() {
                 flushTimeout = setTimeout(flush, 50);
               }
             }
+            if (parsed.toolCall) {
+              pendingToolCalls.push({ name: parsed.toolCall.name, input: parsed.toolCall.input });
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantMsgId ? { ...m, toolCalls: [...pendingToolCalls] } : m)
+              );
+            }
+            if (parsed.toolResult) {
+              const last = pendingToolCalls[pendingToolCalls.length - 1];
+              if (last) last.result = parsed.toolResult.result;
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantMsgId ? { ...m, toolCalls: [...pendingToolCalls] } : m)
+              );
+            }
           } catch (parseErr: unknown) {
             const err = parseErr as Error;
             if (err.name !== "SyntaxError") throw parseErr;
@@ -545,6 +559,7 @@ export default function ChatPage() {
           modelUsed: finalModelUsed,
           inputTokens: finalInputTokens,
           outputTokens: finalOutputTokens,
+          toolCalls: pendingToolCalls.length > 0 ? pendingToolCalls : undefined,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });

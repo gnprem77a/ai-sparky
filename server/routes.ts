@@ -5,6 +5,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { insertUserSchema } from "../shared/schema";
+import { TOOL_DEFINITIONS, executeTool } from "./tools";
 
 /* ─── auth middleware ─────────────────────────────────────────── */
 function requireAuth(req: Request, res: Response, next: () => void) {
@@ -204,6 +205,147 @@ async function streamModel(
   return { inputTokens, outputTokens };
 }
 
+/* ─── streaming with tool-use loop (Anthropic only) ─────────── */
+interface ToolCallRecord {
+  id: string;
+  name: string;
+  input: Record<string, string>;
+  result?: string;
+}
+
+type AnthropicContent = string | unknown[];
+interface AnthropicMessage { role: "user" | "assistant"; content: AnthropicContent }
+
+async function streamModelWithTools(
+  client: BedrockRuntimeClient,
+  entry: ModelDefinition,
+  messages: RawMessage[],
+  maxTokens: number,
+  res: Response,
+  systemPrompt?: string,
+): Promise<{ inputTokens: number; outputTokens: number; toolCalls: ToolCallRecord[] }> {
+  if (entry.provider !== "anthropic") {
+    const { inputTokens, outputTokens } = await streamModel(client, entry, messages, maxTokens, res, true, systemPrompt);
+    return { inputTokens, outputTokens, toolCalls: [] };
+  }
+
+  const allToolCalls: ToolCallRecord[] = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let isFirstCall = true;
+  const MAX_TOOL_ROUNDS = 3;
+
+  /* Build initial Anthropic-format message array */
+  const anthropicMessages: AnthropicMessage[] = messages.map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: buildClaudeContent(m),
+  }));
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const body = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: maxTokens,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
+      tools: TOOL_DEFINITIONS,
+      tool_choice: { type: "auto" },
+      messages: anthropicMessages,
+    };
+
+    const command = new InvokeModelWithResponseStreamCommand({
+      modelId: entry.bedrockId,
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(body),
+    });
+
+    const response = await client.send(command);
+    if (!response.body) throw new Error("No response body");
+
+    if (isFirstCall) {
+      res.write(`data: ${JSON.stringify({ modelUsed: entry.badgeLabel, exactName: entry.exactName })}\n\n`);
+      isFirstCall = false;
+    }
+
+    const decoder = new TextDecoder();
+    let stopReason = "end_turn";
+
+    const pendingBlocks: Record<number, { type: string; id: string; name: string; jsonBuffer: string }> = {};
+    const assistantContentBlocks: unknown[] = [];
+    let currentTextBlock = "";
+
+    for await (const event of response.body) {
+      if (!event.chunk?.bytes) continue;
+      const decoded = decoder.decode(event.chunk.bytes);
+      try {
+        const parsed = JSON.parse(decoded);
+
+        if (parsed.type === "message_start" && parsed.message?.usage) {
+          inputTokens += parsed.message.usage.input_tokens ?? 0;
+        }
+        if (parsed.type === "message_delta" && parsed.usage) {
+          outputTokens += parsed.usage.output_tokens ?? 0;
+          if (parsed.delta?.stop_reason) stopReason = parsed.delta.stop_reason;
+        }
+        if (parsed.type === "content_block_start") {
+          const cb = parsed.content_block;
+          if (cb.type === "text") {
+            pendingBlocks[parsed.index] = { type: "text", id: "", name: "", jsonBuffer: "" };
+            currentTextBlock = "";
+          } else if (cb.type === "tool_use") {
+            pendingBlocks[parsed.index] = { type: "tool_use", id: cb.id, name: cb.name, jsonBuffer: "" };
+          }
+        }
+        if (parsed.type === "content_block_delta") {
+          const blk = pendingBlocks[parsed.index];
+          if (!blk) continue;
+          if (parsed.delta?.type === "text_delta" && blk.type === "text") {
+            res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
+            currentTextBlock += parsed.delta.text;
+          } else if (parsed.delta?.type === "input_json_delta" && blk.type === "tool_use") {
+            blk.jsonBuffer += parsed.delta.partial_json ?? "";
+          }
+        }
+        if (parsed.type === "content_block_stop") {
+          const blk = pendingBlocks[parsed.index];
+          if (!blk) continue;
+          if (blk.type === "text") {
+            if (currentTextBlock) assistantContentBlocks.push({ type: "text", text: currentTextBlock });
+          } else if (blk.type === "tool_use") {
+            let parsedInput: Record<string, string> = {};
+            try { parsedInput = JSON.parse(blk.jsonBuffer); } catch { /* ignore */ }
+            assistantContentBlocks.push({ type: "tool_use", id: blk.id, name: blk.name, input: parsedInput });
+          }
+          delete pendingBlocks[parsed.index];
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    if (stopReason !== "tool_use") break;
+
+    /* Execute tool calls and collect results */
+    const toolUseBlocks = assistantContentBlocks.filter(
+      (b: unknown) => (b as { type: string }).type === "tool_use"
+    ) as Array<{ type: string; id: string; name: string; input: Record<string, string> }>;
+    if (toolUseBlocks.length === 0) break;
+
+    const toolResults: Array<{ type: string; tool_use_id: string; content: string }> = [];
+
+    for (const block of toolUseBlocks) {
+      res.write(`data: ${JSON.stringify({ toolCall: { name: block.name, input: block.input } })}\n\n`);
+      const result = await executeTool(block.name, block.input);
+      res.write(`data: ${JSON.stringify({ toolResult: { name: block.name, input: block.input, result } })}\n\n`);
+      allToolCalls.push({ id: block.id, name: block.name, input: block.input, result });
+      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
+    }
+
+    /* Append assistant tool-use blocks + user tool-result blocks to conversation */
+    anthropicMessages.push({ role: "assistant", content: assistantContentBlocks });
+    anthropicMessages.push({ role: "user", content: toolResults });
+  }
+
+  return { inputTokens, outputTokens, toolCalls: allToolCalls };
+}
+
 /* ─── route registration ─────────────────────────────────────── */
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -321,7 +463,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/conversations/:id/messages", requireAuth as any, async (req: Request, res: Response) => {
     const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
-    const { role, content, modelUsed, attachments, inputTokens, outputTokens } = req.body;
+    const { role, content, modelUsed, attachments, inputTokens, outputTokens, toolCalls } = req.body;
     if (!role || content === undefined) return res.status(400).json({ error: "role and content are required" });
     const msg = await storage.createMessage({
       conversationId: conv.id,
@@ -331,6 +473,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       attachments: attachments ? JSON.stringify(attachments) : undefined,
       inputTokens: typeof inputTokens === "number" ? inputTokens : undefined,
       outputTokens: typeof outputTokens === "number" ? outputTokens : undefined,
+      toolCalls: toolCalls ? JSON.stringify(toolCalls) : undefined,
     });
     await storage.updateConversation(conv.id, { updatedAt: new Date() });
     return res.status(201).json(msg);
@@ -647,7 +790,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const client = getClient();
 
     try {
-      const { inputTokens, outputTokens } = await streamModel(client, selected, recentMessages, maxTokens, res, true, systemPrompt);
+      const { inputTokens, outputTokens } = await streamModelWithTools(client, selected, recentMessages, maxTokens, res, systemPrompt);
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {

@@ -4,9 +4,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/lib/chat-storage";
+import type { Message, ToolCall } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
@@ -304,6 +304,71 @@ function ArtifactBlock({ code, lang, langColor }: { code: string; lang: string; 
   );
 }
 
+function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; isStreaming?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const hasPending = toolCalls.some((tc) => tc.result === undefined);
+
+  return (
+    <div className="mb-3 rounded-xl border border-border/40 bg-muted/30 overflow-hidden text-sm">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left"
+        data-testid="button-toggle-tool-calls"
+      >
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {toolCalls.map((tc, i) => (
+            <span key={i} className="flex items-center gap-1 bg-background/60 border border-border/30 rounded-md px-2 py-0.5 text-xs font-medium text-foreground/70">
+              {tc.name === "web_search" ? (
+                <Search className="w-3 h-3 text-blue-400 shrink-0" />
+              ) : (
+                <Hash className="w-3 h-3 text-green-400 shrink-0" />
+              )}
+              {tc.name === "web_search" ? "Web search" : "Calculator"}
+            </span>
+          ))}
+          {hasPending && isStreaming && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground animate-pulse">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Running…
+            </span>
+          )}
+        </div>
+        {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/30 divide-y divide-border/20">
+          {toolCalls.map((tc, i) => (
+            <div key={i} className="px-3 py-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                {tc.name === "web_search" ? (
+                  <Search className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                ) : (
+                  <Hash className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                )}
+                <span className="font-medium text-foreground/80">
+                  {tc.name === "web_search" ? "Searched the web" : "Calculated"}
+                </span>
+              </div>
+              <div className="pl-5 space-y-1">
+                <p className="text-xs text-muted-foreground font-mono bg-background/50 rounded px-2 py-1 border border-border/20">
+                  {tc.name === "web_search" ? tc.input.query : tc.input.expression}
+                </p>
+                {tc.result !== undefined ? (
+                  <p className="text-xs text-foreground/60 leading-relaxed line-clamp-4">{tc.result}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground animate-pulse">Fetching results…</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -579,7 +644,10 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
               <Pin className="w-3 h-3 text-white fill-current" />
             </div>
           )}
-          {message.content === "" && isStreaming ? (
+          {message.toolCalls && message.toolCalls.length > 0 && (
+            <ToolCallsDisplay toolCalls={message.toolCalls} isStreaming={isStreaming} />
+          )}
+          {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) ? (
             <div className="flex items-center gap-1.5 py-2">
               <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
               <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />

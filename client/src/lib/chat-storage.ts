@@ -7,6 +7,12 @@ export interface Attachment {
   size: number;
 }
 
+export interface ToolCall {
+  name: string;
+  input: Record<string, string>;
+  result?: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -19,6 +25,7 @@ export interface Message {
   inputTokens?: number | null;
   outputTokens?: number | null;
   isPinned: boolean;
+  toolCalls?: ToolCall[];
 }
 
 export interface Conversation {
@@ -45,6 +52,7 @@ export interface ApiMessage {
   inputTokens?: number | null;
   outputTokens?: number | null;
   isPinned: boolean;
+  toolCalls?: string | null;
 }
 
 export function apiMessageToLocal(m: ApiMessage): Message {
@@ -59,6 +67,7 @@ export function apiMessageToLocal(m: ApiMessage): Message {
     inputTokens: m.inputTokens ?? null,
     outputTokens: m.outputTokens ?? null,
     isPinned: m.isPinned ?? false,
+    toolCalls: m.toolCalls ? JSON.parse(m.toolCalls) : undefined,
   };
 }
 

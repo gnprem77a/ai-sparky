@@ -27,7 +27,7 @@ export interface IStorage {
   deleteConversation(id: string): Promise<void>;
 
   getMessages(conversationId: string): Promise<Message[]>;
-  createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message>;
+  createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number; toolCalls?: string }): Promise<Message>;
   updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content" | "isPinned">>): Promise<Message | undefined>;
   pinMessage(messageId: string, isPinned: boolean): Promise<Message | undefined>;
   deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void>;
@@ -126,7 +126,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(messages.createdAt));
   }
 
-  async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message> {
+  async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number; toolCalls?: string }): Promise<Message> {
     const [msg] = await db.insert(messages).values(data).returning();
     return msg;
   }
