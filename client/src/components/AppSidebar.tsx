@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, Shield } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, Shield, UserCircle } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -716,6 +716,14 @@ export function AppSidebar({
               <Settings className="w-3.5 h-3.5" />
               Settings
             </button>
+            <a
+              href="/profile"
+              data-testid="button-sidebar-profile"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors border-l border-border/30"
+            >
+              <UserCircle className="w-3.5 h-3.5" />
+              Profile
+            </a>
             {user?.isAdmin && (
               <a
                 href="/admin"
