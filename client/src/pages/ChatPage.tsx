@@ -30,7 +30,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { theme, toggleTheme } = useTheme();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
 
@@ -49,12 +49,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, isStreaming]);
 
   const refreshConversations = useCallback(() => {
@@ -62,6 +57,7 @@ export default function ChatPage() {
   }, []);
 
   const handleNewChat = () => {
+    abortRef.current?.abort();
     setActiveId(null);
     setActiveConversationId(null);
     setInput("");
@@ -69,6 +65,7 @@ export default function ChatPage() {
   };
 
   const handleSelectConversation = (id: string) => {
+    abortRef.current?.abort();
     const conv = conversations.find((c) => c.id === id);
     if (conv) {
       setActiveId(id);
@@ -146,6 +143,26 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       let accumulated = "";
 
+      // 50ms stream buffer — batches token updates so React re-renders at most ~20x/sec
+      let pendingText = "";
+      let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+
+      const flush = () => {
+        flushTimeout = null;
+        if (!pendingText) return;
+        accumulated += pendingText;
+        pendingText = "";
+        const updated: Conversation = {
+          ...currentConversation,
+          messages: currentConversation.messages.map((m) =>
+            m.id === assistantMsgId ? { ...m, content: accumulated } : m
+          ),
+        };
+        currentConversation = updated;
+        updateConversation(updated);
+        refreshConversations();
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -160,6 +177,8 @@ export default function ChatPage() {
             const parsed = JSON.parse(data);
             if (parsed.error) throw new Error(parsed.error);
             if (parsed.modelUsed) {
+              // Flush any pending text first, then apply modelUsed immediately
+              if (flushTimeout) { clearTimeout(flushTimeout); flush(); }
               const updated: Conversation = {
                 ...currentConversation,
                 messages: currentConversation.messages.map((m) =>
@@ -171,16 +190,10 @@ export default function ChatPage() {
               refreshConversations();
             }
             if (parsed.text) {
-              accumulated += parsed.text;
-              const updated: Conversation = {
-                ...currentConversation,
-                messages: currentConversation.messages.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: accumulated } : m
-                ),
-              };
-              currentConversation = updated;
-              updateConversation(updated);
-              refreshConversations();
+              pendingText += parsed.text;
+              if (!flushTimeout) {
+                flushTimeout = setTimeout(flush, 50);
+              }
             }
           } catch (parseErr: unknown) {
             const err = parseErr as Error;
@@ -188,10 +201,14 @@ export default function ChatPage() {
           }
         }
       }
+
+      // Flush any remaining buffered text
+      if (flushTimeout) clearTimeout(flushTimeout);
+      flush();
     } catch (err: unknown) {
       const error = err as Error;
       if (error.name === "AbortError") {
-        // stopped by user
+        // stopped by user or conversation switch
       } else {
         setError(error.message || "Something went wrong. Please try again.");
         const errorConv = {
@@ -241,6 +258,7 @@ export default function ChatPage() {
         updatedAt: Date.now(),
       };
     } else {
+      // Optimistic title: set immediately before the API round-trip
       currentConversation = createConversation(model);
       currentConversation.title = generateTitle(text || attachments[0]?.name || "File upload");
       currentConversation.messages = [userMsg, assistantMsg];
@@ -254,7 +272,7 @@ export default function ChatPage() {
     await streamAssistantReply(currentConversation, assistantMsgId);
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = useCallback(async () => {
     if (!activeConversation || isStreaming) return;
 
     const msgs = activeConversation.messages;
@@ -284,7 +302,7 @@ export default function ChatPage() {
     refreshConversations();
 
     await streamAssistantReply(updatedConversation, assistantMsgId);
-  };
+  }, [activeConversation, isStreaming]);
 
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
 
@@ -329,18 +347,22 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
             <EmptyState onSuggestion={(s) => setInput(s)} />
           ) : (
             <div className="max-w-3xl mx-auto py-6">
-              {messages.map((msg, i) => (
+              {messages.map((msg) => (
                 <ChatMessage
                   key={msg.id}
                   message={msg}
                   isStreaming={isStreaming && msg.id === streamingMessageId}
                   isLast={msg.id === lastAssistantMsg?.id}
-                  onRegenerate={msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming ? handleRegenerate : undefined}
+                  onRegenerate={
+                    msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
+                      ? handleRegenerate
+                      : undefined
+                  }
                 />
               ))}
               {error && (
@@ -348,7 +370,7 @@ export default function ChatPage() {
                   <span className="font-semibold">Error: </span>{error}
                 </div>
               )}
-              <div className="h-4" />
+              <div ref={bottomRef} className="h-4" />
             </div>
           )}
         </div>

@@ -4,8 +4,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import ChatPage from "@/pages/ChatPage";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
+
+const ChatPage = lazy(() => import("@/pages/ChatPage"));
 
 function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -19,10 +20,12 @@ function initTheme() {
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={ChatPage} />
-      <Route component={ChatPage} />
-    </Switch>
+    <Suspense fallback={null}>
+      <Switch>
+        <Route path="/" component={ChatPage} />
+        <Route component={ChatPage} />
+      </Switch>
+    </Suspense>
   );
 }
 

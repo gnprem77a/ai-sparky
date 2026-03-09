@@ -1,42 +1,12 @@
-import { useState } from "react";
+import { useState, memo, lazy, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Copy, Check, User, RefreshCw, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
 
-const codeTheme = {
-  'code[class*="language-"]': { color: "#e2e8f0", background: "none", fontFamily: "'JetBrains Mono', monospace", fontSize: "0.8125rem", lineHeight: "1.6", tabSize: 2, hyphens: "none" as const },
-  'pre[class*="language-"]': { color: "#e2e8f0", background: "#0a0a12", fontFamily: "'JetBrains Mono', monospace", fontSize: "0.8125rem", textAlign: "left" as const, whiteSpace: "pre" as const, wordBreak: "normal" as const, lineHeight: "1.6", padding: "1.25rem", margin: "0", overflow: "auto" },
-  comment: { color: "#6b7280", fontStyle: "italic" as const },
-  punctuation: { color: "#94a3b8" },
-  property: { color: "#86efac" },
-  tag: { color: "#f9a8d4" },
-  boolean: { color: "#fda4af" },
-  number: { color: "#fdba74" },
-  constant: { color: "#fdba74" },
-  symbol: { color: "#a78bfa" },
-  deleted: { color: "#fca5a5" },
-  selector: { color: "#86efac" },
-  "attr-name": { color: "#7dd3fc" },
-  string: { color: "#6ee7b7" },
-  char: { color: "#6ee7b7" },
-  builtin: { color: "#a78bfa" },
-  inserted: { color: "#bbf7d0" },
-  operator: { color: "#94a3b8" },
-  url: { color: "#7dd3fc" },
-  variable: { color: "#e2e8f0" },
-  atrule: { color: "#a78bfa" },
-  "attr-value": { color: "#6ee7b7" },
-  function: { color: "#93c5fd" },
-  keyword: { color: "#f9a8d4" },
-  regex: { color: "#fde68a" },
-  important: { color: "#fde68a", fontWeight: "bold" as const },
-  bold: { fontWeight: "bold" as const },
-  italic: { fontStyle: "italic" as const },
-};
+const CodeBlock = lazy(() => import("@/components/CodeBlock"));
 
 function CopyCodeButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -47,7 +17,10 @@ function CopyCodeButton({ text }: { text: string }) {
   };
   return (
     <button onClick={handleCopy} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all">
-      {copied ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></> : <><Copy className="w-3 h-3" /><span>Copy</span></>}
+      {copied
+        ? <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
+        : <><Copy className="w-3 h-3" /><span>Copy</span></>
+      }
     </button>
   );
 }
@@ -70,7 +43,7 @@ interface ChatMessageProps {
   isLast?: boolean;
 }
 
-export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, onRegenerate, isLast }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -86,13 +59,11 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
       <div data-testid={`message-${message.id}`} className="flex justify-end px-4 py-2 animate-fade-up">
         <div className="flex items-end gap-2.5 max-w-[78%]">
           <div className="flex flex-col gap-2">
-            {/* Image attachments */}
             {message.attachments?.filter(a => a.type === "image").map(att => (
               <div key={att.id} className="rounded-2xl overflow-hidden shadow-md">
                 <img src={att.data} alt={att.name} className="max-w-[280px] max-h-[280px] object-cover" />
               </div>
             ))}
-            {/* File attachments */}
             {message.attachments?.filter(a => a.type !== "image").map(att => (
               <div key={att.id} className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/20">
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -104,7 +75,6 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
                 </div>
               </div>
             ))}
-            {/* Text content */}
             {message.content && (
               <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-md" data-testid="content-user">
                 <p className="whitespace-pre-wrap break-words font-[450]">{message.content}</p>
@@ -163,14 +133,13 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
                           </div>
                           <CopyCodeButton text={codeString} />
                         </div>
-                        <SyntaxHighlighter
-                          style={codeTheme as Record<string, React.CSSProperties>}
-                          language={match[1]}
-                          PreTag="div"
-                          customStyle={{ margin: 0, borderRadius: 0, background: "#0a0a12", overflowX: "auto" }}
-                        >
-                          {codeString}
-                        </SyntaxHighlighter>
+                        <Suspense fallback={
+                          <pre className="bg-[#0a0a12] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">
+                            {codeString}
+                          </pre>
+                        }>
+                          <CodeBlock code={codeString} language={match[1]} />
+                        </Suspense>
                       </div>
                     );
                   },
@@ -207,7 +176,6 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
           )}
         </div>
 
-        {/* Message actions + model badge */}
         {!isStreaming && message.content && (
           <div
             className={cn(
@@ -256,3 +224,11 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
     </div>
   );
 }
+
+export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
+  prev.message.content === next.message.content &&
+  prev.message.modelUsed === next.message.modelUsed &&
+  prev.isStreaming === next.isStreaming &&
+  prev.isLast === next.isLast &&
+  prev.onRegenerate === next.onRegenerate
+);
