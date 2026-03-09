@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, BarChart2, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -50,6 +50,8 @@ interface AppSidebarProps {
   onPinConversation: (id: string, isPinned: boolean) => void;
   onShareConversation: (id: string) => Promise<string | null>;
   user: AuthUser | null;
+  onOpenSettings: () => void;
+  onLogout: () => void;
 }
 
 const FOLDER_COLORS = [
@@ -71,6 +73,8 @@ export function AppSidebar({
   onPinConversation,
   onShareConversation,
   user,
+  onOpenSettings,
+  onLogout,
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { t } = useLanguage();
@@ -663,16 +667,8 @@ export function AppSidebar({
         )}
       </SidebarContent>
 
-      <SidebarFooter className="px-3 py-3 space-y-2">
+      <SidebarFooter className="px-3 py-3 space-y-1">
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <a href="/analytics" data-testid="link-analytics">
-                <BarChart2 className="w-4 h-4" />
-                <span>{t("sidebar.analytics")}</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <a href="/gallery" data-testid="link-gallery">
@@ -683,39 +679,74 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
 
-        <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-muted/40">
-          <div className={cn(
-            "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold",
-            isPro
-              ? "bg-amber-500/20 text-amber-500"
-              : "bg-gradient-to-br from-primary/80 to-violet-400/80 text-white"
-          )}>
-            {user?.username?.[0]?.toUpperCase() ?? "?"}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-foreground/80 truncate">{user?.username ?? "User"}</p>
-            {isPro ? (
-              <p className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
-                <Crown className="w-2.5 h-2.5" /> Pro
-              </p>
-            ) : usage ? (
-              <div className="space-y-0.5 mt-0.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] text-muted-foreground">{usage.count} / {usage.limit} today</p>
-                </div>
-                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all",
-                      usage.count >= usage.limit ? "bg-destructive" : "bg-primary/50"
-                    )}
-                    style={{ width: `${Math.min((usage.count / usage.limit) * 100, 100)}%` }}
-                  />
-                </div>
+        {/* Profile card */}
+        <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+          {/* User info row */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <div className={cn(
+              "w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold",
+              isPro
+                ? "bg-amber-500/20 text-amber-500"
+                : "bg-gradient-to-br from-primary/80 to-violet-400/80 text-white"
+            )}>
+              {user?.username?.[0]?.toUpperCase() ?? "?"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-foreground/90 truncate">{user?.username ?? "User"}</p>
+                {user?.isAdmin && <Shield className="w-3 h-3 text-violet-500 flex-shrink-0" />}
               </div>
-            ) : (
-              <p className="text-[10px] text-muted-foreground">Free plan</p>
+              {isPro ? (
+                <p className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
+                  <Crown className="w-2.5 h-2.5" /> Pro
+                </p>
+              ) : usage ? (
+                <div className="space-y-0.5 mt-0.5">
+                  <p className="text-[10px] text-muted-foreground">{usage.count} / {usage.limit} today</p>
+                  <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-all",
+                        usage.count >= usage.limit ? "bg-destructive" : "bg-primary/50"
+                      )}
+                      style={{ width: `${Math.min((usage.count / usage.limit) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Free plan</p>
+              )}
+            </div>
+          </div>
+
+          {/* Action row */}
+          <div className="flex border-t border-border/30">
+            <button
+              onClick={onOpenSettings}
+              data-testid="button-sidebar-settings"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Settings
+            </button>
+            {user?.isAdmin && (
+              <a
+                href="/admin"
+                data-testid="button-sidebar-admin"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-violet-500 hover:bg-muted/50 transition-colors border-l border-border/30"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Admin
+              </a>
             )}
+            <button
+              onClick={onLogout}
+              data-testid="button-sidebar-logout"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors border-l border-border/30"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign out
+            </button>
           </div>
         </div>
       </SidebarFooter>

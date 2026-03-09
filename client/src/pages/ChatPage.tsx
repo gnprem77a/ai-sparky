@@ -12,7 +12,7 @@ import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -50,7 +50,6 @@ export default function ChatPage() {
 
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
-  const [profileOpen, setProfileOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
@@ -75,7 +74,6 @@ export default function ChatPage() {
   /* ── Quote reply state ── */
   const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
 
-  const profileRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
@@ -116,16 +114,6 @@ export default function ChatPage() {
     return () => clearInterval(interval);
   }, [isStreaming]);
 
-  /* ── Click-outside for profile menu ── */
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   /* ── Load conversations from API ── */
   const { data: conversations = [] } = useQuery<Conversation[]>({
@@ -724,6 +712,8 @@ export default function ChatPage() {
         onPinConversation={handlePinConversation}
         onShareConversation={handleShareConversation}
         user={user}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onLogout={() => logout.mutate()}
       />
 
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
@@ -862,90 +852,6 @@ export default function ChatPage() {
             >
               <Columns2 className="w-4 h-4" />
             </Button>
-            {user && (
-              <div className="relative" ref={profileRef}>
-                <button
-                  onClick={() => setProfileOpen((o) => !o)}
-                  data-testid="button-profile-menu"
-                  className="flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-sm"
-                >
-                  <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold",
-                    isPro ? "bg-amber-500/20 text-amber-500" : "bg-primary/20 text-primary"
-                  )}>
-                    {user.username[0].toUpperCase()}
-                  </div>
-                  <span className="hidden sm:block max-w-[100px] truncate font-medium">{user.username}</span>
-                  {user.isAdmin && <Shield className="w-3 h-3 text-violet-500 flex-shrink-0" />}
-                  <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${profileOpen ? "rotate-180" : ""}`} />
-                </button>
-
-                {profileOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-56 z-50 rounded-xl border border-border/60 bg-popover shadow-xl overflow-hidden py-1">
-                    <div className="px-3 py-2.5 border-b border-border/40">
-                      <p className="text-xs text-muted-foreground">Signed in as</p>
-                      <p className="font-semibold text-sm text-foreground truncate">{user.username}</p>
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {user.isAdmin && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-500">
-                            <Shield className="w-2.5 h-2.5" /> Admin
-                          </span>
-                        )}
-                        <span className={cn(
-                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
-                          isPro
-                            ? "bg-amber-500/15 text-amber-500"
-                            : "bg-muted text-muted-foreground"
-                        )}>
-                          {isPro ? <Crown className="w-2.5 h-2.5" /> : null}
-                          {isPro ? "Pro" : "Free plan"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => { setProfileOpen(false); navigate("/profile"); }}
-                      data-testid="button-view-profile"
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      <UserCircle className="w-4 h-4 text-muted-foreground" />
-                      View Profile
-                    </button>
-
-                    {user.isAdmin && (
-                      <button
-                        onClick={() => { setProfileOpen(false); navigate("/admin"); }}
-                        data-testid="button-admin-dashboard"
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
-                      >
-                        <Shield className="w-4 h-4 text-violet-500" />
-                        Admin Dashboard
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => { setProfileOpen(false); setSettingsOpen(true); }}
-                      data-testid="button-open-settings"
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      <Settings className="w-4 h-4 text-muted-foreground" />
-                      Settings
-                    </button>
-
-                    <div className="mx-2 my-1 border-t border-border/40" />
-
-                    <button
-                      onClick={() => { setProfileOpen(false); logout.mutate(); }}
-                      data-testid="button-logout"
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive/80 hover:text-destructive hover:bg-destructive/5 transition-colors"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </header>
 
