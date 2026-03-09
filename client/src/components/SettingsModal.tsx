@@ -166,9 +166,9 @@ export function SettingsModal({ onClose }: Props) {
   const ActiveTabIcon = activeTab?.icon;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex h-full w-full max-w-2xl bg-card border-l border-border shadow-2xl">
+      <div className="relative z-10 flex w-full max-w-2xl h-[80vh] max-h-[700px] bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
 
         {/* Left nav */}
         <div className="w-52 flex-shrink-0 border-r border-border/40 flex flex-col py-4 px-2 gap-0.5 overflow-y-auto">
