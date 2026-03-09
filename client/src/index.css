@@ -329,6 +329,16 @@
   .typing-dot:nth-child(2) { animation: typing-dot 1.2s ease-in-out infinite 200ms; }
   .typing-dot:nth-child(3) { animation: typing-dot 1.2s ease-in-out infinite 400ms; }
 
+  /* Voice bar waveform */
+  @keyframes voice-bar {
+    0%, 100% { transform: scaleY(0.35); opacity: 0.5; }
+    50%       { transform: scaleY(1);    opacity: 1; }
+  }
+  .animate-voice-bar {
+    animation: voice-bar 0.9s ease-in-out infinite;
+    transform-origin: bottom;
+  }
+
   /* Scrollbar styling */
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;

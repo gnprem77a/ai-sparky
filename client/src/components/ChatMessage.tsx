@@ -512,30 +512,21 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                 return <CSVTable key={att.id} data={att.data} filename={att.name} />;
               }
 
+              {/* Parse page count from extracted PDF data prefix */}
+              const pdfMeta = isPdf ? att.data.match(/^\s*PDF:[^(]*\((\d+) pages?\)/) : null;
+              const pageCount = pdfMeta ? parseInt(pdfMeta[1]) : null;
+              const fileTypeLabel = isPdf
+                ? (pageCount ? `PDF · ${pageCount} page${pageCount !== 1 ? "s" : ""}` : "PDF Document")
+                : `${att.type} file`;
               return (
-                <div key={att.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/20 min-w-[200px]">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", isPdf ? "bg-red-500/10" : "bg-primary/20")}>
-                      {isPdf ? <FileText className="w-4 h-4 text-red-500" /> : <FileText className="w-4 h-4 text-primary/80" />}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground/90 truncate" title={att.name}>{att.name}</p>
-                      <p className="text-[10px] text-muted-foreground/70 capitalize">
-                        {isPdf ? "PDF Document" : `${att.type} file`}
-                      </p>
-                    </div>
+                <div key={att.id} className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/20 min-w-[200px]">
+                  <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", isPdf ? "bg-red-500/10" : "bg-primary/20")}>
+                    {isPdf ? <FileText className="w-4 h-4 text-red-500" /> : <FileText className="w-4 h-4 text-primary/80" />}
                   </div>
-                  {isPdf && (
-                    <a
-                      href={att.data}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors flex-shrink-0"
-                      title="View PDF"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground/90 truncate" title={att.name}>{att.name}</p>
+                    <p className="text-[10px] text-muted-foreground/70">{fileTypeLabel}</p>
+                  </div>
                 </div>
               );
             })}

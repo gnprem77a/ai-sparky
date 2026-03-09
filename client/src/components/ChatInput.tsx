@@ -98,31 +98,65 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const [modelOpen, setModelOpen]         = useState(false);
   const [clipError, setClipError]         = useState("");
   const [isRecording, setIsRecording]     = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [interimText, setInterimText]     = useState("");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recognitionRef  = useRef<any>(null);
+  const recordTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const committedRef    = useRef(""); // finalized transcript so far this session
 
   const supportsSpeechRecognition = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
+  const stopRecording = useCallback(() => {
+    recognitionRef.current?.stop();
+    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+    setIsRecording(false);
+    setInterimText("");
+    setRecordingSeconds(0);
+    committedRef.current = "";
+  }, []);
+
   const toggleRecording = () => {
-    if (isRecording) {
-      recognitionRef.current?.stop();
-      return;
-    }
+    if (isRecording) { stopRecording(); return; }
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new (SpeechRecognition as any)();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.continuous = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
-    recognition.onerror = () => setIsRecording(false);
+    committedRef.current = "";
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+    };
+
+    recognition.onend = () => {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      setIsRecording(false);
+      setInterimText("");
+      setRecordingSeconds(0);
+      committedRef.current = "";
+    };
+
+    recognition.onerror = () => stopRecording();
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      if (transcript) {
-        onChange(value + (value ? " " : "") + transcript);
+      let interim = "";
+      let finalChunk = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const res = event.results[i];
+        if (res.isFinal) finalChunk += res[0].transcript;
+        else interim += res[0].transcript;
       }
+      if (finalChunk) {
+        committedRef.current += (committedRef.current ? " " : "") + finalChunk.trim();
+        const base = value.trim();
+        onChange((base ? base + " " : "") + committedRef.current);
+      }
+      setInterimText(interim);
     };
 
     recognitionRef.current = recognition;
@@ -263,6 +297,37 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         <input ref={allInputRef}    type="file" multiple accept={EXTS_ALL} className="hidden" onChange={handleInputChange} />
         <input ref={imgInputRef}    type="file" multiple accept={EXTS_IMG} className="hidden" onChange={handleInputChange} />
         <input ref={cameraInputRef} type="file" accept={EXTS_IMG} capture="environment" className="hidden" onChange={handleInputChange} />
+
+        {/* ── voice recording panel ─────────────────────── */}
+        {isRecording && (
+          <div
+            data-testid="div-voice-recording"
+            className="flex items-center gap-3 mb-2 px-4 py-2.5 rounded-2xl bg-red-500/8 border border-red-500/20 text-xs"
+          >
+            <div className="flex items-center gap-[3px] flex-shrink-0">
+              {[0.6, 1.0, 0.7, 0.9, 0.5, 0.8, 0.6].map((h, i) => (
+                <span
+                  key={i}
+                  className="w-[3px] rounded-full bg-red-500 animate-voice-bar"
+                  style={{ height: `${h * 18}px`, animationDelay: `${i * 80}ms` }}
+                />
+              ))}
+            </div>
+            <span className="flex-1 min-w-0 text-foreground/80 italic truncate">
+              {interimText || "Listening…"}
+            </span>
+            <span className="tabular-nums text-red-500/70 flex-shrink-0">
+              {String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:{String(recordingSeconds % 60).padStart(2, "0")}
+            </span>
+            <button
+              onClick={stopRecording}
+              data-testid="button-stop-recording"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/15 text-red-500 hover:bg-red-500/25 transition-colors flex-shrink-0 font-medium"
+            >
+              <Square className="w-2.5 h-2.5 fill-current" /> Stop
+            </button>
+          </div>
+        )}
 
         {/* ── quote preview bar ──────────────────────────── */}
         {quotedMessage && (

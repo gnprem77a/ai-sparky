@@ -21,7 +21,7 @@ client/src/
   components/
     AppSidebar.tsx      - Sidebar: full-text search, tag filter bar, pin, rename, share, tags popover
     ChatMessage.tsx     - Messages with markdown/LaTeX/Mermaid/reactions/token badge/stopped indicator
-    ChatInput.tsx       - Bottom input with attach menu, prompt library, model selector
+    ChatInput.tsx       - Bottom input with attach menu, prompt library, model selector, voice input (Web Speech API), waveform panel with timer
     ModelSelector.tsx   - Model options with proOnly flags
     CodeBlock.tsx       - Lazy-loaded syntax highlighter (Prism)
     SettingsModal.tsx   - 3-tab modal: System Prompt, Appearance (fontSize/name), Account
