@@ -5,6 +5,7 @@ import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 const schema = z.object({
   username: z.string().min(3, "At least 3 characters").max(32, "At most 32 characters"),
@@ -22,6 +23,7 @@ export default function AuthPage() {
     defaultValues: { username: "", password: "" },
   });
 
+  const { t } = useLanguage();
   const isLogin = tab === "login";
   const mutation = isLogin ? login : register;
   const serverError = (mutation.error as Error)?.message;
@@ -53,10 +55,10 @@ export default function AuthPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {isLogin ? "Welcome back" : "Create account"}
+            {isLogin ? t("auth.login") : t("auth.register")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isLogin ? "Sign in to continue" : "Get started for free"}
+            {t("auth.tagline")}
           </p>
         </div>
 
@@ -65,19 +67,19 @@ export default function AuthPage() {
 
           {/* Tabs */}
           <div className="flex rounded-xl bg-muted p-1 mb-6">
-            {(["login", "register"] as const).map((t) => (
+            {(["login", "register"] as const).map((tabKey) => (
               <button
-                key={t}
-                onClick={() => switchTab(t)}
-                data-testid={`tab-${t}`}
+                key={tabKey}
+                onClick={() => switchTab(tabKey)}
+                data-testid={`tab-${tabKey}`}
                 className={cn(
                   "flex-1 py-1.5 text-sm font-medium rounded-lg transition-all duration-150",
-                  tab === t
+                  tab === tabKey
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {t === "login" ? "Sign in" : "Sign up"}
+                {tabKey === "login" ? t("auth.login") : t("auth.register")}
               </button>
             ))}
           </div>
@@ -156,7 +158,7 @@ export default function AuthPage() {
               className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isLogin ? "Sign in" : "Create account"}
+              {isLogin ? t("auth.loginBtn") : t("auth.registerBtn")}
             </button>
           </form>
 

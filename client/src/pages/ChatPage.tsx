@@ -7,11 +7,15 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { SettingsModal } from "@/components/SettingsModal";
+import { CommandPalette } from "@/components/CommandPalette";
+import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer } from "lucide-react";
+import { Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   type Conversation,
   type Message,
@@ -23,6 +27,7 @@ import {
   getActiveConversationId,
   setActiveConversationId,
 } from "@/lib/chat-storage";
+import { useLanguage } from "@/lib/i18n";
 
 function isProActive(user: { plan: string; planExpiresAt: string | null } | null): boolean {
   if (!user) return false;
@@ -46,6 +51,14 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [splitView, setSplitView] = useState(() => {
+    return localStorage.getItem("chat-split-view") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("chat-split-view", String(splitView));
+  }, [splitView]);
 
   /* ── Image generation state ── */
   const [isImageMode, setIsImageMode] = useState(false);
@@ -141,12 +154,29 @@ export default function ChatPage() {
     if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, isStreaming, autoScroll]);
 
+  const handleCommandAction = (action: string) => {
+    switch (action) {
+      case "new-chat":
+        handleNewChat();
+        break;
+      case "open-settings":
+        setSettingsOpen(true);
+        break;
+      case "go-to-analytics":
+        navigate("/analytics");
+        break;
+      case "go-to-admin":
+        navigate("/admin");
+        break;
+    }
+  };
+
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
-        handleNewChat();
+        setCommandPaletteOpen((prev) => !prev);
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         if (messages.length > 0) {
@@ -271,12 +301,14 @@ export default function ChatPage() {
       role: "user",
       content: newContent,
       timestamp: Date.now(),
+      isPinned: false,
     };
     const newAssistantMsg: Message = {
       id: newAssistantMsgId,
       role: "assistant",
       content: "",
       timestamp: Date.now(),
+      isPinned: false,
     };
 
     const updatedMsgs = [...priorMsgs, newUserMsg, newAssistantMsg];
@@ -363,8 +395,8 @@ export default function ChatPage() {
 
     const userMsgId = crypto.randomUUID();
     const assistantMsgId = crypto.randomUUID();
-    const userMsg: Message = { id: userMsgId, role: "user", content: `🎨 Generate image: ${prompt}`, timestamp: Date.now() };
-    const assistantMsg: Message = { id: assistantMsgId, role: "assistant", content: "", timestamp: Date.now() };
+    const userMsg: Message = { id: userMsgId, role: "user", content: `🎨 Generate image: ${prompt}`, timestamp: Date.now(), isPinned: false };
+    const assistantMsg: Message = { id: assistantMsgId, role: "assistant", content: "", timestamp: Date.now(), isPinned: false };
 
     let convId = activeId;
     if (!convId) {
@@ -577,6 +609,7 @@ export default function ChatPage() {
       content: contentWithQuote,
       attachments: attachments.length > 0 ? attachments : undefined,
       timestamp: Date.now(),
+      isPinned: false,
     };
 
     const assistantMsg: Message = {
@@ -584,6 +617,7 @@ export default function ChatPage() {
       role: "assistant",
       content: "",
       timestamp: Date.now(),
+      isPinned: false,
     };
 
     /* Get or create conversation */
@@ -634,6 +668,7 @@ export default function ChatPage() {
       role: "assistant",
       content: "",
       timestamp: Date.now(),
+      isPinned: false,
     };
 
     const updatedMsgs = messages.filter((m) => m.id !== lastAssistant.id);
@@ -700,6 +735,66 @@ export default function ChatPage() {
                 >
                   <Search className="w-4 h-4" />
                 </Button>
+
+                {/* Pinned Messages Panel */}
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      data-testid="button-view-pinned"
+                      title="View pinned messages"
+                      className="h-9 w-9 text-muted-foreground"
+                    >
+                      <Pin className="w-4 h-4" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+                    <SheetHeader>
+                      <SheetTitle className="flex items-center gap-2">
+                        <Pin className="w-5 h-5 text-yellow-500 fill-current" />
+                        Pinned Messages
+                      </SheetTitle>
+                    </SheetHeader>
+                    <ScrollArea className="h-[calc(100vh-100px)] mt-4 pr-4">
+                      <div className="flex flex-col gap-4">
+                        {messages.filter(m => m.isPinned).length === 0 ? (
+                          <div className="text-center py-10 text-muted-foreground">
+                            <Pin className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                            <p>No pinned messages in this conversation</p>
+                          </div>
+                        ) : (
+                          messages.filter(m => m.isPinned).map((msg) => (
+                            <div
+                              key={msg.id}
+                              className="group relative p-4 rounded-xl border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                              onClick={() => {
+                                const el = document.querySelector(`[data-testid="message-${msg.id}"]`);
+                                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              }}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                                  {msg.role === "user" ? "You" : assistantName}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground/50">
+                                  {new Date(msg.timestamp).toLocaleTimeString()}
+                                </span>
+                              </div>
+                              <p className="text-sm line-clamp-3 text-foreground/80 leading-relaxed">
+                                {msg.content}
+                              </p>
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Pin className="w-3 h-3 text-yellow-500 fill-current" />
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </SheetContent>
+                </Sheet>
+
                 <Button
                   size="icon"
                   variant="ghost"
@@ -731,6 +826,26 @@ export default function ChatPage() {
               className="h-9 w-9 text-muted-foreground"
             >
               <Plus className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setCommandPaletteOpen(true)}
+              data-testid="button-command-palette"
+              title="Command palette (Ctrl+K)"
+              className="h-9 w-9 text-muted-foreground"
+            >
+              <Command className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setSplitView(!splitView)}
+              data-testid="button-toggle-split-view"
+              title={splitView ? "Single view" : "Split view"}
+              className={cn("h-9 w-9", splitView ? "text-primary bg-primary/10" : "text-muted-foreground")}
+            >
+              <Columns2 className="w-4 h-4" />
             </Button>
             {user && (
               <div className="relative" ref={profileRef}>
@@ -819,127 +934,147 @@ export default function ChatPage() {
           </div>
         </header>
 
-        {/* Search bar */}
-        {searchOpen && (
-          <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 py-1.5 flex items-center gap-2 no-print">
-            <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <input
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }}
-              onKeyDown={(e) => { if (e.key === "Enter") navigateSearch(e.shiftKey ? -1 : 1); }}
-              placeholder="Search in conversation..."
-              data-testid="input-conversation-search"
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
-            />
-            {searchQuery && (
-              <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-                {searchTotalMatches > 0 ? `${searchMatchIndex + 1}/${searchTotalMatches}` : "0 results"}
-              </span>
-            )}
-            <Button size="icon" variant="ghost" onClick={() => navigateSearch(-1)} data-testid="button-search-prev" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Previous (Shift+Enter)">
-              <ChevronUp className="w-3.5 h-3.5" />
-            </Button>
-            <Button size="icon" variant="ghost" onClick={() => navigateSearch(1)} data-testid="button-search-next" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Next (Enter)">
-              <ChevronDown className="w-3.5 h-3.5" />
-            </Button>
-            <Button size="icon" variant="ghost" onClick={() => { setSearchOpen(false); setSearchQuery(""); }} data-testid="button-search-close" className="h-6 w-6" title="Close (Esc)">
-              <X className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        )}
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
-          {isLoadingMessages ? (
-            <div className="flex items-center justify-center h-full gap-2">
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-            </div>
-          ) : messages.length === 0 ? (
-            <EmptyState onSuggest={(text) => { setInput(text); }} />
-          ) : (
-            <div className="max-w-3xl mx-auto py-6">
-              {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  message={msg}
-                  isStreaming={isStreaming && msg.id === streamingMessageId}
-                  isLast={msg.id === lastAssistantMsg?.id}
-                  conversationId={activeId ?? undefined}
-                  assistantName={assistantName}
-                  fontSize={fontSize}
-                  searchQuery={searchQuery}
-                  showTokenUsage={showTokenUsage}
-                  onRegenerate={
-                    msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
-                      ? handleRegenerate
-                      : undefined
-                  }
-                  onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
-                  onFork={msg.role === "user" && !isStreaming ? handleForkMessage : undefined}
-                  onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Primary Chat */}
+          <div className={cn("flex-1 flex flex-col min-w-0", splitView && "border-r border-border/40")}>
+            {/* Search bar */}
+            {searchOpen && (
+              <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 py-1.5 flex items-center gap-2 no-print">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") navigateSearch(e.shiftKey ? -1 : 1); }}
+                  placeholder="Search in conversation..."
+                  data-testid="input-conversation-search"
+                  className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
                 />
-              ))}
-              {isStreaming && (
-                <div className="px-4 pb-1 text-[11px] text-muted-foreground/50 tabular-nums">
-                  {elapsedTime.toFixed(1)}s
+                {searchQuery && (
+                  <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                    {searchTotalMatches > 0 ? `${searchMatchIndex + 1}/${searchTotalMatches}` : "0 results"}
+                  </span>
+                )}
+                <Button size="icon" variant="ghost" onClick={() => navigateSearch(-1)} data-testid="button-search-prev" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Previous (Shift+Enter)">
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </Button>
+                <Button size="icon" variant="ghost" onClick={() => navigateSearch(1)} data-testid="button-search-next" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Next (Enter)">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </Button>
+                <Button size="icon" variant="ghost" onClick={() => { setSearchOpen(false); setSearchQuery(""); }} data-testid="button-search-close" className="h-6 w-6" title="Close (Esc)">
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
+              {isLoadingMessages ? (
+                <div className="flex items-center justify-center h-full gap-2">
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                </div>
+              ) : messages.length === 0 ? (
+                <EmptyState onSuggest={(text) => { setInput(text); }} />
+              ) : (
+                <div className="max-w-3xl mx-auto py-6">
+                  {messages.map((msg) => (
+                    <ChatMessage
+                      key={msg.id}
+                      message={msg}
+                      isStreaming={isStreaming && msg.id === streamingMessageId}
+                      isLast={msg.id === lastAssistantMsg?.id}
+                      conversationId={activeId ?? undefined}
+                      assistantName={assistantName}
+                      fontSize={fontSize}
+                      searchQuery={searchQuery}
+                      showTokenUsage={showTokenUsage}
+                      onRegenerate={
+                        msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
+                          ? handleRegenerate
+                          : undefined
+                      }
+                      onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
+                      onFork={msg.role === "user" && !isStreaming ? handleForkMessage : undefined}
+                      onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
+                    />
+                  ))}
+                  {isStreaming && (
+                    <div className="px-4 pb-1 text-[11px] text-muted-foreground/50 tabular-nums">
+                      {elapsedTime.toFixed(1)}s
+                    </div>
+                  )}
+                  {isGeneratingImage && (
+                    <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
+                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                      <span className="ml-1">Generating image…</span>
+                    </div>
+                  )}
+                  {error && (
+                    <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm">
+                      <span className="font-semibold">Error: </span>{error}
+                    </div>
+                  )}
+                  <div ref={bottomRef} className="h-4" />
                 </div>
               )}
-              {isGeneratingImage && (
-                <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
-                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                  <span className="ml-1">Generating image…</span>
+            </div>
+
+            {/* Plan banner for free users */}
+            {!isPro && messages.length === 0 && !activeId && (
+              <div className="flex-shrink-0 mx-4 mb-1">
+                <div className="max-w-3xl mx-auto px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center gap-2">
+                  <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    <span className="font-semibold">Free plan:</span> 20 messages/day · Fast model only ·{" "}
+                    <span className="underline cursor-pointer" onClick={() => { setSettingsOpen(false); navigate("/admin"); }}>
+                      Admin can upgrade your plan
+                    </span>
+                  </p>
                 </div>
-              )}
-              {error && (
-                <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm">
-                  <span className="font-semibold">Error: </span>{error}
-                </div>
-              )}
-              <div ref={bottomRef} className="h-4" />
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="flex-shrink-0" data-testid="chat-input-area">
+              <ChatInput
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSubmit}
+                onStop={handleStop}
+                isStreaming={isStreaming || isGeneratingImage}
+                model={isPro ? model : "fast"}
+                onModelChange={handleModelChange}
+                isPro={isPro}
+                quotedMessage={quotedMessage ?? undefined}
+                onClearQuote={() => setQuotedMessage(null)}
+                isImageMode={isImageMode}
+                onToggleImageMode={() => setIsImageMode((m) => !m)}
+              />
+            </div>
+          </div>
+
+          {/* Secondary Chat (Split View) */}
+          {splitView && (
+            <div className="flex-1 min-w-0 hidden lg:flex">
+              <SecondaryChat isPro={isPro} />
             </div>
           )}
-        </div>
-
-        {/* Plan banner for free users */}
-        {!isPro && messages.length === 0 && !activeId && (
-          <div className="flex-shrink-0 mx-4 mb-1">
-            <div className="max-w-3xl mx-auto px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center gap-2">
-              <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                <span className="font-semibold">Free plan:</span> 20 messages/day · Fast model only ·{" "}
-                <span className="underline cursor-pointer" onClick={() => { setSettingsOpen(false); navigate("/admin"); }}>
-                  Admin can upgrade your plan
-                </span>
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Input */}
-        <div className="flex-shrink-0" data-testid="chat-input-area">
-          <ChatInput
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            onStop={handleStop}
-            isStreaming={isStreaming || isGeneratingImage}
-            model={isPro ? model : "fast"}
-            onModelChange={handleModelChange}
-            isPro={isPro}
-            quotedMessage={quotedMessage ?? undefined}
-            onClearQuote={() => setQuotedMessage(null)}
-            isImageMode={isImageMode}
-            onToggleImageMode={() => setIsImageMode((m) => !m)}
-          />
         </div>
       </div>
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+        conversations={conversations}
+        onSelectConversation={handleSelectConversation}
+        onAction={handleCommandAction}
+      />
     </>
   );
 }
@@ -990,6 +1125,7 @@ const SUGGESTIONS = [
 ];
 
 function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center min-h-full py-12 px-6">
       <div className="relative mb-6">
@@ -1003,10 +1139,10 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
       </div>
 
       <h1 className="text-[1.75rem] font-semibold text-foreground mb-2 tracking-tight text-center">
-        How can I help you?
+        {t("chat.empty.title")}
       </h1>
       <p className="text-muted-foreground/60 text-sm mb-8 text-center max-w-[320px] leading-relaxed">
-        Ask anything, or pick a suggestion below to get started.
+        {t("chat.empty.subtitle")}
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl">

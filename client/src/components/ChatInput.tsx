@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, File, ChevronDown, Lock,
-  Table as TableIcon, Eye, Sparkles,
+  ClipboardPaste, Plus, File as FileIcon, ChevronDown, Lock,
+  Table as TableIcon, Eye, Sparkles, Mic, MicOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 import { type ModelId, MODELS } from "@/components/ModelSelector";
+import { useLanguage } from "@/lib/i18n";
 import { PromptLibrary } from "@/components/PromptLibrary";
 import Papa from "papaparse";
 
@@ -41,7 +42,7 @@ const MENU_ITEMS: MenuItem[] = [
     id: "any",
     label: "Upload files",
     description: "Images, PDFs, docs, code, and more",
-    icon: <File className="w-4 h-4" />,
+    icon: <FileIcon className="w-4 h-4" />,
     accent: "text-blue-400 bg-blue-500/10",
     action: "any",
   },
@@ -89,12 +90,44 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const menuRef        = useRef<HTMLDivElement>(null);
   const modelMenuRef   = useRef<HTMLDivElement>(null);
 
+  const { t } = useLanguage();
   const [attachments, setAttachments]     = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver]       = useState(false);
   const [isProcessing, setIsProcessing]   = useState(false);
   const [menuOpen, setMenuOpen]           = useState(false);
   const [modelOpen, setModelOpen]         = useState(false);
   const [clipError, setClipError]         = useState("");
+  const [isRecording, setIsRecording]     = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const supportsSpeechRecognition = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const recognition = new (SpeechRecognition as any)();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = () => setIsRecording(false);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript) {
+        onChange(value + (value ? " " : "") + transcript);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
 
   /* auto-resize textarea */
   useEffect(() => {
@@ -266,7 +299,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : "Message Claude…"}
+            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : t("input.placeholder")}
             disabled={disabled}
             rows={1}
             data-testid="input-message"
@@ -434,8 +467,24 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               )}
             </div>
 
-            {/* ── right: image mode toggle + send / stop ────── */}
+            {/* ── right: image mode toggle + voice input + send / stop ────── */}
             <div className="flex items-center gap-2">
+              {supportsSpeechRecognition && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  data-testid="button-voice-input"
+                  title={isRecording ? "Stop recording" : "Voice input"}
+                  className={cn(
+                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
+                    isRecording
+                      ? "bg-red-500/20 text-red-500 animate-pulse ring-1 ring-red-500/40"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+                  )}
+                >
+                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
               {onToggleImageMode && !isStreaming && (
                 <button
                   type="button"

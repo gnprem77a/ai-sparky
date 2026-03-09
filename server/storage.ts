@@ -4,9 +4,10 @@ import {
   type Message, messages,
   type UserSettings, userSettings,
   type SavedPrompt, savedPrompts,
+  type Folder, folders,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, ilike, or } from "drizzle-orm";
+import { eq, desc, asc, sql as drizzleSql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -22,12 +23,13 @@ export interface IStorage {
   getConversation(id: string): Promise<Conversation | undefined>;
   getConversationByShareToken(token: string): Promise<Conversation | undefined>;
   createConversation(userId: string, title: string, model: string): Promise<Conversation>;
-  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags">>): Promise<Conversation | undefined>;
+  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags" | "folderId">>): Promise<Conversation | undefined>;
   deleteConversation(id: string): Promise<void>;
 
   getMessages(conversationId: string): Promise<Message[]>;
   createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message>;
-  updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content">>): Promise<Message | undefined>;
+  updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content" | "isPinned">>): Promise<Message | undefined>;
+  pinMessage(messageId: string, isPinned: boolean): Promise<Message | undefined>;
   deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void>;
   getTokenStats(): Promise<{ totalInputTokens: number; totalOutputTokens: number; byUser: { userId: string; username: string; inputTokens: number; outputTokens: number }[] }>;
   searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
@@ -39,6 +41,15 @@ export interface IStorage {
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
   createSavedPrompt(userId: string, title: string, content: string): Promise<SavedPrompt>;
   deleteSavedPrompt(id: string): Promise<void>;
+
+  getFolders(userId: string): Promise<Folder[]>;
+  createFolder(userId: string, name: string, color: string): Promise<Folder>;
+  deleteFolder(id: string): Promise<void>;
+  moveConversationToFolder(conversationId: string, folderId: string | null): Promise<Conversation | undefined>;
+
+  getAnalyticsOverview(userId: string): Promise<{ totalConversations: number; totalMessages: number; totalTokens: number; avgTokensPerMessage: number }>;
+  getAnalyticsDaily(userId: string): Promise<{ date: string; messageCount: number; tokenCount: number }[]>;
+  getAnalyticsModels(userId: string): Promise<{ model: string; count: number; percentage: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -100,7 +111,7 @@ export class DatabaseStorage implements IStorage {
     return conv;
   }
 
-  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags">>): Promise<Conversation | undefined> {
+  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags" | "folderId">>): Promise<Conversation | undefined> {
     const [conv] = await db.update(conversations).set(data).where(eq(conversations.id, id)).returning();
     return conv;
   }
@@ -120,8 +131,13 @@ export class DatabaseStorage implements IStorage {
     return msg;
   }
 
-  async updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content">>): Promise<Message | undefined> {
+  async updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content" | "isPinned">>): Promise<Message | undefined> {
     const [msg] = await db.update(messages).set(data).where(eq(messages.id, id)).returning();
+    return msg;
+  }
+
+  async pinMessage(messageId: string, isPinned: boolean): Promise<Message | undefined> {
+    const [msg] = await db.update(messages).set({ isPinned }).where(eq(messages.id, messageId)).returning();
     return msg;
   }
 
@@ -234,6 +250,84 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSavedPrompt(id: string): Promise<void> {
     await db.delete(savedPrompts).where(eq(savedPrompts.id, id));
+  }
+
+  async getFolders(userId: string): Promise<Folder[]> {
+    return db.select().from(folders).where(eq(folders.userId, userId)).orderBy(asc(folders.createdAt));
+  }
+
+  async createFolder(userId: string, name: string, color: string): Promise<Folder> {
+    const [folder] = await db.insert(folders).values({ userId, name, color }).returning();
+    return folder;
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    await db.delete(folders).where(eq(folders.id, id));
+  }
+
+  async moveConversationToFolder(conversationId: string, folderId: string | null): Promise<Conversation | undefined> {
+    const [conv] = await db.update(conversations).set({ folderId: folderId ?? undefined }).where(eq(conversations.id, conversationId)).returning();
+    return conv;
+  }
+
+  async getAnalyticsOverview(userId: string): Promise<{ totalConversations: number; totalMessages: number; totalTokens: number; avgTokensPerMessage: number }> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    let totalMessages = 0;
+    let totalTokens = 0;
+    if (convIds.length > 0) {
+      for (const convId of convIds) {
+        const msgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
+        totalMessages += msgs.length;
+        totalTokens += msgs.reduce((s, m) => s + (m.inputTokens ?? 0) + (m.outputTokens ?? 0), 0);
+      }
+    }
+    return {
+      totalConversations: userConvs.length,
+      totalMessages,
+      totalTokens,
+      avgTokensPerMessage: totalMessages > 0 ? Math.round(totalTokens / totalMessages) : 0,
+    };
+  }
+
+  async getAnalyticsDaily(userId: string): Promise<{ date: string; messageCount: number; tokenCount: number }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    const map: Record<string, { messageCount: number; tokenCount: number }> = {};
+    if (convIds.length > 0) {
+      for (const convId of convIds) {
+        const msgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
+        for (const msg of msgs) {
+          const date = msg.createdAt.toISOString().slice(0, 10);
+          if (!map[date]) map[date] = { messageCount: 0, tokenCount: 0 };
+          map[date].messageCount += 1;
+          map[date].tokenCount += (msg.inputTokens ?? 0) + (msg.outputTokens ?? 0);
+        }
+      }
+    }
+    const sorted = Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-30);
+    return sorted.map(([date, data]) => ({ date, ...data }));
+  }
+
+  async getAnalyticsModels(userId: string): Promise<{ model: string; count: number; percentage: number }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    const modelCount: Record<string, number> = {};
+    let total = 0;
+    if (convIds.length > 0) {
+      for (const convId of convIds) {
+        const msgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
+        for (const msg of msgs) {
+          if (msg.modelUsed) {
+            modelCount[msg.modelUsed] = (modelCount[msg.modelUsed] ?? 0) + 1;
+            total++;
+          }
+        }
+      }
+    }
+    return Object.entries(modelCount)
+      .sort(([, a], [, b]) => b - a)
+      .map(([model, count]) => ({ model, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 }));
   }
 }
 

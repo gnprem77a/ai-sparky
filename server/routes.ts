@@ -290,7 +290,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: get with messages ── */
   app.get("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const msgs = await storage.getMessages(conv.id);
     return res.json({ ...conv, messages: msgs });
@@ -298,7 +298,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: update ── */
   app.patch("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const { title, model } = req.body;
     const updated = await storage.updateConversation(conv.id, {
@@ -311,7 +311,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: delete ── */
   app.delete("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     await storage.deleteConversation(conv.id);
     return res.json({ ok: true });
@@ -319,7 +319,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── messages: add ── */
   app.post("/api/conversations/:id/messages", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const { role, content, modelUsed, attachments, inputTokens, outputTokens } = req.body;
     if (!role || content === undefined) return res.status(400).json({ error: "role and content are required" });
@@ -334,6 +334,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     await storage.updateConversation(conv.id, { updatedAt: new Date() });
     return res.status(201).json(msg);
+  });
+
+  /* ── messages: pin/unpin ── */
+  app.patch("/api/conversations/:convId/messages/:msgId/pin", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.convId as string);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { isPinned } = req.body;
+    const msg = await storage.pinMessage(req.params.msgId as string, Boolean(isPinned));
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+    return res.json(msg);
   });
 
   /* ── settings: get ── */
@@ -390,7 +400,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: pin/unpin ── */
   app.patch("/api/conversations/:id/pin", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const { isPinned } = req.body;
     const updated = await storage.updateConversation(conv.id, { isPinned: Boolean(isPinned) });
@@ -399,7 +409,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: generate share link ── */
   app.post("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const token = conv.shareToken ?? crypto.randomUUID();
     const updated = await storage.updateConversation(conv.id, { shareToken: token });
@@ -408,7 +418,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: remove share link ── */
   app.delete("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     await storage.updateConversation(conv.id, { shareToken: null as any });
     return res.json({ ok: true });
@@ -416,19 +426,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── messages: set reaction ── */
   app.patch("/api/conversations/:convId/messages/:msgId/reaction", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.convId);
+    const conv = await storage.getConversation(req.params.convId as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const reaction = req.body.reaction ?? null;
     if (reaction !== null && reaction !== "up" && reaction !== "down") {
       return res.status(400).json({ error: "reaction must be 'up', 'down', or null" });
     }
-    const msg = await storage.updateMessage(req.params.msgId, { reaction });
+    const msg = await storage.updateMessage(req.params.msgId as string, { reaction });
     return res.json(msg);
   });
 
   /* ── conversations: update tags ── */
   app.patch("/api/conversations/:id/tags", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const { tags } = req.body;
     if (!Array.isArray(tags)) return res.status(400).json({ error: "tags must be an array" });
@@ -446,15 +456,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── conversations: delete messages from index ── */
   app.delete("/api/conversations/:id/messages/from/:messageId", requireAuth as any, async (req: Request, res: Response) => {
-    const conv = await storage.getConversation(req.params.id);
+    const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
-    await storage.deleteMessagesFromId(conv.id, req.params.messageId);
+    await storage.deleteMessagesFromId(conv.id, req.params.messageId as string);
     return res.json({ ok: true });
   });
 
   /* ── public share: view conversation (no auth) ── */
   app.get("/api/share/:token", async (req: Request, res: Response) => {
-    const conv = await storage.getConversationByShareToken(req.params.token);
+    const conv = await storage.getConversationByShareToken(req.params.token as string);
     if (!conv) return res.status(404).json({ error: "Shared conversation not found" });
     const msgs = await storage.getMessages(conv.id);
     return res.json({ id: conv.id, title: conv.title, model: conv.model, messages: msgs });
@@ -476,8 +486,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── prompts: delete ── */
   app.delete("/api/prompts/:id", requireAuth as any, async (req: Request, res: Response) => {
-    await storage.deleteSavedPrompt(req.params.id);
+    await storage.deleteSavedPrompt(req.params.id as string);
     return res.json({ ok: true });
+  });
+
+  /* ── analytics: overview ── */
+  app.get("/api/analytics/overview", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsOverview(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: daily ── */
+  app.get("/api/analytics/daily", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsDaily(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: models ── */
+  app.get("/api/analytics/models", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsModels(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── folders: list ── */
+  app.get("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
+    const folders = await storage.getFolders(req.session.userId!);
+    return res.json(folders);
+  });
+
+  /* ── folders: create ── */
+  app.post("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
+    const { name, color = "default" } = req.body;
+    if (!name) return res.status(400).json({ error: "name is required" });
+    const folder = await storage.createFolder(req.session.userId!, name, color);
+    return res.status(201).json(folder);
+  });
+
+  /* ── folders: delete ── */
+  app.delete("/api/folders/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteFolder(req.params.id as string);
+    return res.json({ ok: true });
+  });
+
+  /* ── conversations: move to folder ── */
+  app.patch("/api/conversations/:id/folder", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id as string);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { folderId } = req.body;
+    const updated = await storage.moveConversationToFolder(conv.id, folderId);
+    return res.json(updated);
   });
 
   /* ── admin: token stats ── */
@@ -497,7 +554,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── admin: toggle admin ── */
   app.patch("/api/admin/users/:id/admin", requireAdmin as any, async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     if (id === req.session.userId) return res.status(400).json({ error: "Cannot change your own admin status." });
     const user = await storage.setAdmin(id, Boolean(req.body.isAdmin));
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -506,7 +563,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── admin: delete user ── */
   app.delete("/api/admin/users/:id", requireAdmin as any, async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     if (id === req.session.userId) return res.status(400).json({ error: "Cannot delete your own account." });
     await storage.deleteUser(id);
     return res.json({ ok: true });
@@ -514,7 +571,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── admin: set plan ── */
   app.patch("/api/admin/users/:id/plan", requireAdmin as any, async (req: Request, res: Response) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { plan, expiresAt } = req.body;
     if (!["free", "pro"].includes(plan)) return res.status(400).json({ error: "plan must be 'free' or 'pro'" });
     const expiry = expiresAt ? new Date(expiresAt) : null;
@@ -654,6 +711,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error("[bedrock-image]", error.message);
       return res.status(500).json({ error: error.message || "Image generation failed" });
     }
+  });
+
+  /* ── messages: pin/unpin ── */
+  app.patch("/api/conversations/:convId/messages/:msgId/pin", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.convId as string);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { isPinned } = req.body;
+    const msg = await storage.pinMessage(req.params.msgId as string, Boolean(isPinned));
+    return res.json(msg);
+  });
+
+  /* ── folders: list ── */
+  app.get("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
+    const result = await storage.getFolders(req.session.userId!);
+    return res.json(result);
+  });
+
+  /* ── folders: create ── */
+  app.post("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
+    const { name, color = "default" } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: "name is required" });
+    const folder = await storage.createFolder(req.session.userId!, name.trim(), color);
+    return res.status(201).json(folder);
+  });
+
+  /* ── folders: delete ── */
+  app.delete("/api/folders/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteFolder(req.params.id as string);
+    return res.json({ ok: true });
+  });
+
+  /* ── conversations: move to folder ── */
+  app.patch("/api/conversations/:id/folder", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id as string);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { folderId } = req.body;
+    const updated = await storage.moveConversationToFolder(conv.id, folderId ?? null);
+    return res.json(updated);
+  });
+
+  /* ── analytics: overview ── */
+  app.get("/api/analytics/overview", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsOverview(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: daily ── */
+  app.get("/api/analytics/daily", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsDaily(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: models ── */
+  app.get("/api/analytics/models", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsModels(req.session.userId!);
+    return res.json(data);
   });
 
   return httpServer;

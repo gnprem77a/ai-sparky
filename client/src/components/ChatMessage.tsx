@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
@@ -225,6 +225,85 @@ function CSVTable({ data, filename }: { data: string; filename: string }) {
   );
 }
 
+const ARTIFACT_LANGS = new Set(["html", "svg"]);
+
+function ArtifactBlock({ code, lang, langColor }: { code: string; lang: string; langColor: string }) {
+  const [activeTab, setActiveTab] = useState<"code" | "preview">("code");
+  const [iframeKey, setIframeKey] = useState(0);
+
+  const handleOpenNew = () => {
+    const mime = lang === "svg" ? "image/svg+xml" : "text/html";
+    const url = URL.createObjectURL(new Blob([code], { type: mime }));
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  return (
+    <div className="relative rounded-xl overflow-hidden my-4 border border-white/8 shadow-xl bg-[#0d0d18]" data-testid={`artifact-block-${lang}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between bg-[#0a0a15] border-b border-white/6 px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-red-500/70" />
+            <div className="w-3 h-3 rounded-full bg-yellow-500/70" />
+            <div className="w-3 h-3 rounded-full bg-green-500/70" />
+          </div>
+          <span className={cn("text-[11px] font-mono font-semibold tracking-wider uppercase flex items-center gap-1.5", langColor)}>
+            <Terminal className="w-3 h-3 text-zinc-500" /> {lang}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab("code")}
+            data-testid="artifact-tab-code"
+            className={cn("flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors", activeTab === "code" ? "bg-white/15 text-white" : "text-zinc-400 hover:text-zinc-200")}
+          >
+            <Code2 className="w-3 h-3" /> Code
+          </button>
+          <button
+            onClick={() => setActiveTab("preview")}
+            data-testid="artifact-tab-preview"
+            className={cn("flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors", activeTab === "preview" ? "bg-white/15 text-white" : "text-zinc-400 hover:text-zinc-200")}
+          >
+            <Eye className="w-3 h-3" /> Preview
+          </button>
+          {activeTab === "preview" && (
+            <button onClick={() => setIframeKey((k) => k + 1)} className="px-2 py-1 rounded text-[11px] text-zinc-400 hover:text-zinc-200" title="Refresh preview">
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+          <button onClick={handleOpenNew} className="px-2 py-1 rounded text-[11px] text-zinc-400 hover:text-zinc-200 ml-1" title="Open in new tab">
+            <ExternalLink className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      {activeTab === "code" ? (
+        <>
+          <Suspense fallback={<pre className="bg-[#0d0d18] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">{code}</pre>}>
+            <CodeBlock code={code} language={lang} />
+          </Suspense>
+          <div className="flex items-center justify-between bg-[#0a0a15] border-t border-white/5 px-4 py-1.5">
+            <span className="text-[10px] text-zinc-600 font-mono">{code.split("\n").length} lines</span>
+            <span className="text-[10px] text-zinc-600">{code.length} chars</span>
+          </div>
+        </>
+      ) : (
+        <iframe
+          key={iframeKey}
+          srcDoc={code}
+          sandbox="allow-scripts allow-forms allow-same-origin"
+          className="w-full border-0 bg-white"
+          style={{ height: "420px", display: "block" }}
+          title="artifact-preview"
+          data-testid="artifact-iframe"
+        />
+      )}
+    </div>
+  );
+}
+
 function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
@@ -232,6 +311,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
   const [localReaction, setLocalReaction] = useState<string | null>(message.reaction ?? null);
+  const [localIsPinned, setLocalIsPinned] = useState(message.isPinned ?? false);
   const [isForkLoading, setIsForkLoading] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
@@ -240,6 +320,10 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
   useEffect(() => {
     setLocalReaction(message.reaction ?? null);
   }, [message.reaction]);
+
+  useEffect(() => {
+    setLocalIsPinned(message.isPinned ?? false);
+  }, [message.isPinned]);
 
   useEffect(() => {
     if (isEditing && editRef.current) {
@@ -260,6 +344,23 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
       }
     },
   });
+
+  const pinMutation = useMutation({
+    mutationFn: async (isPinned: boolean) => {
+      if (!conversationId) return;
+      await apiRequest("PATCH", `/api/conversations/${conversationId}/messages/${message.id}/pin`, { isPinned });
+    },
+    onMutate: (isPinned) => { setLocalIsPinned(isPinned); },
+    onSuccess: () => {
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      }
+    },
+  });
+
+  const handleTogglePin = () => {
+    pinMutation.mutate(!localIsPinned);
+  };
 
   const handleReaction = (r: "up" | "down") => {
     const next = localReaction === r ? null : r;
@@ -288,6 +389,40 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleEditSave(); }
     if (e.key === "Escape") handleEditCancel();
   };
+
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const stripMarkdown = (text: string) => {
+    return text
+      .replace(/!\[.*?\]\(.*?\)/g, "") // images
+      .replace(/\[(.*?)\]\(.*?\)/g, "$1") // links
+      .replace(/(`{3})[\s\S]*?\1/g, "") // code blocks
+      .replace(/`.*?`/g, "") // inline code
+      .replace(/[#*`_~]/g, "") // formatting
+      .replace(/>+/g, "") // quotes
+      .replace(/\|.*?\|/g, "") // tables
+      .trim();
+  };
+
+  const handleToggleSpeech = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(stripMarkdown(message.content));
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (isSpeaking) window.speechSynthesis.cancel();
+    };
+  }, [isSpeaking]);
 
   if (isUser) {
     return (
@@ -366,8 +501,24 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                   <div className="relative group/bubble">
                     <div className={cn("px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground leading-relaxed shadow-md", fontClass)} data-testid="content-user">
                       <p className="whitespace-pre-wrap break-words font-[450]">{highlightText(message.content, searchQuery)}</p>
+                      {localIsPinned && (
+                        <div className="absolute -top-2 -left-2 bg-yellow-500 rounded-full p-1 shadow-sm border border-background">
+                          <Pin className="w-3 h-3 text-white fill-current" />
+                        </div>
+                      )}
                     </div>
-                    <div className={cn("absolute -left-16 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                    <div className={cn("absolute -left-20 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                      <button
+                        onClick={handleTogglePin}
+                        data-testid={`button-pin-message-${message.id}`}
+                        title={localIsPinned ? "Unpin message" : "Pin message"}
+                        className={cn(
+                          "p-1.5 rounded-lg transition-all",
+                          localIsPinned ? "text-yellow-500 bg-yellow-500/10" : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <Pin className={cn("w-3.5 h-3.5", localIsPinned && "fill-current")} />
+                      </button>
                       {onFork && (
                         <button
                           onClick={async () => {
@@ -422,7 +573,12 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
           <span className="text-[11px] font-semibold text-foreground/50 uppercase tracking-widest">{assistantName}</span>
         </div>
 
-        <div className={cn("leading-relaxed text-foreground/90", fontClass)} data-testid="content-assistant">
+        <div className={cn("leading-relaxed text-foreground/90 relative", fontClass)} data-testid="content-assistant">
+          {localIsPinned && (
+            <div className="absolute -top-3 -left-10 bg-yellow-500 rounded-full p-1 shadow-sm border border-background z-10">
+              <Pin className="w-3 h-3 text-white fill-current" />
+            </div>
+          )}
           {message.content === "" && isStreaming ? (
             <div className="flex items-center gap-1.5 py-2">
               <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
@@ -453,6 +609,10 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
 
                     const lang = match[1].toLowerCase();
                     const langColor = LANG_COLORS[lang] ?? "text-zinc-400";
+
+                    if (ARTIFACT_LANGS.has(lang)) {
+                      return <ArtifactBlock code={codeString} lang={lang} langColor={langColor} />;
+                    }
 
                     return (
                       <div className="relative rounded-xl overflow-hidden my-4 border border-white/8 shadow-xl bg-[#0d0d18]" data-testid={`code-block-${lang}`}>
@@ -639,6 +799,38 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
               actionsVisible || isLast ? "opacity-100" : "opacity-0"
             )}
           >
+            {/* Pin/Unpin */}
+            <button
+              onClick={handleTogglePin}
+              data-testid={`button-pin-message-${message.id}`}
+              title={localIsPinned ? "Unpin message" : "Pin message"}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all",
+                localIsPinned
+                  ? "text-yellow-500 bg-yellow-500/10"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+              )}
+            >
+              <Pin className={cn("w-3.5 h-3.5", localIsPinned && "fill-current")} />
+              <span>{localIsPinned ? "Pinned" : "Pin"}</span>
+            </button>
+
+            {/* Speech */}
+            <button
+              onClick={handleToggleSpeech}
+              data-testid={`button-speech-${message.id}`}
+              title={isSpeaking ? "Stop speaking" : "Read aloud"}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all",
+                isSpeaking
+                  ? "text-primary bg-primary/10 animate-pulse"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+              )}
+            >
+              {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              <span>{isSpeaking ? "Stop" : "Speak"}</span>
+            </button>
+
             {/* Copy */}
             <button
               onClick={handleCopyResponse}

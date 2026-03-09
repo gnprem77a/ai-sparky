@@ -76,10 +76,23 @@ server/
 - **Share**: generate public share link per conversation
 - **Rename / Delete**: inline rename on double-click or via action row
 
-### Settings (3-tab modal)
+### Settings (full modal with vertical tab nav)
 - **System Prompt tab**: textarea for global system prompt + dropdown to pick active saved prompt
-- **Appearance tab**: font size (Compact/Normal/Large), custom assistant name
+- **Appearance tab**: font size (Compact/Normal/Large), custom assistant name, **language picker** (EN/ES/FR/AR)
+- **Behavior tab**: default model, auto-scroll, auto-title, show token usage toggles
 - **Account tab**: change password
+- **Shortcuts, Memory, Data tabs**: additional settings
+
+### 9 Premium Features Added
+- **Text-to-Speech (T001)**: Speaker button on assistant messages; Web Speech API; pulsing indicator while speaking
+- **Voice Input (T001)**: Mic button in chat input; SpeechRecognition API; red pulsing while recording
+- **Pinned Messages (T002)**: Pin/unpin button on messages; gold badge; slide-out panel in chat header showing all pinned messages with scroll-to capability
+- **Conversation Folders (T003)**: Create/delete folders; move conversations to folders; collapsible folder tree in sidebar with color dots
+- **Usage Analytics (T004)**: `/analytics` page with stat cards (Total Conversations, Messages, Tokens, Avg Length), bar chart (messages/day), pie chart (model usage), line chart (tokens over time)
+- **Command Palette (T005)**: Cmd+K shortcut + header button; fuzzy search across conversations; keyboard navigation; actions (New Chat, Settings, Analytics, Admin)
+- **Canvas/Artifact Mode (T006)**: HTML/SVG code blocks get Code/Preview tabs; live iframe preview with sandbox; Refresh + Open in new tab buttons
+- **Split View (T007)**: Toggle two conversation panels side-by-side; secondary panel has independent conversation selector and full chat capability; persisted in localStorage
+- **Multi-Language UI (T008)**: EN/ES/FR/AR translations; `useLanguage()` hook with LanguageContext; Arabic triggers RTL layout; applied to ChatInput, AuthPage, ChatPage empty state, AppSidebar, SettingsModal
 
 ### Admin
 - **User management**: list users, change plans (Free/Pro with duration)
@@ -88,10 +101,11 @@ server/
 ## Database Tables
 
 - `users` — id, username, password, isAdmin, plan, planExpiresAt, createdAt
-- `conversations` — id, userId, title, model, isPinned, shareToken, createdAt, updatedAt, tags (text[])
-- `messages` — id, conversationId, role, content, modelUsed, attachments (JSON), inputTokens, outputTokens, reaction, stopped, createdAt
+- `conversations` — id, userId, title, model, isPinned, shareToken, folderId, createdAt, updatedAt, tags (text[])
+- `messages` — id, conversationId, role, content, modelUsed, attachments (JSON), inputTokens, outputTokens, reaction, stopped, isPinned, createdAt
 - `user_settings` — userId, systemPrompt, dailyMessageCount, lastMessageDate, fontSize, assistantName, activePromptId
 - `saved_prompts` — id, userId, name, content, createdAt
+- `folders` — id, userId, name, color, createdAt
 - `session` — managed by connect-pg-simple
 
 **Note**: Do NOT run `npm run db:push` directly. Use direct SQL for schema changes.

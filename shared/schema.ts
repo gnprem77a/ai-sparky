@@ -21,8 +21,17 @@ export const conversations = pgTable("conversations", {
   isPinned: boolean("is_pinned").notNull().default(false),
   shareToken: varchar("share_token"),
   tags: text("tags").array().notNull().default(sql`'{}'`),
+  folderId: varchar("folder_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const folders = pgTable("folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  color: varchar("color", { length: 20 }).notNull().default("default"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
 export const messages = pgTable("messages", {
@@ -35,6 +44,7 @@ export const messages = pgTable("messages", {
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
   reaction: text("reaction"),
+  isPinned: boolean("is_pinned").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -72,3 +82,4 @@ export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type UserSettings = typeof userSettings.$inferSelect;
 export type SavedPrompt = typeof savedPrompts.$inferSelect;
+export type Folder = typeof folders.$inferSelect;

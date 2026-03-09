@@ -7,11 +7,13 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { lazy, Suspense } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { CSSProperties } from "react";
+import { LanguageProvider } from "@/lib/i18n";
 
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
+const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 
 (function initTheme() {
@@ -75,6 +77,9 @@ function AppInner() {
         <Route path="/profile">
           <ProfilePage />
         </Route>
+        <Route path="/analytics">
+          <AnalyticsPage />
+        </Route>
         <Route>
           <SidebarProvider style={style} defaultOpen={true}>
             <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -90,10 +95,12 @@ function AppInner() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AppInner />
-        <Toaster />
-      </TooltipProvider>
+      <LanguageProvider>
+        <TooltipProvider>
+          <AppInner />
+          <Toaster />
+        </TooltipProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

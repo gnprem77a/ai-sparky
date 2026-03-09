@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, BarChart2, Folder, ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -11,14 +11,27 @@ import {
   SidebarMenuButton,
   SidebarHeader,
   SidebarFooter,
+  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { Folder as FolderType } from "@shared/schema";
 import type { Conversation } from "@/lib/chat-storage";
 import type { AuthUser } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ImportModal } from "./ImportModal";
+import { useLanguage } from "@/lib/i18n";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuPortal,
+  DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
 
 interface UsageData {
   count: number;
@@ -39,6 +52,15 @@ interface AppSidebarProps {
   user: AuthUser | null;
 }
 
+const FOLDER_COLORS = [
+  { name: "default", class: "bg-muted-foreground/40" },
+  { name: "blue", class: "bg-blue-500" },
+  { name: "green", class: "bg-green-500" },
+  { name: "red", class: "bg-red-500" },
+  { name: "purple", class: "bg-purple-500" },
+  { name: "orange", class: "bg-orange-500" },
+];
+
 export function AppSidebar({
   conversations,
   activeId,
@@ -51,6 +73,7 @@ export function AppSidebar({
   user,
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -63,16 +86,44 @@ export function AppSidebar({
   const [tagPopoverId, setTagPopoverId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   /* Debounce search for full-text lookup */
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 350);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(timer);
   }, [search]);
 
   const { data: usage } = useQuery<UsageData>({
     queryKey: ["/api/settings/usage"],
+  });
+
+  const { data: folders = [] } = useQuery<FolderType[]>({
+    queryKey: ["/api/folders"],
+  });
+
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiRequest("POST", "/api/folders", { name }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/folders"] });
+      setIsCreatingFolder(false);
+      setNewFolderName("");
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/folders/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/folders"] }),
+  });
+
+  const moveToFolderMutation = useMutation({
+    mutationFn: ({ convId, folderId }: { convId: string; folderId: string | null }) =>
+      apiRequest("PATCH", `/api/conversations/${convId}/folder`, { folderId }).then((r) => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations"] }),
   });
 
   interface SearchResult { conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string; }
@@ -91,7 +142,7 @@ export function AppSidebar({
   const isPro = usage?.isPro ?? user?.plan === "pro";
 
   /* All tags across all conversations */
-  const allTags = [...new Set(conversations.flatMap((c) => c.tags ?? []))];
+  const allTags = Array.from(new Set(conversations.flatMap((c) => c.tags ?? [])));
 
   useEffect(() => {
     if (renamingId && renameInputRef.current) {
@@ -110,7 +161,10 @@ export function AppSidebar({
 
   const pinned = filtered.filter((c) => c.isPinned);
   const unpinned = filtered.filter((c) => !c.isPinned);
-  const grouped = groupByDate(unpinned);
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => ({ ...prev, [folderId]: !prev[folderId] }));
+  };
 
   const startRename = (conv: Conversation, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -151,7 +205,7 @@ export function AppSidebar({
   const renderConvItem = (conv: Conversation) => {
     const isRenaming = renamingId === conv.id;
     return (
-      <SidebarMenuItem key={conv.id} className="relative">
+      <SidebarMenuItem key={conv.id} className="relative group/menu-item">
         <SidebarMenuButton
           isActive={conv.id === activeId}
           onClick={() => !isRenaming && onSelectConversation(conv.id)}
@@ -195,52 +249,53 @@ export function AppSidebar({
 
           {!isRenaming && (hoveredId === conv.id || conv.id === activeId) && (
             <div className="flex items-center gap-0.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-              {/* Pin */}
-              <span
-                role="button"
-                onClick={(e) => { e.stopPropagation(); onPinConversation(conv.id, !conv.isPinned); }}
-                data-testid={`button-pin-${conv.id}`}
-                title={conv.isPinned ? "Unpin" : "Pin"}
-                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-              >
-                {conv.isPinned
-                  ? <PinOff className="w-3.5 h-3.5" />
-                  : <Pin className="w-3.5 h-3.5" />
-                }
-              </span>
-
-              {/* Tag */}
-              <span
-                role="button"
-                onClick={(e) => { e.stopPropagation(); setTagPopoverId(tagPopoverId === conv.id ? null : conv.id); setTagInput(""); }}
-                data-testid={`button-tag-${conv.id}`}
-                title="Add tag"
-                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-              >
-                <Tag className="w-3.5 h-3.5" />
-              </span>
-
-              {/* Share */}
-              <span
-                role="button"
-                onClick={(e) => handleShareClick(conv.id, e)}
-                data-testid={`button-share-${conv.id}`}
-                title="Share conversation"
-                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </span>
-
-              {/* Delete */}
-              <span
-                role="button"
-                onClick={(e) => { e.stopPropagation(); onDeleteConversation(conv.id); }}
-                data-testid={`button-delete-${conv.id}`}
-                title="Delete"
-                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <span
+                    role="button"
+                    className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => onPinConversation(conv.id, !conv.isPinned)}>
+                    {conv.isPinned ? <PinOff className="w-4 h-4 mr-2" /> : <Pin className="w-4 h-4 mr-2" />}
+                    {conv.isPinned ? "Unpin" : "Pin"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Folder className="w-4 h-4 mr-2" />
+                      Move to Folder
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem onClick={() => moveToFolderMutation.mutate({ convId: conv.id, folderId: null })}>
+                          No Folder
+                        </DropdownMenuItem>
+                        {folders.map((f) => (
+                          <DropdownMenuItem key={f.id} onClick={() => moveToFolderMutation.mutate({ convId: conv.id, folderId: f.id })}>
+                            <div className={cn("w-2 h-2 rounded-full mr-2", FOLDER_COLORS.find(c => c.name === f.color)?.class || "bg-muted-foreground/40")} />
+                            {f.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setTagPopoverId(tagPopoverId === conv.id ? null : conv.id); setTagInput(""); }}>
+                    <Tag className="w-4 h-4 mr-2" />
+                    Tags
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => handleShareClick(conv.id, e)}>
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDeleteConversation(conv.id)} className="text-destructive focus:text-destructive">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
         </SidebarMenuButton>
@@ -408,7 +463,7 @@ export function AppSidebar({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search conversations…"
+            placeholder={t("sidebar.search")}
             data-testid="input-search-conversations"
             className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg bg-muted/50 border border-border/40 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
           />
@@ -486,7 +541,7 @@ export function AppSidebar({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground/80">
-                {search ? "No matches found" : tagFilter ? `No conversations tagged #${tagFilter}` : "No conversations"}
+                {search ? "No matches found" : tagFilter ? `No conversations tagged #${tagFilter}` : t("sidebar.noConversations")}
               </p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 {search ? "Try a different search term" : "Start a new chat to get going"}
@@ -499,7 +554,7 @@ export function AppSidebar({
             {pinned.length > 0 && (
               <SidebarGroup className="py-0.5">
                 <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold flex items-center gap-1">
-                  <Pin className="w-2.5 h-2.5" /> Pinned
+                  <Pin className="w-2.5 h-2.5" /> {t("sidebar.pinnedChats")}
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-0.5">
@@ -509,8 +564,90 @@ export function AppSidebar({
               </SidebarGroup>
             )}
 
-            {/* Date-grouped */}
-            {Object.entries(grouped).map(([label, convs]) => (
+            {/* Folders */}
+            <SidebarGroup className="py-0.5">
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <SidebarGroupLabel className="text-[10px] p-0 text-muted-foreground/60 uppercase tracking-widest font-semibold">
+                  {t("sidebar.folders")}
+                </SidebarGroupLabel>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-4 w-4 text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => setIsCreatingFolder(true)}
+                >
+                  <Plus className="w-3 h-3" />
+                </Button>
+              </div>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {isCreatingFolder && (
+                    <SidebarMenuItem className="px-2 py-1">
+                      <input
+                        autoFocus
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        onBlur={() => { if (!newFolderName) setIsCreatingFolder(false); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newFolderName.trim()) {
+                            createFolderMutation.mutate(newFolderName.trim());
+                          } else if (e.key === "Escape") {
+                            setIsCreatingFolder(false);
+                            setNewFolderName("");
+                          }
+                        }}
+                        placeholder={t("sidebar.folderName")}
+                        className="w-full bg-muted/50 border-none text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                      />
+                    </SidebarMenuItem>
+                  )}
+                  {folders.map((folder) => {
+                    const folderConvs = unpinned.filter((c) => c.folderId === folder.id);
+                    const isExpanded = expandedFolders[folder.id];
+                    return (
+                      <div key={folder.id}>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            onClick={() => toggleFolder(folder.id)}
+                            className="w-full group/folder"
+                          >
+                            {isExpanded ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />}
+                            <div className={cn("w-2 h-2 rounded-full mr-2", FOLDER_COLORS.find(c => c.name === folder.color)?.class || "bg-muted-foreground/40")} />
+                            <span className="flex-1 truncate text-[13px]">{folder.name}</span>
+                            <span className="text-[10px] text-muted-foreground/60 px-1.5">{folderConvs.length}</span>
+                          </SidebarMenuButton>
+                          <SidebarMenuAction className="opacity-0 group-hover/folder:opacity-100">
+                             <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => deleteFolderMutation.mutate(folder.id)} className="text-destructive focus:text-destructive">
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete Folder
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                             </DropdownMenu>
+                          </SidebarMenuAction>
+                        </SidebarMenuItem>
+                        {isExpanded && (
+                          <div className="ml-4 border-l border-border/40 pl-1 mt-0.5 flex flex-col gap-0.5">
+                            {folderConvs.length === 0 ? (
+                              <div className="px-3 py-2 text-[11px] text-muted-foreground/50 italic">Empty</div>
+                            ) : (
+                              folderConvs.map(renderConvItem)
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            {/* Date-grouped (Unfolded) */}
+            {Object.entries(groupByDate(unpinned.filter(c => !c.folderId))).map(([label, convs]) => (
               <SidebarGroup key={label} className="py-0.5">
                 <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold">
                   {label}
@@ -526,7 +663,18 @@ export function AppSidebar({
         )}
       </SidebarContent>
 
-      <SidebarFooter className="px-3 py-3">
+      <SidebarFooter className="px-3 py-3 space-y-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="/analytics" data-testid="link-analytics">
+                <BarChart2 className="w-4 h-4" />
+                <span>{t("sidebar.analytics")}</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
         <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-muted/40">
           <div className={cn(
             "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold",
@@ -594,9 +742,12 @@ function groupByDate(conversations: Conversation[]): Record<string, Conversation
     rawGroups[label].push(conv);
   }
 
-  const ordered: Record<string, Conversation[]> = {};
-  for (const key of GROUP_ORDER) {
-    if (rawGroups[key]) ordered[key] = rawGroups[key];
+  const sortedGroups: Record<string, Conversation[]> = {};
+  for (const label of GROUP_ORDER) {
+    if (rawGroups[label]) {
+      sortedGroups[label] = rawGroups[label];
+    }
   }
-  return ordered;
+
+  return sortedGroups;
 }

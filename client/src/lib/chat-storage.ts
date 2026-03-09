@@ -18,6 +18,7 @@ export interface Message {
   stopped?: boolean;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  isPinned: boolean;
 }
 
 export interface Conversation {
@@ -28,6 +29,7 @@ export interface Conversation {
   isPinned: boolean;
   shareToken?: string | null;
   tags: string[];
+  folderId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +44,7 @@ export interface ApiMessage {
   reaction?: string | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  isPinned: boolean;
 }
 
 export function apiMessageToLocal(m: ApiMessage): Message {
@@ -55,6 +58,7 @@ export function apiMessageToLocal(m: ApiMessage): Message {
     reaction: m.reaction ?? null,
     inputTokens: m.inputTokens ?? null,
     outputTokens: m.outputTokens ?? null,
+    isPinned: m.isPinned ?? false,
   };
 }
 

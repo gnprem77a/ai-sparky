@@ -3,10 +3,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   X, Save, Lock, Bot, Eye, EyeOff, Palette, Zap, Brain, SlidersHorizontal,
-  Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command,
+  Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MODELS, type ModelId } from "@/components/ModelSelector";
+import { useLanguage, LANGUAGES } from "@/lib/i18n";
 
 type Tab = "prompt" | "memory" | "behavior" | "shortcuts" | "data" | "appearance" | "account";
 
@@ -69,6 +70,7 @@ function Toggle({ checked, onChange, testId }: { checked: boolean; onChange: (v:
 
 export function SettingsModal({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>("prompt");
+  const { lang, setLang } = useLanguage();
 
   const [systemPrompt, setSystemPrompt] = useState("");
   const [fontSize, setFontSize] = useState("normal");
@@ -326,7 +328,7 @@ export function SettingsModal({ onClose }: Props) {
                       <input type="radio" name="defaultModel" checked={defaultModel === m.id} onChange={() => setDefaultModel(m.id)} className="accent-primary" data-testid={`radio-model-${m.id}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground">{m.name}</p>
+                          <p className="text-sm font-medium text-foreground">{m.friendlyName}</p>
                           {m.id === "auto" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">Recommended</span>}
                         </div>
                         <p className="text-xs text-muted-foreground">{m.description}</p>
@@ -484,6 +486,24 @@ export function SettingsModal({ onClose }: Props) {
                   maxLength={30}
                   className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1 flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-primary" /> Interface Language
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">Choose the language for all UI text.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {LANGUAGES.map((l) => (
+                    <label key={l.code} data-testid={`radio-lang-${l.code}`} className={cn(
+                      "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-all",
+                      lang === l.code ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/30"
+                    )}>
+                      <input type="radio" name="language" checked={lang === l.code} onChange={() => setLang(l.code)} className="accent-primary" />
+                      <span className="text-lg leading-none">{l.flag}</span>
+                      <span className="text-sm font-medium text-foreground">{l.label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
