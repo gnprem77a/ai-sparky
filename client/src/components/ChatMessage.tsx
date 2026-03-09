@@ -138,6 +138,7 @@ interface ChatMessageProps {
   assistantName?: string;
   fontSize?: string;
   searchQuery?: string;
+  showTokenUsage?: boolean;
 }
 
 function highlightText(text: string, query: string): ReactNode {
@@ -224,7 +225,7 @@ function CSVTable({ data, filename }: { data: string; filename: string }) {
   );
 }
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "" }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -720,7 +721,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
             })()}
 
             {/* Token badge */}
-            {(message.outputTokens ?? 0) > 0 && (
+            {showTokenUsage && (message.outputTokens ?? 0) > 0 && (
               <span
                 data-testid="badge-token-count"
                 className="ml-auto text-[10px] text-muted-foreground/35 tabular-nums"
@@ -746,6 +747,7 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.assistantName === next.assistantName &&
   prev.fontSize === next.fontSize &&
   prev.searchQuery === next.searchQuery &&
+  prev.showTokenUsage === next.showTokenUsage &&
   prev.onRegenerate === next.onRegenerate &&
   prev.onEdit === next.onEdit &&
   prev.onFork === next.onFork &&

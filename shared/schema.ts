@@ -46,6 +46,11 @@ export const userSettings = pgTable("user_settings", {
   fontSize: text("font_size").notNull().default("normal"),
   assistantName: text("assistant_name").notNull().default("Assistant"),
   activePromptId: varchar("active_prompt_id"),
+  defaultModel: text("default_model").notNull().default("auto"),
+  autoScroll: boolean("auto_scroll").notNull().default(true),
+  autoTitle: boolean("auto_title").notNull().default(true),
+  showTokenUsage: boolean("show_token_usage").notNull().default(false),
+  customInstructions: text("custom_instructions").notNull().default(""),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {

@@ -1,16 +1,25 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { X, Save, Lock, Bot, Eye, EyeOff, Palette, Zap } from "lucide-react";
+import {
+  X, Save, Lock, Bot, Eye, EyeOff, Palette, Zap, Brain, SlidersHorizontal,
+  Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MODELS, type ModelId } from "@/components/ModelSelector";
 
-type Tab = "prompt" | "appearance" | "account";
+type Tab = "prompt" | "memory" | "behavior" | "shortcuts" | "data" | "appearance" | "account";
 
 interface Settings {
   systemPrompt: string;
   fontSize: string;
   assistantName: string;
   activePromptId: string | null;
+  defaultModel: string;
+  autoScroll: boolean;
+  autoTitle: boolean;
+  showTokenUsage: boolean;
+  customInstructions: string;
 }
 
 interface SavedPrompt {
@@ -29,12 +38,48 @@ const FONT_SIZES = [
   { value: "large", label: "Large", desc: "Easier to read, more spacious" },
 ];
 
+const SHORTCUTS = [
+  { keys: ["Ctrl", "K"], mac: ["⌘", "K"], label: "New conversation" },
+  { keys: ["Ctrl", "F"], mac: ["⌘", "F"], label: "Search in conversation" },
+  { keys: ["Escape"], mac: ["Esc"], label: "Close search / close modal" },
+  { keys: ["Enter"], mac: ["Return"], label: "Send message" },
+  { keys: ["Shift", "Enter"], mac: ["⇧", "Return"], label: "New line in message" },
+];
+
+function Toggle({ checked, onChange, testId }: { checked: boolean; onChange: (v: boolean) => void; testId?: string }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      data-testid={testId}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative w-10 h-5.5 rounded-full transition-colors flex-shrink-0",
+        checked ? "bg-primary" : "bg-muted-foreground/30"
+      )}
+      style={{ height: "22px", width: "40px" }}
+    >
+      <span className={cn(
+        "absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform",
+        checked ? "translate-x-[18px]" : "translate-x-0"
+      )} />
+    </button>
+  );
+}
+
 export function SettingsModal({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>("prompt");
+
   const [systemPrompt, setSystemPrompt] = useState("");
   const [fontSize, setFontSize] = useState("normal");
   const [assistantName, setAssistantName] = useState("Assistant");
   const [activePromptId, setActivePromptId] = useState<string | null>(null);
+  const [defaultModel, setDefaultModel] = useState<ModelId>("auto");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoTitle, setAutoTitle] = useState(true);
+  const [showTokenUsage, setShowTokenUsage] = useState(false);
+  const [customInstructions, setCustomInstructions] = useState("");
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -42,6 +87,9 @@ export function SettingsModal({ onClose }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
+
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [isMac] = useState(() => navigator.platform.toUpperCase().includes("MAC"));
 
   const { data: settings } = useQuery<Settings>({
     queryKey: ["/api/settings"],
@@ -59,16 +107,17 @@ export function SettingsModal({ onClose }: Props) {
       setFontSize(settings.fontSize ?? "normal");
       setAssistantName(settings.assistantName ?? "Assistant");
       setActivePromptId(settings.activePromptId ?? null);
+      setDefaultModel((settings.defaultModel as ModelId) ?? "auto");
+      setAutoScroll(settings.autoScroll ?? true);
+      setAutoTitle(settings.autoTitle ?? true);
+      setShowTokenUsage(settings.showTokenUsage ?? false);
+      setCustomInstructions(settings.customInstructions ?? "");
     }
   }, [settings]);
 
-  const savePromptMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", "/api/settings", { systemPrompt }).then((r) => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/settings"] }),
-  });
-
-  const saveAppearanceMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", "/api/settings", { fontSize, assistantName, activePromptId }).then((r) => r.json()),
+  const saveMutation = useMutation({
+    mutationFn: (data: Partial<Settings>) =>
+      apiRequest("PATCH", "/api/settings", data).then((r) => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/settings"] }),
   });
 
@@ -79,37 +128,44 @@ export function SettingsModal({ onClose }: Props) {
         return r.json();
       }),
     onSuccess: () => {
-      setPwSuccess(true);
-      setPwError("");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      setPwSuccess(true); setPwError("");
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
       setTimeout(() => setPwSuccess(false), 3000);
     },
     onError: (e: Error) => setPwError(e.message),
   });
 
+  const clearAllMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/data/conversations").then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      setClearConfirm(false);
+      onClose();
+    },
+  });
+
   const handleChangePassword = () => {
     setPwError("");
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPwError("All fields are required.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPwError("New passwords do not match.");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPwError("New password must be at least 6 characters.");
-      return;
-    }
+    if (!currentPassword || !newPassword || !confirmPassword) { setPwError("All fields are required."); return; }
+    if (newPassword !== confirmPassword) { setPwError("New passwords do not match."); return; }
+    if (newPassword.length < 6) { setPwError("Password must be at least 6 characters."); return; }
     changePasswordMutation.mutate({ currentPassword, newPassword });
   };
+
+  const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
+    { id: "prompt", label: "Prompt", icon: Bot },
+    { id: "memory", label: "Memory", icon: Brain },
+    { id: "behavior", label: "Behavior", icon: SlidersHorizontal },
+    { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
+    { id: "data", label: "Data", icon: Database },
+    { id: "appearance", label: "Appearance", icon: Palette },
+    { id: "account", label: "Account", icon: Lock },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
@@ -120,17 +176,14 @@ export function SettingsModal({ onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-border/60">
-          {([
-            { id: "prompt" as Tab, label: "System Prompt", icon: Bot },
-            { id: "appearance" as Tab, label: "Appearance", icon: Palette },
-            { id: "account" as Tab, label: "Account", icon: Lock },
-          ] as const).map(({ id, label, icon: Icon }) => (
+        <div className="flex border-b border-border/60 overflow-x-auto">
+          {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
+              data-testid={`tab-settings-${id}`}
               className={cn(
-                "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
+                "flex items-center gap-1.5 px-4 py-3 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap flex-shrink-0",
                 tab === id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -143,34 +196,24 @@ export function SettingsModal({ onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+        <div className="p-6 max-h-[65vh] overflow-y-auto custom-scrollbar">
+
+          {/* ── Prompt ── */}
           {tab === "prompt" && (
             <div className="space-y-4">
-              {/* Active prompt selector */}
               {prompts.length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-foreground mb-1 flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-primary" />
-                    Active Prompt
+                    <Zap className="w-3.5 h-3.5 text-primary" /> Active Prompt
                   </p>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Select a saved prompt to use as your active system prompt.
-                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">Select a saved prompt as your active system prompt.</p>
                   <div className="space-y-1.5">
-                    <label className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all",
-                      activePromptId === null ? "border-primary/50 bg-primary/5" : "border-border hover:border-border/80 hover:bg-muted/30"
-                    )}>
+                    <label className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all", activePromptId === null ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/30")}>
                       <input type="radio" name="activePrompt" checked={activePromptId === null} onChange={() => setActivePromptId(null)} className="accent-primary" />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">None (use text prompt below)</p>
-                      </div>
+                      <p className="text-xs font-medium text-foreground">None (use custom prompt below)</p>
                     </label>
                     {prompts.map((p) => (
-                      <label key={p.id} className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all",
-                        activePromptId === p.id ? "border-primary/50 bg-primary/5" : "border-border hover:border-border/80 hover:bg-muted/30"
-                      )}>
+                      <label key={p.id} className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all", activePromptId === p.id ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/30")}>
                         <input type="radio" name="activePrompt" checked={activePromptId === p.id} onChange={() => setActivePromptId(p.id)} className="accent-primary" />
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-foreground truncate">{p.title || "Untitled"}</p>
@@ -181,43 +224,226 @@ export function SettingsModal({ onClose }: Props) {
                   </div>
                 </div>
               )}
-
-              <div className={cn(prompts.length > 0 && "opacity-60 pointer-events-none" && activePromptId !== null && "opacity-60 pointer-events-none")}>
+              <div>
                 <p className="text-sm font-medium text-foreground mb-1">Custom System Prompt</p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  This instruction is prepended to every conversation. Use it to set the AI's persona, tone, or area of expertise.
-                </p>
+                <p className="text-xs text-muted-foreground mb-3">Sets the AI's role, tone, or persona for every conversation.</p>
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
                   data-testid="input-system-prompt"
-                  placeholder='e.g. "You are a concise coding assistant who prefers TypeScript. Always explain your reasoning."'
+                  placeholder='e.g. "You are a concise coding assistant who prefers TypeScript."'
                   rows={5}
                   className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none custom-scrollbar"
                 />
-                <p className="text-xs text-muted-foreground mt-1.5">{systemPrompt.length} characters</p>
+                <p className="text-xs text-muted-foreground mt-1">{systemPrompt.length} characters</p>
               </div>
-
               <div className="flex items-center gap-3">
-                {savePromptMutation.isSuccess && (
-                  <span className="text-xs text-emerald-500 font-medium">Saved!</span>
-                )}
+                {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
                 <button
-                  onClick={() => savePromptMutation.mutate()}
-                  disabled={savePromptMutation.isPending}
+                  onClick={() => saveMutation.mutate({ systemPrompt, activePromptId })}
+                  disabled={saveMutation.isPending}
                   data-testid="button-save-prompt"
-                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  {savePromptMutation.isPending ? "Saving…" : "Save Prompt"}
+                  {saveMutation.isPending ? "Saving…" : "Save Prompt"}
                 </button>
               </div>
             </div>
           )}
 
+          {/* ── Memory ── */}
+          {tab === "memory" && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">Custom Instructions</p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tell Claude about yourself and how you want it to respond. This is silently added to every conversation — separate from your system prompt.
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  {[
+                    "I'm a software engineer. Assume technical knowledge.",
+                    "Always be concise and direct. Avoid filler words.",
+                    "I prefer code examples over lengthy explanations.",
+                    "Always explain your reasoning step by step.",
+                  ].map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => setCustomInstructions((c) => c ? c + "\n" + ex : ex)}
+                      className="text-left text-xs px-3 py-2 rounded-lg border border-border/50 bg-muted/20 text-muted-foreground hover:text-foreground hover:border-border transition-all"
+                    >
+                      + {ex}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={customInstructions}
+                  onChange={(e) => setCustomInstructions(e.target.value)}
+                  data-testid="input-custom-instructions"
+                  placeholder="e.g. I'm a software engineer. Always be concise. Prefer TypeScript over JavaScript."
+                  rows={6}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none custom-scrollbar"
+                />
+                <p className="text-xs text-muted-foreground mt-1">{customInstructions.length} characters</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
+                <button
+                  onClick={() => saveMutation.mutate({ customInstructions })}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-save-memory"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saveMutation.isPending ? "Saving…" : "Save Instructions"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Behavior ── */}
+          {tab === "behavior" && (
+            <div className="space-y-6">
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">Default Model</p>
+                <p className="text-xs text-muted-foreground mb-3">Used when starting a new conversation.</p>
+                <div className="space-y-2">
+                  {MODELS.map((m) => (
+                    <label key={m.id} className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all",
+                      defaultModel === m.id ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/30"
+                    )}>
+                      <input type="radio" name="defaultModel" checked={defaultModel === m.id} onChange={() => setDefaultModel(m.id)} className="accent-primary" data-testid={`radio-model-${m.id}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground">{m.name}</p>
+                          {m.id === "auto" && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">Recommended</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{m.description}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">Chat Behavior</p>
+                {[
+                  { key: "autoScroll" as const, label: "Auto-scroll to new messages", desc: "Automatically scroll to the bottom as responses arrive", value: autoScroll, onChange: setAutoScroll, testId: "toggle-auto-scroll" },
+                  { key: "autoTitle" as const, label: "Auto-generate conversation titles", desc: "Generate a title from the first message automatically", value: autoTitle, onChange: setAutoTitle, testId: "toggle-auto-title" },
+                  { key: "showTokenUsage" as const, label: "Show token usage per message", desc: "Display input/output token counts below each AI response", value: showTokenUsage, onChange: setShowTokenUsage, testId: "toggle-token-usage" },
+                ].map(({ label, desc, value, onChange, testId }) => (
+                  <div key={testId} className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-border/50 bg-muted/10">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                    </div>
+                    <Toggle checked={value} onChange={onChange} testId={testId} />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
+                <button
+                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage })}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-save-behavior"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {saveMutation.isPending ? "Saving…" : "Save Behavior"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Shortcuts ── */}
+          {tab === "shortcuts" && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">Keyboard shortcuts available throughout the app.</p>
+              <div className="space-y-2">
+                {SHORTCUTS.map(({ keys, mac, label }) => (
+                  <div key={label} className="flex items-center justify-between px-4 py-3 rounded-xl border border-border/50 bg-muted/10">
+                    <span className="text-sm text-foreground">{label}</span>
+                    <div className="flex items-center gap-1">
+                      {(isMac ? mac : keys).map((k, i) => (
+                        <span key={i} className="flex items-center gap-1">
+                          {i > 0 && <span className="text-muted-foreground/50 text-xs">+</span>}
+                          <kbd className="px-2 py-0.5 rounded border border-border bg-muted text-xs font-mono text-foreground shadow-sm">{k}</kbd>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 p-3 rounded-xl bg-primary/5 border border-primary/15">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Command className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  On Mac, <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted text-xs font-mono">⌘</kbd> replaces <kbd className="px-1.5 py-0.5 rounded border border-border bg-muted text-xs font-mono">Ctrl</kbd> for all shortcuts.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Data ── */}
+          {tab === "data" && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl border border-border/50 bg-muted/10 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Export All Conversations</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Download all your conversations as a JSON file.</p>
+                </div>
+                <a
+                  href="/api/data/export"
+                  download
+                  data-testid="button-export-all"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Export JSON
+                </a>
+              </div>
+
+              <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
+                    Clear All Chat History
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Permanently delete all your conversations. This cannot be undone.</p>
+                </div>
+                {!clearConfirm ? (
+                  <button
+                    onClick={() => setClearConfirm(true)}
+                    data-testid="button-clear-history"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-destructive/50 text-destructive text-sm font-semibold hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear All History
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-destructive font-medium">Are you sure? This is permanent.</p>
+                    <button
+                      onClick={() => clearAllMutation.mutate()}
+                      disabled={clearAllMutation.isPending}
+                      data-testid="button-confirm-clear"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+                    >
+                      <Check className="w-3 h-3" />
+                      {clearAllMutation.isPending ? "Deleting…" : "Yes, delete all"}
+                    </button>
+                    <button onClick={() => setClearConfirm(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Appearance ── */}
           {tab === "appearance" && (
             <div className="space-y-6">
-              {/* Font size */}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1">Chat Font Size</p>
                 <p className="text-xs text-muted-foreground mb-3">Controls the text size in the chat area.</p>
@@ -225,17 +451,9 @@ export function SettingsModal({ onClose }: Props) {
                   {FONT_SIZES.map((fs) => (
                     <label key={fs.value} className={cn(
                       "flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all",
-                      fontSize === fs.value ? "border-primary/50 bg-primary/5" : "border-border hover:border-border/80 hover:bg-muted/30"
+                      fontSize === fs.value ? "border-primary/50 bg-primary/5" : "border-border hover:bg-muted/30"
                     )}>
-                      <input
-                        type="radio"
-                        name="fontSize"
-                        value={fs.value}
-                        checked={fontSize === fs.value}
-                        onChange={() => setFontSize(fs.value)}
-                        data-testid={`radio-font-${fs.value}`}
-                        className="accent-primary"
-                      />
+                      <input type="radio" name="fontSize" value={fs.value} checked={fontSize === fs.value} onChange={() => setFontSize(fs.value)} data-testid={`radio-font-${fs.value}`} className="accent-primary" />
                       <div>
                         <p className="text-sm font-medium text-foreground">{fs.label}</p>
                         <p className="text-xs text-muted-foreground">{fs.desc}</p>
@@ -244,11 +462,9 @@ export function SettingsModal({ onClose }: Props) {
                   ))}
                 </div>
               </div>
-
-              {/* AI Name */}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1">Assistant Name</p>
-                <p className="text-xs text-muted-foreground mb-3">Personalize what you call your AI assistant.</p>
+                <p className="text-xs text-muted-foreground mb-3">Personalize what you call your AI.</p>
                 <input
                   type="text"
                   value={assistantName}
@@ -259,24 +475,22 @@ export function SettingsModal({ onClose }: Props) {
                   className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
-
               <div className="flex items-center gap-3">
-                {saveAppearanceMutation.isSuccess && (
-                  <span className="text-xs text-emerald-500 font-medium">Saved!</span>
-                )}
+                {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
                 <button
-                  onClick={() => saveAppearanceMutation.mutate()}
-                  disabled={saveAppearanceMutation.isPending}
+                  onClick={() => saveMutation.mutate({ fontSize, assistantName })}
+                  disabled={saveMutation.isPending}
                   data-testid="button-save-appearance"
-                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  {saveAppearanceMutation.isPending ? "Saving…" : "Save Changes"}
+                  {saveMutation.isPending ? "Saving…" : "Save Changes"}
                 </button>
               </div>
             </div>
           )}
 
+          {/* ── Account ── */}
           {tab === "account" && (
             <div className="space-y-4">
               <div>
@@ -285,54 +499,28 @@ export function SettingsModal({ onClose }: Props) {
               </div>
               <div className="space-y-3">
                 <div className="relative">
-                  <input
-                    type={showCurrent ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Current password"
-                    data-testid="input-current-password"
-                    className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
+                  <input type={showCurrent ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" data-testid="input-current-password" className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   <button type="button" onClick={() => setShowCurrent((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                     {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 <div className="relative">
-                  <input
-                    type={showNew ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="New password"
-                    data-testid="input-new-password"
-                    className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
+                  <input type={showNew ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" data-testid="input-new-password" className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   <button type="button" onClick={() => setShowNew((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                     {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm new password"
-                  data-testid="input-confirm-password"
-                  onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
-                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" data-testid="input-confirm-password" onKeyDown={(e) => e.key === "Enter" && handleChangePassword()} className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               {pwError && <p className="text-xs text-destructive">{pwError}</p>}
               {pwSuccess && <p className="text-xs text-emerald-500 font-medium">Password updated successfully!</p>}
-              <button
-                onClick={handleChangePassword}
-                disabled={changePasswordMutation.isPending}
-                data-testid="button-change-password"
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
+              <button onClick={handleChangePassword} disabled={changePasswordMutation.isPending} data-testid="button-change-password" className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50">
                 <Lock className="w-3.5 h-3.5" />
                 {changePasswordMutation.isPending ? "Saving…" : "Update Password"}
               </button>
             </div>
           )}
+
         </div>
       </div>
     </div>

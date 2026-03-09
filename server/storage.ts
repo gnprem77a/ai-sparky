@@ -33,7 +33,8 @@ export interface IStorage {
   searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
-  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId">>): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions">>): Promise<UserSettings>;
+  deleteAllConversations(userId: string): Promise<void>;
 
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
   createSavedPrompt(userId: string, title: string, content: string): Promise<SavedPrompt>;
@@ -210,10 +211,14 @@ export class DatabaseStorage implements IStorage {
     return settings;
   }
 
-  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId">>): Promise<UserSettings> {
+  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions">>): Promise<UserSettings> {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;
+  }
+
+  async deleteAllConversations(userId: string): Promise<void> {
+    await db.delete(conversations).where(eq(conversations.userId, userId));
   }
 
   async getSavedPrompts(userId: string): Promise<SavedPrompt[]> {

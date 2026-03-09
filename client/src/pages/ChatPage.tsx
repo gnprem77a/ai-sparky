@@ -71,14 +71,27 @@ export default function ChatPage() {
 
   const isPro = isProActive(user);
 
-  /* ── Load user settings (font size, assistant name) ── */
-  const { data: userSettings } = useQuery<{ fontSize: string; assistantName: string; activePromptId: string | null }>({
+  /* ── Load user settings ── */
+  const { data: userSettings } = useQuery<{
+    fontSize: string; assistantName: string; activePromptId: string | null;
+    defaultModel: string; autoScroll: boolean; autoTitle: boolean; showTokenUsage: boolean;
+  }>({
     queryKey: ["/api/settings"],
     queryFn: () => fetch("/api/settings", { credentials: "include" }).then((r) => r.json()),
     enabled: !!user,
   });
   const fontSize = userSettings?.fontSize ?? "normal";
   const assistantName = userSettings?.assistantName ?? "Assistant";
+  const autoScroll = userSettings?.autoScroll ?? true;
+  const autoTitle = userSettings?.autoTitle ?? true;
+  const showTokenUsage = userSettings?.showTokenUsage ?? false;
+
+  /* ── Apply default model once settings load (only for new chats) ── */
+  useEffect(() => {
+    if (userSettings?.defaultModel && !activeId) {
+      setModel(userSettings.defaultModel as ModelId);
+    }
+  }, [userSettings?.defaultModel]);
 
   /* ── Elapsed time timer during streaming ── */
   useEffect(() => {
@@ -125,8 +138,8 @@ export default function ChatPage() {
 
   /* ── Auto-scroll ── */
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isStreaming]);
+    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, isStreaming, autoScroll]);
 
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
@@ -577,7 +590,9 @@ export default function ChatPage() {
     let convId = activeId;
 
     if (!convId) {
-      const title = generateTitle(text || attachments[0]?.name || "File upload");
+      const title = autoTitle
+        ? generateTitle(text || attachments[0]?.name || "File upload")
+        : (text.slice(0, 40) || attachments[0]?.name || "New Conversation");
       const res = await apiRequest("POST", "/api/conversations", {
         title,
         model: isPro ? model : "fast",
@@ -856,6 +871,7 @@ export default function ChatPage() {
                   assistantName={assistantName}
                   fontSize={fontSize}
                   searchQuery={searchQuery}
+                  showTokenUsage={showTokenUsage}
                   onRegenerate={
                     msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
                       ? handleRegenerate

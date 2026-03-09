@@ -344,14 +344,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── settings: update ── */
   app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
-    const { systemPrompt, fontSize, assistantName, activePromptId } = req.body;
+    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions } = req.body;
     const updateData: Parameters<typeof storage.updateUserSettings>[1] = {};
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (fontSize !== undefined) updateData.fontSize = fontSize;
     if (assistantName !== undefined) updateData.assistantName = assistantName;
     if ("activePromptId" in req.body) updateData.activePromptId = activePromptId ?? null;
+    if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
+    if (autoScroll !== undefined) updateData.autoScroll = autoScroll;
+    if (autoTitle !== undefined) updateData.autoTitle = autoTitle;
+    if (showTokenUsage !== undefined) updateData.showTokenUsage = showTokenUsage;
+    if (customInstructions !== undefined) updateData.customInstructions = customInstructions;
     const settings = await storage.updateUserSettings(req.session.userId!, updateData);
     return res.json(settings);
+  });
+
+  /* ── data: export all conversations ── */
+  app.get("/api/data/export", requireAuth as any, async (req: Request, res: Response) => {
+    const convs = await storage.getConversations(req.session.userId!);
+    const full = await Promise.all(convs.map(async (c) => {
+      const msgs = await storage.getMessages(c.id);
+      return { ...c, messages: msgs };
+    }));
+    res.setHeader("Content-Disposition", `attachment; filename="claude-chat-export-${new Date().toISOString().split("T")[0]}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    return res.json(full);
+  });
+
+  /* ── data: delete all conversations ── */
+  app.delete("/api/data/conversations", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteAllConversations(req.session.userId!);
+    return res.json({ success: true });
   });
 
   /* ── settings: usage counter ── */
@@ -546,6 +569,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const prompts = await storage.getSavedPrompts(user.id);
       const active = prompts.find((p) => p.id === settings.activePromptId);
       if (active) systemPrompt = active.content;
+    }
+    const customInstructions = settings.customInstructions?.trim();
+    if (customInstructions) {
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
     }
 
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);
