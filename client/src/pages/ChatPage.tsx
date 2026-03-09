@@ -26,7 +26,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [model, setModel] = useState<ModelId>("claude-sonnet");
+  const [model, setModel] = useState<ModelId>("auto");
   const [error, setError] = useState<string | null>(null);
 
   const { theme, toggleTheme } = useTheme();
@@ -159,6 +159,17 @@ export default function ChatPage() {
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) throw new Error(parsed.error);
+            if (parsed.modelUsed) {
+              const updated: Conversation = {
+                ...currentConversation,
+                messages: currentConversation.messages.map((m) =>
+                  m.id === assistantMsgId ? { ...m, modelUsed: parsed.modelUsed } : m
+                ),
+              };
+              currentConversation = updated;
+              updateConversation(updated);
+              refreshConversations();
+            }
             if (parsed.text) {
               accumulated += parsed.text;
               const updated: Conversation = {

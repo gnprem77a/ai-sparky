@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Copy, Check, User, RefreshCw, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
+import { MODEL_USED_STYLES } from "@/components/ModelSelector";
 
 const codeTheme = {
   'code[class*="language-"]': { color: "#e2e8f0", background: "none", fontFamily: "'JetBrains Mono', monospace", fontSize: "0.8125rem", lineHeight: "1.6", tabSize: 2, hyphens: "none" as const },
@@ -206,7 +207,7 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
           )}
         </div>
 
-        {/* Message actions */}
+        {/* Message actions + model badge */}
         {!isStreaming && message.content && (
           <div
             className={cn(
@@ -234,6 +235,21 @@ export function ChatMessage({ message, isStreaming, onRegenerate, isLast }: Chat
                 <span>Regenerate</span>
               </button>
             )}
+            {message.modelUsed && (() => {
+              const style = MODEL_USED_STYLES[message.modelUsed];
+              if (!style) return null;
+              return (
+                <span
+                  data-testid="badge-model-used"
+                  className={cn(
+                    "ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border border-transparent",
+                    style.bg, style.color
+                  )}
+                >
+                  {style.label}
+                </span>
+              );
+            })()}
           </div>
         )}
       </div>

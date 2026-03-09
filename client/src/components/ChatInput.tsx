@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, File, ChevronDown, Zap, Brain,
+  ClipboardPaste, Plus, File, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
@@ -269,14 +269,24 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                     "disabled:opacity-30 disabled:cursor-not-allowed"
                   )}
                 >
-                  <span>{MODELS.find(m => m.id === model)?.label ?? "Claude"}</span>
+                  {(() => {
+                    const selected = MODELS.find(m => m.id === model);
+                    return selected ? (
+                      <>
+                        <span className={cn("w-3.5 h-3.5 flex-shrink-0", modelOpen ? "text-primary" : selected.iconColor)}>
+                          {selected.icon}
+                        </span>
+                        <span>{selected.label}</span>
+                      </>
+                    ) : <span>Auto</span>;
+                  })()}
                   <ChevronDown className={cn("w-3.5 h-3.5 opacity-60 transition-transform duration-200", modelOpen && "rotate-180")} />
                 </button>
 
                 {/* model dropdown */}
                 {modelOpen && (
                   <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
-                    <div className="w-64 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                    <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
                         Model
                       </p>
@@ -287,22 +297,17 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                           data-testid={`option-model-${m.id}`}
                           className={cn(
                             "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
-                            m.id === model ? "bg-primary/8 text-primary" : "hover:bg-muted/50"
+                            m.id === model ? "bg-primary/8" : "hover:bg-muted/50"
                           )}
                         >
-                          <div className={cn(
-                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                            m.id === "claude-sonnet" ? "bg-violet-500/10 text-violet-400" : "bg-amber-500/10 text-amber-400"
-                          )}>
-                            {m.id === "claude-sonnet" ? <Zap className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg, m.iconColor)}>
+                            {m.icon}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className={cn("text-sm font-medium leading-none mb-0.5", m.id === model ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
                               {m.label}
                             </p>
-                            <p className="text-[11px] text-muted-foreground/60 leading-none">
-                              {m.id === "claude-sonnet" ? "Fast & capable" : "Most intelligent"}
-                            </p>
+                            <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
                           </div>
                           {m.id === model && (
                             <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />

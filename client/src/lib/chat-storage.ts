@@ -13,6 +13,7 @@ export interface Message {
   content: string;
   attachments?: Attachment[];
   timestamp: number;
+  modelUsed?: string;
 }
 
 export interface Conversation {

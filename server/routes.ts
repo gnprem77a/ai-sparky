@@ -2,12 +2,71 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 
-const MODEL_IDS: Record<string, string> = {
-  "claude-sonnet": "anthropic.claude-3-5-sonnet-20241022-v2:0",
-  "claude-opus":   "anthropic.claude-3-opus-20240229-v1:0",
+/* ─── model registry ─────────────────────────────────────────── */
+type ModelKey = "balanced" | "powerful" | "creative" | "fast";
+
+interface ModelEntry {
+  bedrockId: string;
+  displayName: string;
+  provider: "anthropic" | "meta";
+}
+
+const MODELS: Record<ModelKey, ModelEntry> = {
+  balanced: {
+    bedrockId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    displayName: "Balanced",
+    provider: "anthropic",
+  },
+  powerful: {
+    bedrockId: "anthropic.claude-opus-4-1-20250805-v1:0",
+    displayName: "Powerful",
+    provider: "anthropic",
+  },
+  creative: {
+    bedrockId: "meta.llama3-70b-instruct-v1:0",
+    displayName: "Creative",
+    provider: "meta",
+  },
+  fast: {
+    bedrockId: "anthropic.claude-3-haiku-20240307-v1:0",
+    displayName: "Fast",
+    provider: "anthropic",
+  },
 };
 
-function getBedrockClient() {
+const FALLBACK: ModelEntry = MODELS.balanced;
+
+/* ─── auto-routing ───────────────────────────────────────────── */
+const CODING_KEYWORDS = [
+  "code", "debug", "error", "function", "class", "algorithm", "api",
+  "database", "sql", "typescript", "javascript", "python", "bug", "fix",
+  "refactor", "architecture", "implement", "compiler", "runtime", "regex",
+  "async", "promise", "import", "export", "syntax", "library", "framework",
+];
+
+const CREATIVE_KEYWORDS = [
+  "story", "creative", "write a", "poem", "brainstorm", "imagine", "fiction",
+  "character", "novel", "song", "lyrics", "narrative", "plot", "screenplay",
+  "metaphor", "describe", "invent", "fantasy", "roleplay",
+];
+
+function autoSelectModel(messages: RawMessage[]): ModelEntry {
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const text = (lastUser?.content ?? "").toLowerCase().trim();
+
+  if (text.length < 50) return MODELS.fast;
+  if (CODING_KEYWORDS.some((k) => text.includes(k))) return MODELS.powerful;
+  if (CREATIVE_KEYWORDS.some((k) => text.includes(k))) return MODELS.creative;
+  return MODELS.balanced;
+}
+
+function resolveModel(requestedModel: string, messages: RawMessage[]): ModelEntry {
+  if (requestedModel === "auto") return autoSelectModel(messages);
+  return MODELS[requestedModel as ModelKey] ?? MODELS.balanced;
+}
+
+/* ─── bedrock client ─────────────────────────────────────────── */
+function getClient() {
   return new BedrockRuntimeClient({
     region: process.env.AWS_REGION || "us-east-1",
     credentials: {
@@ -17,6 +76,7 @@ function getBedrockClient() {
   });
 }
 
+/* ─── message types ──────────────────────────────────────────── */
 interface Attachment {
   type: "image" | "text" | "file";
   name: string;
@@ -30,53 +90,131 @@ interface RawMessage {
   attachments?: Attachment[];
 }
 
-type ClaudeContentBlock =
+type ClaudeBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 
-function buildClaudeContent(msg: RawMessage): string | ClaudeContentBlock[] {
-  const hasImages = msg.attachments?.some((a) => a.type === "image");
+/* ─── request builders ───────────────────────────────────────── */
+function buildClaudeContent(msg: RawMessage): string | ClaudeBlock[] {
   const textAttachments = msg.attachments?.filter((a) => a.type === "text") ?? [];
-
-  let textContent = msg.content;
-
+  let text = msg.content;
   if (textAttachments.length > 0) {
-    const fileContents = textAttachments
+    text += textAttachments
       .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
       .join("");
-    textContent = textContent + fileContents;
   }
 
-  if (!hasImages) {
-    return textContent;
-  }
+  const images = msg.attachments?.filter((a) => a.type === "image") ?? [];
+  if (images.length === 0) return text;
 
-  const blocks: ClaudeContentBlock[] = [];
-
-  for (const att of msg.attachments ?? []) {
-    if (att.type === "image") {
-      const base64Data = att.data.includes(",") ? att.data.split(",")[1] : att.data;
-      const mediaType = att.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-      blocks.push({
-        type: "image",
-        source: { type: "base64", media_type: mediaType, data: base64Data },
-      });
-    }
-  }
-
-  if (textContent.trim()) {
-    blocks.push({ type: "text", text: textContent });
-  }
-
+  const blocks: ClaudeBlock[] = images.map((att) => ({
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: att.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+      data: att.data.includes(",") ? att.data.split(",")[1] : att.data,
+    },
+  }));
+  if (text.trim()) blocks.push({ type: "text", text });
   return blocks;
 }
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+function buildClaudeBody(messages: RawMessage[], maxTokens: number) {
+  return {
+    anthropic_version: "bedrock-2023-05-31",
+    max_tokens: maxTokens,
+    messages: messages.map((m) => ({ role: m.role, content: buildClaudeContent(m) })),
+  };
+}
+
+function buildLlamaPrompt(messages: RawMessage[]): string {
+  let prompt = "<|begin_of_text|>";
+  for (const msg of messages) {
+    const role = msg.role === "user" ? "user" : "assistant";
+    const textAttachments = msg.attachments?.filter((a) => a.type === "text") ?? [];
+    let text = msg.content;
+    if (textAttachments.length > 0) {
+      text += textAttachments
+        .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
+        .join("");
+    }
+    prompt += `<|start_header_id|>${role}<|end_header_id|>\n\n${text}<|eot_id|>`;
+  }
+  prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n";
+  return prompt;
+}
+
+function buildLlamaBody(messages: RawMessage[], maxTokens: number) {
+  return {
+    prompt: buildLlamaPrompt(messages),
+    max_gen_len: Math.min(maxTokens, 2048),
+    temperature: 0.8,
+    top_p: 0.9,
+  };
+}
+
+/* ─── stream parsers ─────────────────────────────────────────── */
+function parseClaudeChunk(decoded: string): string | null {
+  try {
+    const parsed = JSON.parse(decoded);
+    if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
+      return parsed.delta.text as string;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function parseLlamaChunk(decoded: string): string | null {
+  try {
+    const parsed = JSON.parse(decoded);
+    if (parsed.generation) return parsed.generation as string;
+  } catch { /* ignore */ }
+  return null;
+}
+
+/* ─── stream runner ──────────────────────────────────────────── */
+async function streamModel(
+  client: BedrockRuntimeClient,
+  entry: ModelEntry,
+  messages: RawMessage[],
+  maxTokens: number,
+  res: Response,
+  firstChunk: boolean,
+): Promise<void> {
+  const body = entry.provider === "anthropic"
+    ? buildClaudeBody(messages, maxTokens)
+    : buildLlamaBody(messages, maxTokens);
+
+  const command = new InvokeModelWithResponseStreamCommand({
+    modelId: entry.bedrockId,
+    contentType: "application/json",
+    accept: "application/json",
+    body: JSON.stringify(body),
+  });
+
+  const response = await client.send(command);
+  if (!response.body) throw new Error("No response body");
+
+  if (firstChunk) {
+    res.write(`data: ${JSON.stringify({ modelUsed: entry.displayName })}\n\n`);
+  }
+
+  const decoder = new TextDecoder();
+  for await (const event of response.body) {
+    if (event.chunk?.bytes) {
+      const decoded = decoder.decode(event.chunk.bytes);
+      const text = entry.provider === "anthropic"
+        ? parseClaudeChunk(decoded)
+        : parseLlamaChunk(decoded);
+      if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
+    }
+  }
+}
+
+/* ─── route registration ─────────────────────────────────────── */
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   app.post("/api/chat", async (req: Request, res: Response) => {
-    const { messages, model = "claude-sonnet", maxTokens = 4096 } = req.body;
+    const { messages, model = "auto", maxTokens = 4096 } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "messages array is required" });
@@ -84,62 +222,41 @@ export async function registerRoutes(
 
     if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
       return res.status(500).json({
-        error: "AWS credentials not configured. Please add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to your environment secrets.",
+        error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to Secrets.",
       });
     }
 
-    const modelId = MODEL_IDS[model] || MODEL_IDS["claude-sonnet"];
-
-    const formattedMessages = messages.slice(-5).map((msg: RawMessage) => ({
-      role: msg.role,
-      content: buildClaudeContent(msg),
-    }));
-
-    const requestBody = {
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: maxTokens,
-      messages: formattedMessages,
-    };
-
-    const client = getBedrockClient();
-    const command = new InvokeModelWithResponseStreamCommand({
-      modelId,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify(requestBody),
-    });
+    const selectedModel = resolveModel(model, messages);
+    const recentMessages: RawMessage[] = messages.slice(-6);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
 
+    const client = getClient();
+
     try {
-      const response = await client.send(command);
+      await streamModel(client, selectedModel, recentMessages, maxTokens, res, true);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (primaryErr: unknown) {
+      const err = primaryErr as Error;
+      console.error(`[bedrock] ${selectedModel.displayName} failed:`, err.message);
 
-      if (!response.body) {
-        res.write(`data: ${JSON.stringify({ error: "No response body" })}\n\n`);
-        res.end();
-        return;
-      }
-
-      for await (const event of response.body) {
-        if (event.chunk?.bytes) {
-          const decoded = new TextDecoder().decode(event.chunk.bytes);
-          const parsed = JSON.parse(decoded);
-          if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-            res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
-          } else if (parsed.type === "message_stop") {
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-          }
+      if (selectedModel.bedrockId !== FALLBACK.bedrockId) {
+        console.log("[bedrock] Falling back to Balanced (Sonnet)…");
+        try {
+          await streamModel(client, FALLBACK, recentMessages, maxTokens, res, false);
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+          return;
+        } catch (fallbackErr: unknown) {
+          console.error("[bedrock] Fallback also failed:", (fallbackErr as Error).message);
         }
       }
 
-      res.end();
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error("Bedrock error:", error);
-      res.write(`data: ${JSON.stringify({ error: error.message || "Bedrock API error" })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: err.message || "Bedrock API error" })}\n\n`);
       res.end();
     }
   });
