@@ -349,7 +349,7 @@ export default function ChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
-            <EmptyState onSuggestion={(s) => setInput(s)} />
+            <EmptyState />
           ) : (
             <div className="max-w-3xl mx-auto py-6">
               {messages.map((msg) => (
@@ -392,16 +392,7 @@ export default function ChatPage() {
   );
 }
 
-const SUGGESTIONS = [
-  { text: "Explain quantum entanglement in simple terms", category: "Science" },
-  { text: "Write a Python script to scrape a website", category: "Code" },
-  { text: "What makes a great SaaS pitch deck?", category: "Business" },
-  { text: "Refactor this code for better readability", category: "Code" },
-  { text: "Summarize key ideas in clean architecture", category: "Learning" },
-  { text: "Draft a professional email declining a meeting", category: "Writing" },
-];
-
-function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
+function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center min-h-full py-16 px-6">
       <div className="relative mb-8">
@@ -422,28 +413,6 @@ function EmptyState({ onSuggestion }: { onSuggestion: (s: string) => void }) {
         You can also attach files and images.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-w-3xl w-full">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s.text}
-            onClick={() => onSuggestion(s.text)}
-            data-testid="button-suggestion"
-            className="group text-left px-4 py-3.5 rounded-xl border border-border/60 bg-card/60 hover-elevate transition-all duration-150"
-          >
-            <div className="flex items-start gap-2.5">
-              <span className="text-primary/50 text-sm mt-0.5 font-bold select-none">✦</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-foreground/80 leading-snug group-hover:text-foreground transition-colors">
-                  {s.text}
-                </p>
-                <p className="text-[10px] text-muted-foreground/50 mt-1 font-semibold uppercase tracking-widest">
-                  {s.category}
-                </p>
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
