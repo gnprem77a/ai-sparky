@@ -74,6 +74,42 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+.theme-ocean {
+  --primary: 190 90% 40%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 190 90% 40%;
+  --sidebar-primary: 190 90% 40%;
+  --sidebar-ring: 190 90% 40%;
+  --chart-1: 190 90% 40%;
+}
+
+.theme-sunset {
+  --primary: 25 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 25 95% 53%;
+  --sidebar-primary: 25 95% 53%;
+  --sidebar-ring: 25 95% 53%;
+  --chart-1: 25 95% 53%;
+}
+
+.theme-forest {
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 142 71% 45%;
+  --sidebar-primary: 142 71% 45%;
+  --sidebar-ring: 142 71% 45%;
+  --chart-1: 142 71% 45%;
+}
+
+.theme-midnight {
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 221 83% 53%;
+  --sidebar-primary: 221 83% 53%;
+  --sidebar-ring: 221 83% 53%;
+  --chart-1: 221 83% 53%;
+}
+
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .06);

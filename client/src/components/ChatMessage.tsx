@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect, memo, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, memo, lazy, Suspense, type ReactNode, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
+import Papa from "papaparse";
 
 const CodeBlock = lazy(() => import("@/components/CodeBlock"));
 
@@ -130,19 +131,107 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   onRegenerate?: () => void;
   onEdit?: (messageId: string, newContent: string) => void;
+  onFork?: (messageId: string) => void;
+  onQuoteReply?: (messageId: string, snippet: string) => void;
   isLast?: boolean;
   conversationId?: string;
   assistantName?: string;
   fontSize?: string;
+  searchQuery?: string;
 }
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, conversationId, assistantName = "Assistant", fontSize = "normal" }: ChatMessageProps) {
+function highlightText(text: string, query: string): ReactNode {
+  if (!query.trim()) return text;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} className="search-highlight bg-yellow-300/70 dark:bg-yellow-500/50 text-foreground rounded-sm px-0.5">{part}</mark>
+      : part
+  );
+}
+
+function CSVTable({ data, filename }: { data: string; filename: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const csv = useMemo(() => {
+    try {
+      const decoded = atob(data.split(",")[1]);
+      const results = Papa.parse(decoded, { header: true, skipEmptyLines: true });
+      return {
+        headers: results.meta.fields || [],
+        rows: results.data as any[],
+      };
+    } catch (e) {
+      console.error("CSV parse error", e);
+      return null;
+    }
+  }, [data]);
+
+  if (!csv) return null;
+
+  return (
+    <div className="my-2 rounded-xl border border-border/40 bg-muted/20 overflow-hidden">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
+            <TableIcon className="w-4 h-4 text-orange-500" />
+          </div>
+          <div className="text-left">
+            <p className="text-xs font-semibold text-foreground/90">{filename}</p>
+            <p className="text-[10px] text-muted-foreground/70">{csv.rows.length} rows</p>
+          </div>
+        </div>
+        {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground/50" /> : <ChevronDown className="w-4 h-4 text-muted-foreground/50" />}
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-border/20 animate-fade-in">
+          <div className="overflow-x-auto max-h-[400px]">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10 border-b border-border/40">
+                <tr>
+                  {csv.headers.map((h, i) => (
+                    <th key={i} className="px-4 py-2 text-left font-semibold text-foreground/70 uppercase tracking-wider whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20 bg-card/50">
+                {csv.rows.map((row, i) => (
+                  <tr key={i} className="hover:bg-muted/30 transition-colors">
+                    {csv.headers.map((h, j) => (
+                      <td key={j} className="px-4 py-2 text-foreground/80 whitespace-nowrap">
+                        {row[h]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {csv.rows.length > 50 && (
+            <div className="px-4 py-1.5 border-t border-border/20 bg-muted/20 text-center">
+              <p className="text-[10px] text-muted-foreground/50 italic">Showing all {csv.rows.length} rows</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
   const [localReaction, setLocalReaction] = useState<string | null>(message.reaction ?? null);
+  const [isForkLoading, setIsForkLoading] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
   const fontClass = fontSize === "compact" ? "text-xs" : fontSize === "large" ? "text-base" : "text-sm";
@@ -159,9 +248,9 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
   }, [isEditing]);
 
   const reactionMutation = useMutation({
-    mutationFn: (reaction: string | null) => {
-      if (!conversationId) return Promise.resolve();
-      return apiRequest("PATCH", `/api/conversations/${conversationId}/messages/${message.id}/reaction`, { reaction });
+    mutationFn: async (reaction: string | null) => {
+      if (!conversationId) return;
+      await apiRequest("PATCH", `/api/conversations/${conversationId}/messages/${message.id}/reaction`, { reaction });
     },
     onMutate: (reaction) => { setLocalReaction(reaction); },
     onSuccess: () => {
@@ -207,24 +296,48 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
         onMouseEnter={() => setActionsVisible(true)}
         onMouseLeave={() => setActionsVisible(false)}
       >
-        <div className="flex items-end gap-2.5 max-w-[78%]">
+        <div className="flex items-end gap-2.5 max-w-[90%] sm:max-w-[78%]">
           <div className="flex flex-col gap-2">
             {message.attachments?.filter(a => a.type === "image").map(att => (
               <div key={att.id} className="rounded-2xl overflow-hidden shadow-md">
                 <img src={att.data} alt={att.name} className="max-w-[280px] max-h-[280px] object-cover" />
               </div>
             ))}
-            {message.attachments?.filter(a => a.type !== "image").map(att => (
-              <div key={att.id} className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/20">
-                <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-4 h-4 text-primary/80" />
+            {message.attachments?.filter(a => a.type !== "image").map(att => {
+              const isPdf = att.mimeType === "application/pdf";
+              const isCsv = att.name.endsWith(".csv");
+
+              if (isCsv) {
+                return <CSVTable key={att.id} data={att.data} filename={att.name} />;
+              }
+
+              return (
+                <div key={att.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-2xl bg-primary/15 border border-primary/20 min-w-[200px]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", isPdf ? "bg-red-500/10" : "bg-primary/20")}>
+                      {isPdf ? <FileText className="w-4 h-4 text-red-500" /> : <FileText className="w-4 h-4 text-primary/80" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground/90 truncate" title={att.name}>{att.name}</p>
+                      <p className="text-[10px] text-muted-foreground/70 capitalize">
+                        {isPdf ? "PDF Document" : `${att.type} file`}
+                      </p>
+                    </div>
+                  </div>
+                  {isPdf && (
+                    <a
+                      href={att.data}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg hover:bg-primary/10 text-primary/60 hover:text-primary transition-colors flex-shrink-0"
+                      title="View PDF"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-foreground/90">{att.name}</p>
-                  <p className="text-[10px] text-muted-foreground/70 capitalize">{att.type} file</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {isEditing ? (
               <div className="flex flex-col gap-2">
@@ -251,21 +364,34 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
                 {message.content && (
                   <div className="relative group/bubble">
                     <div className={cn("px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground leading-relaxed shadow-md", fontClass)} data-testid="content-user">
-                      <p className="whitespace-pre-wrap break-words font-[450]">{message.content}</p>
+                      <p className="whitespace-pre-wrap break-words font-[450]">{highlightText(message.content, searchQuery)}</p>
                     </div>
-                    {onEdit && (
-                      <button
-                        onClick={() => { setEditValue(message.content); setIsEditing(true); }}
-                        data-testid={`button-edit-message-${message.id}`}
-                        title="Edit message"
-                        className={cn(
-                          "absolute -left-8 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all",
-                          actionsVisible ? "opacity-100" : "opacity-0"
-                        )}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    <div className={cn("absolute -left-16 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                      {onFork && (
+                        <button
+                          onClick={async () => {
+                            setIsForkLoading(true);
+                            try { await onFork(message.id); } finally { setIsForkLoading(false); }
+                          }}
+                          data-testid={`button-fork-message-${message.id}`}
+                          title="Fork from here"
+                          className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all"
+                          disabled={isForkLoading}
+                        >
+                          {isForkLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitFork className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      {onEdit && (
+                        <button
+                          onClick={() => { setEditValue(message.content); setIsEditing(true); }}
+                          data-testid={`button-edit-message-${message.id}`}
+                          title="Edit message"
+                          className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </>
@@ -462,6 +588,29 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
                   em({ children }) {
                     return <em className="italic text-foreground/80">{children}</em>;
                   },
+                  img({ src, alt }) {
+                    return (
+                      <span className="block my-3">
+                        <img
+                          src={src}
+                          alt={alt || "Generated image"}
+                          data-testid={`img-generated-${message.id}`}
+                          className="rounded-xl max-w-full shadow-md border border-border/30"
+                          style={{ maxHeight: "512px" }}
+                        />
+                        {src?.startsWith("data:") && (
+                          <a
+                            href={src}
+                            download={`generated-${Date.now()}.png`}
+                            data-testid={`button-download-image-${message.id}`}
+                            className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-muted/60 hover:bg-muted text-xs text-muted-foreground hover:text-foreground transition-colors border border-border/40"
+                          >
+                            <Download className="w-3 h-3" /> Download image
+                          </a>
+                        )}
+                      </span>
+                    );
+                  },
                 }}
               >
                 {message.content}
@@ -528,6 +677,18 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, 
               <ThumbsDown className="w-3.5 h-3.5" />
             </button>
 
+            {/* Quote reply */}
+            {onQuoteReply && (
+              <button
+                onClick={() => onQuoteReply(message.id, message.content.slice(0, 120))}
+                data-testid={`button-quote-reply-${message.id}`}
+                title="Reply to this message"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 text-xs transition-all"
+              >
+                <Quote className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             {/* Regenerate */}
             {onRegenerate && isLast && (
               <button
@@ -584,6 +745,9 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.isLast === next.isLast &&
   prev.assistantName === next.assistantName &&
   prev.fontSize === next.fontSize &&
+  prev.searchQuery === next.searchQuery &&
   prev.onRegenerate === next.onRegenerate &&
-  prev.onEdit === next.onEdit
+  prev.onEdit === next.onEdit &&
+  prev.onFork === next.onFork &&
+  prev.onQuoteReply === next.onQuoteReply
 );

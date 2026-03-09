@@ -58,6 +58,26 @@ export default function ProfilePage() {
   const [activePromptId, setActivePromptId] = useState<string | null>(null);
   const [appearanceSaved, setAppearanceSaved] = useState(false);
   const [promptSaved, setPromptSaved]     = useState(false);
+  const [themeColor, setThemeColor] = useState(() => localStorage.getItem("theme-color") || "default");
+
+  const themes = [
+    { name: "default", color: "bg-[#7c3aed]" },
+    { name: "ocean", color: "bg-[#0ea5e9]" },
+    { name: "sunset", color: "bg-[#f97316]" },
+    { name: "forest", color: "bg-[#22c55e]" },
+    { name: "midnight", color: "bg-[#3b82f6]" },
+  ];
+
+  const handleThemeChange = (name: string) => {
+    themes.forEach(t => {
+      document.documentElement.classList.remove(`theme-${t.name}`);
+    });
+    if (name !== "default") {
+      document.documentElement.classList.add(`theme-${name}`);
+    }
+    setThemeColor(name);
+    localStorage.setItem("theme-color", name);
+  };
 
   const [currentPw, setCurrentPw]   = useState("");
   const [newPw, setNewPw]           = useState("");
@@ -287,6 +307,29 @@ export default function ProfilePage() {
         {/* ── Appearance ── */}
         <SectionCard icon={<Palette className="w-4 h-4" />} title="Appearance">
           <div className="space-y-5">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                <Palette className="w-3.5 h-3.5" /> Theme
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {themes.map((t) => (
+                  <button
+                    key={t.name}
+                    onClick={() => handleThemeChange(t.name)}
+                    data-testid={`button-theme-${t.name}`}
+                    title={t.name.charAt(0).toUpperCase() + t.name.slice(1)}
+                    className={cn(
+                      "w-10 h-10 rounded-full border-2 transition-all flex items-center justify-center hover-elevate active-elevate-2",
+                      t.color,
+                      themeColor === t.name ? "border-foreground scale-110" : "border-transparent opacity-70 hover:opacity-100"
+                    )}
+                  >
+                    {themeColor === t.name && <Check className="w-5 h-5 text-white" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
                 <Type className="w-3.5 h-3.5" /> Font Size

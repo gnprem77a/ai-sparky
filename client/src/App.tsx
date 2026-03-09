@@ -21,6 +21,11 @@ function initTheme() {
     document.documentElement.classList.add("dark");
     if (!stored) localStorage.setItem("theme", "dark");
   }
+
+  const storedThemeColor = localStorage.getItem("theme-color");
+  if (storedThemeColor && storedThemeColor !== "default") {
+    document.documentElement.classList.add(`theme-${storedThemeColor}`);
+  }
 }
 
 const style = {

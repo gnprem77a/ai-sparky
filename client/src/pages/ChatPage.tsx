@@ -11,7 +11,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle } from "lucide-react";
+import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type Conversation,
@@ -48,6 +48,42 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [themeColor, setThemeColor] = useState(() => localStorage.getItem("theme-color") || "default");
+
+  const themes = [
+    { name: "default", color: "bg-[#7c3aed]" },
+    { name: "ocean", color: "bg-[#0ea5e9]" },
+    { name: "sunset", color: "bg-[#f97316]" },
+    { name: "forest", color: "bg-[#22c55e]" },
+    { name: "midnight", color: "bg-[#3b82f6]" },
+  ];
+
+  const handleThemeChange = (name: string) => {
+    themes.forEach(t => {
+      document.documentElement.classList.remove(`theme-${t.name}`);
+    });
+    if (name !== "default") {
+      document.documentElement.classList.add(`theme-${name}`);
+    }
+    setThemeColor(name);
+    localStorage.setItem("theme-color", name);
+  };
+
+  /* ── Image generation state ── */
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+
+  /* ── Search state ── */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [searchTotalMatches, setSearchTotalMatches] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  /* ── Quote reply state ── */
+  const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
+
   const profileRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -121,13 +157,34 @@ export default function ChatPage() {
         e.preventDefault();
         handleNewChat();
       }
-      if (e.key === "Escape" && isStreaming) {
-        abortRef.current?.abort();
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        if (messages.length > 0) {
+          e.preventDefault();
+          setSearchOpen(true);
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+        }
+      }
+      if (e.key === "Escape") {
+        if (searchOpen) {
+          setSearchOpen(false);
+          setSearchQuery("");
+        } else if (isStreaming) {
+          abortRef.current?.abort();
+        }
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [isStreaming]);
+  }, [isStreaming, searchOpen, messages.length]);
+
+  /* ── Update search match count whenever query or messages change ── */
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchTotalMatches(0); setSearchMatchIndex(0); return; }
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const count = container.querySelectorAll(".search-highlight").length;
+    setSearchTotalMatches(count);
+  });
 
   /* ── Load messages when selecting a conversation ── */
   const handleSelectConversation = useCallback(async (id: string) => {
@@ -255,6 +312,103 @@ export default function ChatPage() {
     if (!messages.length) return;
     const conv = conversations.find((c) => c.id === activeId);
     exportConversationAsMarkdown(conv?.title ?? "Conversation", messages);
+  };
+
+  const handleExportPDF = () => {
+    if (!messages.length) return;
+    const style = document.createElement("style");
+    style.id = "print-style";
+    style.innerHTML = `
+      @media print {
+        [data-sidebar], header, [data-testid="chat-input-area"], .no-print { display: none !important; }
+        body, html { background: white !important; color: black !important; }
+        .flex-1.overflow-y-auto { overflow: visible !important; height: auto !important; }
+        pre, code { white-space: pre-wrap !important; word-break: break-all !important; }
+        .max-w-3xl { max-width: 100% !important; }
+        * { color-scheme: light !important; }
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    window.addEventListener("afterprint", () => {
+      document.getElementById("print-style")?.remove();
+    }, { once: true });
+  };
+
+  const handleForkMessage = useCallback(async (messageId: string) => {
+    if (!activeId) return;
+    const conv = conversations.find((c) => c.id === activeId);
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1) return;
+    const msgsToFork = messages.slice(0, msgIndex + 1);
+    try {
+      const res = await apiRequest("POST", "/api/conversations", {
+        title: `Fork: ${conv?.title ?? "Conversation"}`,
+        model: conv?.model ?? "auto",
+      });
+      const newConv: Conversation = await res.json();
+      for (const msg of msgsToFork) {
+        await apiRequest("POST", `/api/conversations/${newConv.id}/messages`, {
+          role: msg.role,
+          content: msg.content,
+          modelUsed: msg.modelUsed,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      handleSelectConversation(newConv.id);
+    } catch (err) {
+      console.error("Fork failed", err);
+    }
+  }, [activeId, messages, conversations]);
+
+  const handleQuoteReply = useCallback((messageId: string, snippet: string) => {
+    setQuotedMessage({ id: messageId, snippet });
+  }, []);
+
+  const handleGenerateImage = async (prompt: string) => {
+    if (!prompt.trim() || isGeneratingImage) return;
+    setIsGeneratingImage(true);
+    setError(null);
+
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+    const userMsg: Message = { id: userMsgId, role: "user", content: `🎨 Generate image: ${prompt}`, timestamp: Date.now() };
+    const assistantMsg: Message = { id: assistantMsgId, role: "assistant", content: "", timestamp: Date.now() };
+
+    let convId = activeId;
+    if (!convId) {
+      const res = await apiRequest("POST", "/api/conversations", { title: `Image: ${prompt.slice(0, 40)}`, model: "auto" });
+      const newConv: Conversation = await res.json();
+      convId = newConv.id;
+      setActiveId(convId);
+      setActiveConversationId(convId);
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    }
+
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setInput("");
+
+    try {
+      const res = await apiRequest("POST", "/api/generate-image", { prompt });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Image generation failed");
+
+      const imageMarkdown = `![Generated image](data:${data.mimeType};base64,${data.imageBase64})`;
+      const finalContent = `Here's your generated image:\n\n${imageMarkdown}`;
+
+      setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: finalContent } : m));
+
+      await apiRequest("POST", `/api/conversations/${convId}/messages`, { role: "user", content: userMsg.content });
+      await apiRequest("POST", `/api/conversations/${convId}/messages`, { role: "assistant", content: finalContent });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    } catch (err: unknown) {
+      const e = err as Error;
+      setError(e.message);
+      setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+    } finally {
+      setIsGeneratingImage(false);
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   /* ── Stream assistant reply ── */
@@ -407,9 +561,21 @@ export default function ChatPage() {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
 
+    /* Route to image generation if image mode is on */
+    if (isImageMode && text) {
+      await handleGenerateImage(text);
+      return;
+    }
+
     isSubmittingRef.current = true;
     setError(null);
     setInput("");
+
+    /* Prepend quoted message if set */
+    const contentWithQuote = quotedMessage
+      ? `> ${quotedMessage.snippet}\n\n${text}`
+      : text;
+    setQuotedMessage(null);
 
     const userMsgId = crypto.randomUUID();
     const assistantMsgId = crypto.randomUUID();
@@ -417,7 +583,7 @@ export default function ChatPage() {
     const userMsg: Message = {
       id: userMsgId,
       role: "user",
-      content: text,
+      content: contentWithQuote,
       attachments: attachments.length > 0 ? attachments : undefined,
       timestamp: Date.now(),
     };
@@ -452,7 +618,7 @@ export default function ChatPage() {
     try {
       await apiRequest("POST", `/api/conversations/${convId}/messages`, {
         role: "user",
-        content: text,
+        content: contentWithQuote,
         attachments: attachments.length > 0 ? attachments : undefined,
       });
     } catch {
@@ -490,6 +656,19 @@ export default function ChatPage() {
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
   const activeConvTitle = conversations.find((c) => c.id === activeId)?.title;
 
+  const navigateSearch = (dir: 1 | -1) => {
+    if (searchTotalMatches === 0) return;
+    const next = (searchMatchIndex + dir + searchTotalMatches) % searchTotalMatches;
+    setSearchMatchIndex(next);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const highlights = container.querySelectorAll(".search-highlight");
+    highlights[next]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    highlights.forEach((el, i) => {
+      (el as HTMLElement).style.outline = i === next ? "2px solid hsl(var(--primary))" : "none";
+    });
+  };
+
   return (
     <>
       <AppSidebar
@@ -517,16 +696,38 @@ export default function ChatPage() {
           </div>
           <div className="flex items-center gap-1">
             {messages.length > 0 && activeId && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleExport}
-                data-testid="button-export"
-                title="Export as Markdown"
-                className="h-9 w-9 text-muted-foreground"
-              >
-                <Download className="w-4 h-4" />
-              </Button>
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+                  data-testid="button-open-search"
+                  title="Search in chat (Ctrl+F)"
+                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
+                >
+                  <Search className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleExport}
+                  data-testid="button-export"
+                  title="Export as Markdown"
+                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleExportPDF}
+                  data-testid="button-export-pdf"
+                  title="Export as PDF"
+                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
+                >
+                  <Printer className="w-4 h-4" />
+                </Button>
+              </>
             )}
             <Button
               size="icon"
@@ -538,6 +739,21 @@ export default function ChatPage() {
             >
               <Plus className="w-4 h-4" />
             </Button>
+            <div className="hidden sm:flex items-center gap-1.5 px-2">
+              {themes.map((t) => (
+                <button
+                  key={t.name}
+                  onClick={() => handleThemeChange(t.name)}
+                  data-testid={`button-theme-${t.name}`}
+                  title={t.name.charAt(0).toUpperCase() + t.name.slice(1)}
+                  className={cn(
+                    "w-3 h-3 rounded-full transition-all hover:scale-125 hover-elevate active-elevate-2",
+                    t.color,
+                    themeColor === t.name ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : "opacity-60"
+                  )}
+                />
+              ))}
+            </div>
             <Button
               size="icon"
               variant="ghost"
@@ -635,8 +851,38 @@ export default function ChatPage() {
           </div>
         </header>
 
+        {/* Search bar */}
+        {searchOpen && (
+          <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 py-1.5 flex items-center gap-2 no-print">
+            <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }}
+              onKeyDown={(e) => { if (e.key === "Enter") navigateSearch(e.shiftKey ? -1 : 1); }}
+              placeholder="Search in conversation..."
+              data-testid="input-conversation-search"
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
+            />
+            {searchQuery && (
+              <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                {searchTotalMatches > 0 ? `${searchMatchIndex + 1}/${searchTotalMatches}` : "0 results"}
+              </span>
+            )}
+            <Button size="icon" variant="ghost" onClick={() => navigateSearch(-1)} data-testid="button-search-prev" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Previous (Shift+Enter)">
+              <ChevronUp className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => navigateSearch(1)} data-testid="button-search-next" className="h-6 w-6" disabled={searchTotalMatches === 0} title="Next (Enter)">
+              <ChevronDown className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => { setSearchOpen(false); setSearchQuery(""); }} data-testid="button-search-close" className="h-6 w-6" title="Close (Esc)">
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        )}
+
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
           {isLoadingMessages ? (
             <div className="flex items-center justify-center h-full gap-2">
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
@@ -656,17 +902,28 @@ export default function ChatPage() {
                   conversationId={activeId ?? undefined}
                   assistantName={assistantName}
                   fontSize={fontSize}
+                  searchQuery={searchQuery}
                   onRegenerate={
                     msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
                       ? handleRegenerate
                       : undefined
                   }
                   onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
+                  onFork={msg.role === "user" && !isStreaming ? handleForkMessage : undefined}
+                  onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
                 />
               ))}
               {isStreaming && (
                 <div className="px-4 pb-1 text-[11px] text-muted-foreground/50 tabular-nums">
                   {elapsedTime.toFixed(1)}s
+                </div>
+              )}
+              {isGeneratingImage && (
+                <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
+                  <span className="ml-1">Generating image…</span>
                 </div>
               )}
               {error && (
@@ -695,16 +952,20 @@ export default function ChatPage() {
         )}
 
         {/* Input */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0" data-testid="chat-input-area">
           <ChatInput
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
             onStop={handleStop}
-            isStreaming={isStreaming}
+            isStreaming={isStreaming || isGeneratingImage}
             model={isPro ? model : "fast"}
             onModelChange={handleModelChange}
             isPro={isPro}
+            quotedMessage={quotedMessage ?? undefined}
+            onClearQuote={() => setQuotedMessage(null)}
+            isImageMode={isImageMode}
+            onToggleImageMode={() => setIsImageMode((m) => !m)}
           />
         </div>
       </div>
@@ -779,7 +1040,7 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         Ask anything, or pick a suggestion below to get started.
       </p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl">
         {SUGGESTIONS.map((s) => {
           const Icon = s.icon;
           return (

@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
@@ -584,6 +584,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       res.write(`data: ${JSON.stringify({ error: err.message || "Bedrock API error" })}\n\n`);
       res.end();
+    }
+  });
+
+  /* ── Image generation via Bedrock Titan ── */
+  app.post("/api/generate-image", requireAuth as any, async (req: Request, res: Response) => {
+    const { prompt } = req.body;
+    if (!prompt?.trim()) return res.status(400).json({ error: "Prompt is required" });
+
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {
+      return res.status(503).json({ error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to Secrets." });
+    }
+
+    const client = getClient();
+    try {
+      const payload = {
+        taskType: "TEXT_IMAGE",
+        textToImageParams: { text: prompt.trim() },
+        imageGenerationConfig: {
+          numberOfImages: 1,
+          height: 512,
+          width: 512,
+          cfgScale: 8.0,
+        },
+      };
+
+      const command = new InvokeModelCommand({
+        modelId: "amazon.titan-image-generator-v1",
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(payload),
+      });
+
+      const response = await client.send(command);
+      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+      const base64Image = responseBody.images?.[0];
+      if (!base64Image) return res.status(500).json({ error: "No image returned from Bedrock" });
+
+      return res.json({ imageBase64: base64Image, mimeType: "image/png" });
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("[bedrock-image]", error.message);
+      return res.status(500).json({ error: error.message || "Image generation failed" });
     }
   });
 

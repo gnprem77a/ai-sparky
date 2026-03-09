@@ -1,16 +1,18 @@
 import {
-  useRef, useEffect, KeyboardEvent, useState, useCallback, DragEvent,
+  useRef, useEffect, KeyboardEvent, useState, useCallback, DragEvent, useMemo,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
   ClipboardPaste, Plus, File, ChevronDown, Lock,
+  Table as TableIcon, Eye, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 import { type ModelId, MODELS } from "@/components/ModelSelector";
 import { PromptLibrary } from "@/components/PromptLibrary";
+import Papa from "papaparse";
 
 /* ─── accepted file types ────────────────────────────────────── */
 const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
@@ -72,10 +74,14 @@ interface ChatInputProps {
   model: ModelId;
   onModelChange: (model: ModelId) => void;
   isPro?: boolean;
+  quotedMessage?: { id: string; snippet: string };
+  onClearQuote?: () => void;
+  isImageMode?: boolean;
+  onToggleImageMode?: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -162,7 +168,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         for (const type of item.types) {
           if (type.startsWith("image/")) {
             const blob = await item.getType(type);
-            files.push(new File([blob], `clipboard.${type.split("/")[1]}`, { type }));
+            files.push(new File([blob], `clipboard.${type.split("/")[1]}`, { type: blob.type }));
           } else if (type === "text/plain") {
             const blob = await item.getType(type);
             const text = await blob.text();
@@ -203,6 +209,26 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         <input ref={imgInputRef}    type="file" multiple accept={EXTS_IMG} className="hidden" onChange={handleInputChange} />
         <input ref={cameraInputRef} type="file" accept={EXTS_IMG} capture="environment" className="hidden" onChange={handleInputChange} />
 
+        {/* ── quote preview bar ──────────────────────────── */}
+        {quotedMessage && (
+          <div
+            data-testid="div-quote-preview"
+            className="flex items-start gap-2 mb-2 px-3 py-2 rounded-xl bg-muted/60 border border-border/40 text-xs text-muted-foreground"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold text-primary/70 mb-0.5 uppercase tracking-wide">Replying to</p>
+              <p className="truncate leading-relaxed">{quotedMessage.snippet}{quotedMessage.snippet.length >= 120 ? "…" : ""}</p>
+            </div>
+            <button
+              onClick={onClearQuote}
+              data-testid="button-clear-quote"
+              className="p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted transition-colors flex-shrink-0 mt-0.5"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         {/* ── main input card ────────────────────────────── */}
         <div
           onDragOver={handleDragOver}
@@ -240,7 +266,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isDragOver ? "Drop to attach…" : "Message Claude…"}
+            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : "Message Claude…"}
             disabled={disabled}
             rows={1}
             data-testid="input-message"
@@ -408,8 +434,24 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               )}
             </div>
 
-            {/* ── right: send / stop ────────────────────────── */}
+            {/* ── right: image mode toggle + send / stop ────── */}
             <div className="flex items-center gap-2">
+              {onToggleImageMode && !isStreaming && (
+                <button
+                  type="button"
+                  onClick={onToggleImageMode}
+                  data-testid="button-image-mode"
+                  title={isImageMode ? "Switch to chat mode" : "Switch to image generation mode"}
+                  className={cn(
+                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
+                    isImageMode
+                      ? "bg-violet-500/20 text-violet-400 ring-1 ring-violet-500/40"
+                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+              )}
               {isStreaming ? (
                 <Button
                   size="icon"
@@ -445,6 +487,25 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
 /* ─── attachment chip ─────────────────────────────────────────── */
 function AttachmentChip({ attachment, onRemove }: { attachment: Attachment; onRemove: () => void }) {
+  const [showCsvPreview, setShowCsvPreview] = useState(false);
+
+  const csvData = useMemo(() => {
+    if (attachment.name.endsWith(".csv") && attachment.data) {
+      try {
+        const decoded = atob(attachment.data.split(",")[1]);
+        const results = Papa.parse(decoded, { header: true, skipEmptyLines: true });
+        return {
+          headers: results.meta.fields || [],
+          rows: results.data.slice(0, 5) as any[],
+          total: results.data.length
+        };
+      } catch (e) {
+        console.error("CSV parse error", e);
+      }
+    }
+    return null;
+  }, [attachment]);
+
   if (attachment.type === "image") {
     return (
       <div className="relative group rounded-xl overflow-hidden border border-border/50 shadow-sm flex-shrink-0">
@@ -463,28 +524,78 @@ function AttachmentChip({ attachment, onRemove }: { attachment: Attachment; onRe
     );
   }
 
+  const isPdf = attachment.mimeType === "application/pdf";
+  const isCsv = attachment.name.endsWith(".csv");
+
   const iconColor =
-    attachment.mimeType === "application/pdf"                              ? "text-red-400 bg-red-500/10"
+    isPdf                                                                  ? "text-red-400 bg-red-500/10"
     : attachment.name.match(/\.(py|js|ts|tsx|jsx|html|css|json|yaml)$/)   ? "text-emerald-400 bg-emerald-500/10"
-    : attachment.mimeType?.includes("spreadsheet") || attachment.name.match(/\.(csv|xlsx)$/) ? "text-orange-400 bg-orange-500/10"
+    : attachment.mimeType?.includes("spreadsheet") || isCsv               ? "text-orange-400 bg-orange-500/10"
     : "text-blue-400 bg-blue-500/10";
 
   return (
-    <div className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl bg-muted/40 border border-border/50 group max-w-[180px]">
-      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", iconColor)}>
-        <FileText className="w-3.5 h-3.5" />
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl bg-muted/40 border border-border/50 group max-w-[240px]">
+        <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", iconColor)}>
+          {isCsv ? <TableIcon className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-foreground/80 truncate" title={attachment.name}>{attachment.name}</p>
+          <p className="text-[10px] text-muted-foreground/60">{formatFileSize(attachment.size)}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          {isCsv && csvData && (
+            <button
+              onClick={() => setShowCsvPreview(!showCsvPreview)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              title="Preview CSV"
+            >
+              <Eye className="w-3 h-3" />
+            </button>
+          )}
+          <button
+            onClick={onRemove}
+            data-testid="button-remove-attachment"
+            className="flex-shrink-0 p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-foreground/80 truncate">{attachment.name}</p>
-        <p className="text-[10px] text-muted-foreground/60">{formatFileSize(attachment.size)}</p>
-      </div>
-      <button
-        onClick={onRemove}
-        data-testid="button-remove-attachment"
-        className="flex-shrink-0 p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-      >
-        <X className="w-3 h-3" />
-      </button>
+
+      {isCsv && showCsvPreview && csvData && (
+        <div className="w-full max-w-md bg-muted/30 border border-border/40 rounded-xl overflow-hidden animate-fade-in">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px] border-collapse">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border/40">
+                  {csvData.headers.map((h, i) => (
+                    <th key={i} className="px-2 py-1.5 text-left font-semibold text-muted-foreground uppercase tracking-wider truncate max-w-[80px]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {csvData.rows.map((row, i) => (
+                  <tr key={i}>
+                    {csvData.headers.map((h, j) => (
+                      <td key={j} className="px-2 py-1 text-muted-foreground/80 truncate max-w-[80px]">
+                        {row[h]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-2 py-1 border-t border-border/20 bg-muted/20">
+            <p className="text-[9px] text-muted-foreground/50">
+              Showing first 5 of {csvData.total} rows
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

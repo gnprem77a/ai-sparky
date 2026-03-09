@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -18,6 +18,7 @@ import type { Conversation } from "@/lib/chat-storage";
 import type { AuthUser } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ImportModal } from "./ImportModal";
 
 interface UsageData {
   count: number;
@@ -61,6 +62,7 @@ export function AppSidebar({
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [tagPopoverId, setTagPopoverId] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   /* Debounce search for full-text lookup */
@@ -371,17 +373,34 @@ export function AppSidebar({
             </div>
             <span className="font-semibold text-sm text-foreground tracking-tight">Claude Chat</span>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onNewChat}
-            data-testid="button-new-chat"
-            title="New chat (Ctrl+K)"
-            className="h-8 w-8 text-muted-foreground"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setIsImportModalOpen(true)}
+              data-testid="button-import-chat"
+              title="Import Chats"
+              className="h-8 w-8 text-muted-foreground"
+            >
+              <Upload className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={onNewChat}
+              data-testid="button-new-chat"
+              title="New chat (Ctrl+K)"
+              className="h-8 w-8 text-muted-foreground"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
+
+        <ImportModal
+          open={isImportModalOpen}
+          onOpenChange={setIsImportModalOpen}
+        />
 
         {/* Search */}
         <div className="relative mt-2">
