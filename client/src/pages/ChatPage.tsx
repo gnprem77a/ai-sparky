@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
-import { ModelSelector, type ModelId } from "@/components/ModelSelector";
+import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { Moon, Sun, Plus } from "lucide-react";
 import {
@@ -292,8 +292,6 @@ export default function ChatPage() {
         <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
           <div className="flex items-center gap-1">
             <SidebarTrigger data-testid="button-sidebar-toggle" className="h-9 w-9 text-muted-foreground" />
-            <div className="h-5 w-px bg-border/50 mx-1" />
-            <ModelSelector value={model} onChange={handleModelChange} disabled={isStreaming} />
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -352,6 +350,8 @@ export default function ChatPage() {
             onSubmit={handleSubmit}
             onStop={handleStop}
             isStreaming={isStreaming}
+            model={model}
+            onModelChange={handleModelChange}
           />
         </div>
       </div>

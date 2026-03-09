@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, File,
+  ClipboardPaste, Plus, File, ChevronDown, Zap, Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
+import { type ModelId, MODELS } from "@/components/ModelSelector";
 
 /* ─── accepted file types ────────────────────────────────────── */
 const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
@@ -67,20 +68,24 @@ interface ChatInputProps {
   onStop?: () => void;
   isStreaming: boolean;
   disabled?: boolean;
+  model: ModelId;
+  onModelChange: (model: ModelId) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const menuRef        = useRef<HTMLDivElement>(null);
+  const modelMenuRef   = useRef<HTMLDivElement>(null);
 
   const [attachments, setAttachments]     = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver]       = useState(false);
   const [isProcessing, setIsProcessing]   = useState(false);
   const [menuOpen, setMenuOpen]           = useState(false);
+  const [modelOpen, setModelOpen]         = useState(false);
   const [clipError, setClipError]         = useState("");
 
   /* auto-resize textarea */
@@ -91,17 +96,16 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [value]);
 
-  /* close menu on outside click */
+  /* close menus on outside click */
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen && !modelOpen) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) setModelOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
+  }, [menuOpen, modelOpen]);
 
   /* keyboard */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -247,68 +251,132 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
           {/* toolbar */}
           <div className="flex items-center justify-between px-3 pb-2.5 gap-2">
-            <div className="flex items-center gap-1 relative" ref={menuRef}>
 
-              {/* "+" button */}
-              <button
-                onClick={() => setMenuOpen(o => !o)}
-                disabled={disabled || isStreaming}
-                data-testid="button-attach-menu"
-                title="Attach"
-                className={cn(
-                  "flex items-center justify-center w-8 h-8 rounded-xl border transition-all",
-                  menuOpen
-                    ? "bg-primary/10 border-primary/40 text-primary"
-                    : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40 hover:border-border/60",
-                  "disabled:opacity-30 disabled:cursor-not-allowed"
-                )}
-              >
-                <Plus className={cn("w-4 h-4 transition-transform duration-200", menuOpen && "rotate-45")} />
-              </button>
+            {/* ── left: model pill + attach button ──────────── */}
+            <div className="flex items-center gap-1.5">
 
-              {/* popup menu */}
-              {menuOpen && (
-                <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
-                  <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
-                      Attach
-                    </p>
-                    {MENU_ITEMS.map(item => (
-                      <button
-                        key={item.id}
-                        onClick={() => handleMenuAction(item.action)}
-                        data-testid={`menu-item-${item.id}`}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition-colors group"
-                      >
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors", item.accent)}>
-                          {item.icon}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground/90 group-hover:text-foreground leading-none mb-0.5">
-                            {item.label}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground/60 leading-none">{item.description}</p>
-                        </div>
-                      </button>
-                    ))}
+              {/* model selector pill */}
+              <div className="relative" ref={modelMenuRef}>
+                <button
+                  onClick={() => { setModelOpen(o => !o); setMenuOpen(false); }}
+                  disabled={disabled || isStreaming}
+                  data-testid="button-model-selector"
+                  className={cn(
+                    "flex items-center gap-1.5 h-8 px-3 rounded-xl border text-sm font-medium transition-all",
+                    modelOpen
+                      ? "bg-primary/10 border-primary/40 text-primary"
+                      : "border-border/40 text-muted-foreground/70 hover:text-foreground hover:bg-muted/40 hover:border-border/60",
+                    "disabled:opacity-30 disabled:cursor-not-allowed"
+                  )}
+                >
+                  <span>{MODELS.find(m => m.id === model)?.label ?? "Claude"}</span>
+                  <ChevronDown className={cn("w-3.5 h-3.5 opacity-60 transition-transform duration-200", modelOpen && "rotate-180")} />
+                </button>
+
+                {/* model dropdown */}
+                {modelOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
+                    <div className="w-64 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
+                        Model
+                      </p>
+                      {MODELS.map(m => (
+                        <button
+                          key={m.id}
+                          onClick={() => { onModelChange(m.id); setModelOpen(false); }}
+                          data-testid={`option-model-${m.id}`}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
+                            m.id === model ? "bg-primary/8 text-primary" : "hover:bg-muted/50"
+                          )}
+                        >
+                          <div className={cn(
+                            "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                            m.id === "claude-sonnet" ? "bg-violet-500/10 text-violet-400" : "bg-amber-500/10 text-amber-400"
+                          )}>
+                            {m.id === "claude-sonnet" ? <Zap className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={cn("text-sm font-medium leading-none mb-0.5", m.id === model ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
+                              {m.label}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground/60 leading-none">
+                              {m.id === "claude-sonnet" ? "Fast & capable" : "Most intelligent"}
+                            </p>
+                          </div>
+                          {m.id === model && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* divider */}
+              <div className="w-px h-4 bg-border/40" />
+
+              {/* "+" attach button */}
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => { setMenuOpen(o => !o); setModelOpen(false); }}
+                  disabled={disabled || isStreaming}
+                  data-testid="button-attach-menu"
+                  title="Attach"
+                  className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-xl border transition-all",
+                    menuOpen
+                      ? "bg-primary/10 border-primary/40 text-primary"
+                      : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40 hover:border-border/60",
+                    "disabled:opacity-30 disabled:cursor-not-allowed"
+                  )}
+                >
+                  <Plus className={cn("w-4 h-4 transition-transform duration-200", menuOpen && "rotate-45")} />
+                </button>
+
+                {/* attach popup */}
+                {menuOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
+                    <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
+                        Attach
+                      </p>
+                      {MENU_ITEMS.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleMenuAction(item.action)}
+                          data-testid={`menu-item-${item.id}`}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-muted/50 transition-colors group"
+                        >
+                          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", item.accent)}>
+                            {item.icon}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground/90 group-hover:text-foreground leading-none mb-0.5">
+                              {item.label}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground/60 leading-none">{item.description}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {isProcessing && (
-                <span className="text-[11px] text-muted-foreground/50 ml-1 animate-pulse">Reading…</span>
+                <span className="text-[11px] text-muted-foreground/50 animate-pulse">Reading…</span>
               )}
               {clipError && (
-                <span className="text-[11px] text-destructive/80 ml-1 max-w-[180px] truncate" title={clipError}>
+                <span className="text-[11px] text-destructive/80 max-w-[160px] truncate" title={clipError}>
                   {clipError}
                 </span>
               )}
             </div>
 
+            {/* ── right: send / stop ────────────────────────── */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground/30 select-none hidden sm:block">
-                Shift+Enter for new line
-              </span>
               {isStreaming ? (
                 <Button
                   size="icon"
