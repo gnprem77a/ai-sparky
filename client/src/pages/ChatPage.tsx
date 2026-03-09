@@ -11,7 +11,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown } from "lucide-react";
+import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type Conversation,
@@ -42,6 +42,7 @@ export default function ChatPage() {
   const [model, setModel] = useState<ModelId>("auto");
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -52,8 +53,28 @@ export default function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
+  const streamStartRef = useRef<number>(0);
 
   const isPro = isProActive(user);
+
+  /* ── Load user settings (font size, assistant name) ── */
+  const { data: userSettings } = useQuery<{ fontSize: string; assistantName: string; activePromptId: string | null }>({
+    queryKey: ["/api/settings"],
+    queryFn: () => fetch("/api/settings", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user,
+  });
+  const fontSize = userSettings?.fontSize ?? "normal";
+  const assistantName = userSettings?.assistantName ?? "Assistant";
+
+  /* ── Elapsed time timer during streaming ── */
+  useEffect(() => {
+    if (!isStreaming) { setElapsedTime(0); return; }
+    streamStartRef.current = Date.now();
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - streamStartRef.current) / 100) / 10);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   /* ── Click-outside for profile menu ── */
   useEffect(() => {
@@ -355,7 +376,11 @@ export default function ChatPage() {
     } catch (err: unknown) {
       const error = err as Error;
       if (error.name === "AbortError") {
-        /* user stopped */
+        /* user stopped — mark message as stopped in UI */
+        setMessages((prev) =>
+          prev.map((m) => m.id === assistantMsgId ? { ...m, stopped: true } : m)
+        );
+        /* save partial response to DB */
         if (accumulated && convId) {
           try {
             await apiRequest("POST", `/api/conversations/${convId}/messages`, {
@@ -608,7 +633,7 @@ export default function ChatPage() {
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
             </div>
           ) : messages.length === 0 ? (
-            <EmptyState />
+            <EmptyState onSuggest={(text) => { setInput(text); }} />
           ) : (
             <div className="max-w-3xl mx-auto py-6">
               {messages.map((msg) => (
@@ -617,6 +642,9 @@ export default function ChatPage() {
                   message={msg}
                   isStreaming={isStreaming && msg.id === streamingMessageId}
                   isLast={msg.id === lastAssistantMsg?.id}
+                  conversationId={activeId ?? undefined}
+                  assistantName={assistantName}
+                  fontSize={fontSize}
                   onRegenerate={
                     msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
                       ? handleRegenerate
@@ -625,6 +653,11 @@ export default function ChatPage() {
                   onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
                 />
               ))}
+              {isStreaming && (
+                <div className="px-4 pb-1 text-[11px] text-muted-foreground/50 tabular-nums">
+                  {elapsedTime.toFixed(1)}s
+                </div>
+              )}
               {error && (
                 <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm">
                   <span className="font-semibold">Error: </span>{error}
@@ -670,12 +703,57 @@ export default function ChatPage() {
   );
 }
 
-function EmptyState() {
+const SUGGESTIONS = [
+  {
+    icon: Code2,
+    label: "Write code",
+    prompt: "Write a TypeScript function that debounces any async function and returns a promise.",
+    color: "text-blue-400",
+    bg: "bg-blue-500/8 hover:bg-blue-500/14 border-blue-500/15",
+  },
+  {
+    icon: PenLine,
+    label: "Draft writing",
+    prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.",
+    color: "text-violet-400",
+    bg: "bg-violet-500/8 hover:bg-violet-500/14 border-violet-500/15",
+  },
+  {
+    icon: BarChart2,
+    label: "Analyze data",
+    prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.",
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/8 hover:bg-emerald-500/14 border-emerald-500/15",
+  },
+  {
+    icon: Lightbulb,
+    label: "Brainstorm ideas",
+    prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.",
+    color: "text-amber-400",
+    bg: "bg-amber-500/8 hover:bg-amber-500/14 border-amber-500/15",
+  },
+  {
+    icon: Globe,
+    label: "Explain concepts",
+    prompt: "Explain how large language models work in plain English, step by step.",
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/8 hover:bg-cyan-500/14 border-cyan-500/15",
+  },
+  {
+    icon: FlaskConical,
+    label: "Debug & review",
+    prompt: "What are the most common React performance pitfalls and how do I fix them?",
+    color: "text-rose-400",
+    bg: "bg-rose-500/8 hover:bg-rose-500/14 border-rose-500/15",
+  },
+];
+
+function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-full py-16 px-6">
-      <div className="relative mb-8">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/25">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+    <div className="flex flex-col items-center justify-center min-h-full py-12 px-6">
+      <div className="relative mb-6">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/25">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
             <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
           </svg>
@@ -683,13 +761,37 @@ function EmptyState() {
         <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-2xl scale-150 -z-10" />
       </div>
 
-      <h1 className="text-[2rem] font-semibold text-foreground mb-2 tracking-tight text-center">
+      <h1 className="text-[1.75rem] font-semibold text-foreground mb-2 tracking-tight text-center">
         How can I help you?
       </h1>
-      <p className="text-muted-foreground/70 text-[15px] mb-10 text-center max-w-[360px] leading-relaxed">
-        Ask me anything — code, writing, analysis, ideas, and more.
-        You can also attach files and images.
+      <p className="text-muted-foreground/60 text-sm mb-8 text-center max-w-[320px] leading-relaxed">
+        Ask anything, or pick a suggestion below to get started.
       </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full max-w-2xl">
+        {SUGGESTIONS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.label}
+              onClick={() => onSuggest(s.prompt)}
+              data-testid={`suggestion-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
+              className={cn(
+                "flex flex-col items-start gap-2 px-4 py-3.5 rounded-xl border text-left transition-all duration-150 group",
+                s.bg
+              )}
+            >
+              <Icon className={cn("w-4 h-4", s.color)} />
+              <span className="text-[13px] font-medium text-foreground/80 group-hover:text-foreground leading-tight">
+                {s.label}
+              </span>
+              <span className="text-[11px] text-muted-foreground/60 leading-snug line-clamp-2">
+                {s.prompt}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import {
   type SavedPrompt, savedPrompts,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, and, gte } from "drizzle-orm";
+import { eq, desc, asc, ilike, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -22,16 +22,18 @@ export interface IStorage {
   getConversation(id: string): Promise<Conversation | undefined>;
   getConversationByShareToken(token: string): Promise<Conversation | undefined>;
   createConversation(userId: string, title: string, model: string): Promise<Conversation>;
-  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken">>): Promise<Conversation | undefined>;
+  updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags">>): Promise<Conversation | undefined>;
   deleteConversation(id: string): Promise<void>;
 
   getMessages(conversationId: string): Promise<Message[]>;
   createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message>;
+  updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content">>): Promise<Message | undefined>;
   deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void>;
   getTokenStats(): Promise<{ totalInputTokens: number; totalOutputTokens: number; byUser: { userId: string; username: string; inputTokens: number; outputTokens: number }[] }>;
+  searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
-  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate">>): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId">>): Promise<UserSettings>;
 
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
   createSavedPrompt(userId: string, title: string, content: string): Promise<SavedPrompt>;
@@ -97,7 +99,7 @@ export class DatabaseStorage implements IStorage {
     return conv;
   }
 
-  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken">>): Promise<Conversation | undefined> {
+  async updateConversation(id: string, data: Partial<Pick<Conversation, "title" | "model" | "updatedAt" | "isPinned" | "shareToken" | "tags">>): Promise<Conversation | undefined> {
     const [conv] = await db.update(conversations).set(data).where(eq(conversations.id, id)).returning();
     return conv;
   }
@@ -114,6 +116,11 @@ export class DatabaseStorage implements IStorage {
 
   async createMessage(data: { conversationId: string; role: string; content: string; modelUsed?: string; attachments?: string; inputTokens?: number; outputTokens?: number }): Promise<Message> {
     const [msg] = await db.insert(messages).values(data).returning();
+    return msg;
+  }
+
+  async updateMessage(id: string, data: Partial<Pick<Message, "reaction" | "content">>): Promise<Message | undefined> {
+    const [msg] = await db.update(messages).set(data).where(eq(messages.id, id)).returning();
     return msg;
   }
 
@@ -151,6 +158,39 @@ export class DatabaseStorage implements IStorage {
     return { totalInputTokens, totalOutputTokens, byUser };
   }
 
+  async searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    if (convIds.length === 0) return [];
+
+    const results: { conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[] = [];
+    const lq = query.toLowerCase();
+
+    for (const conv of userConvs) {
+      if (conv.title.toLowerCase().includes(lq)) {
+        results.push({ conversationId: conv.id, conversationTitle: conv.title, messageId: "", snippet: conv.title, role: "title" });
+      }
+    }
+
+    for (const conv of userConvs) {
+      const msgs = await db.select().from(messages)
+        .where(eq(messages.conversationId, conv.id))
+        .orderBy(desc(messages.createdAt))
+        .limit(200);
+      for (const msg of msgs) {
+        if (msg.content.toLowerCase().includes(lq)) {
+          const idx = msg.content.toLowerCase().indexOf(lq);
+          const start = Math.max(0, idx - 40);
+          const end = Math.min(msg.content.length, idx + query.length + 80);
+          const snippet = (start > 0 ? "…" : "") + msg.content.slice(start, end) + (end < msg.content.length ? "…" : "");
+          results.push({ conversationId: conv.id, conversationTitle: conv.title, messageId: msg.id, snippet, role: msg.role });
+        }
+      }
+    }
+
+    return results.slice(0, 30);
+  }
+
   async deleteMessagesFromId(conversationId: string, fromMessageId: string): Promise<void> {
     const allMsgs = await this.getMessages(conversationId);
     const idx = allMsgs.findIndex((m) => m.id === fromMessageId);
@@ -170,7 +210,7 @@ export class DatabaseStorage implements IStorage {
     return settings;
   }
 
-  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate">>): Promise<UserSettings> {
+  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId">>): Promise<UserSettings> {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;

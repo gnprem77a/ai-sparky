@@ -20,6 +20,7 @@ export const conversations = pgTable("conversations", {
   model: text("model").notNull().default("auto"),
   isPinned: boolean("is_pinned").notNull().default(false),
   shareToken: varchar("share_token"),
+  tags: text("tags").array().notNull().default(sql`'{}'`),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
@@ -33,6 +34,7 @@ export const messages = pgTable("messages", {
   attachments: text("attachments"),
   inputTokens: integer("input_tokens"),
   outputTokens: integer("output_tokens"),
+  reaction: text("reaction"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -41,6 +43,9 @@ export const userSettings = pgTable("user_settings", {
   systemPrompt: text("system_prompt").notNull().default(""),
   dailyMessageCount: integer("daily_message_count").notNull().default(0),
   lastMessageDate: text("last_message_date"),
+  fontSize: text("font_size").notNull().default("normal"),
+  assistantName: text("assistant_name").notNull().default("Assistant"),
+  activePromptId: varchar("active_prompt_id"),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {

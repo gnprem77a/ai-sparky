@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/lib/chat-storage";
 import type { AuthUser } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface UsageData {
   count: number;
@@ -50,19 +51,45 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [sharePopoverId, setSharePopoverId] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [tagPopoverId, setTagPopoverId] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  /* Debounce search for full-text lookup */
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data: usage } = useQuery<UsageData>({
     queryKey: ["/api/settings/usage"],
   });
 
+  interface SearchResult { conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string; }
+  const { data: searchResults = [] } = useQuery<SearchResult[]>({
+    queryKey: ["/api/search", debouncedSearch],
+    queryFn: () => fetch(`/api/search?q=${encodeURIComponent(debouncedSearch)}`, { credentials: "include" }).then((r) => r.json()),
+    enabled: debouncedSearch.trim().length >= 3,
+  });
+
+  const tagMutation = useMutation({
+    mutationFn: ({ convId, tags }: { convId: string; tags: string[] }) =>
+      apiRequest("PATCH", `/api/conversations/${convId}/tags`, { tags }).then((r) => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/conversations"] }),
+  });
+
   const isPro = usage?.isPro ?? user?.plan === "pro";
+
+  /* All tags across all conversations */
+  const allTags = [...new Set(conversations.flatMap((c) => c.tags ?? []))];
 
   useEffect(() => {
     if (renamingId && renameInputRef.current) {
@@ -75,7 +102,9 @@ export function AppSidebar({
     ? conversations.filter((c) =>
         c.title.toLowerCase().includes(search.trim().toLowerCase())
       )
-    : conversations;
+    : tagFilter
+      ? conversations.filter((c) => (c.tags ?? []).includes(tagFilter))
+      : conversations;
 
   const pinned = filtered.filter((c) => c.isPinned);
   const unpinned = filtered.filter((c) => !c.isPinned);
@@ -178,6 +207,17 @@ export function AppSidebar({
                 }
               </span>
 
+              {/* Tag */}
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); setTagPopoverId(tagPopoverId === conv.id ? null : conv.id); setTagInput(""); }}
+                data-testid={`button-tag-${conv.id}`}
+                title="Add tag"
+                className="p-0.5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Tag className="w-3.5 h-3.5" />
+              </span>
+
               {/* Share */}
               <span
                 role="button"
@@ -202,6 +242,81 @@ export function AppSidebar({
             </div>
           )}
         </SidebarMenuButton>
+
+        {/* Tag chips */}
+        {(conv.tags ?? []).length > 0 && !isRenaming && (
+          <div className="flex flex-wrap gap-1 px-2.5 pb-1.5 -mt-1" onClick={(e) => e.stopPropagation()}>
+            {(conv.tags ?? []).map((tag) => (
+              <span
+                key={tag}
+                onClick={(e) => { e.stopPropagation(); setTagFilter(tag === tagFilter ? null : tag); }}
+                className={cn(
+                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer transition-colors",
+                  tag === tagFilter
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted/60 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                )}
+              >
+                # {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Tag popover */}
+        {tagPopoverId === conv.id && (
+          <div
+            className="absolute left-0 right-0 z-50 mt-0.5 px-3 py-2.5 rounded-xl border border-border/60 bg-popover shadow-xl"
+            style={{ top: "100%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
+              <Tag className="w-3 h-3 text-primary" /> Tags
+            </p>
+            {(conv.tags ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {(conv.tags ?? []).map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-primary/10 text-primary cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    onClick={() => tagMutation.mutate({ convId: conv.id, tags: (conv.tags ?? []).filter((t) => t !== tag) })}
+                    title="Click to remove"
+                  >
+                    # {tag} <X className="w-2.5 h-2.5" />
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                placeholder="Add tag…"
+                data-testid={`input-tag-${conv.id}`}
+                className="flex-1 px-2 py-1 text-[12px] rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && tagInput.trim()) {
+                    const newTag = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
+                    const current = conv.tags ?? [];
+                    if (!current.includes(newTag)) {
+                      tagMutation.mutate({ convId: conv.id, tags: [...current, newTag] });
+                    }
+                    setTagInput("");
+                  }
+                  if (e.key === "Escape") setTagPopoverId(null);
+                }}
+                autoFocus
+              />
+              <button
+                onClick={() => setTagPopoverId(null)}
+                className="text-[11px] text-muted-foreground hover:text-foreground px-1.5"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Share popover */}
         {sharePopoverId === conv.id && (
@@ -287,6 +402,64 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent className="px-2 custom-scrollbar">
+        {/* Tag filter bar */}
+        {allTags.length > 0 && !search && (
+          <div className="flex flex-wrap gap-1 px-1 pt-2 pb-1">
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors",
+                  tag === tagFilter
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted/50 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Filter className="w-2.5 h-2.5" /> {tag}
+              </button>
+            ))}
+            {tagFilter && (
+              <button
+                onClick={() => setTagFilter(null)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-2.5 h-2.5" /> Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Full-text search results */}
+        {debouncedSearch.length >= 3 && searchResults.length > 0 && (
+          <SidebarGroup className="py-0.5">
+            <SidebarGroupLabel className="text-[10px] px-2 py-1.5 text-muted-foreground/60 uppercase tracking-widest font-semibold">
+              Search Results
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {searchResults.slice(0, 8).map((result, idx) => (
+                  <SidebarMenuItem key={`${result.conversationId}-${result.messageId || idx}`}>
+                    <SidebarMenuButton
+                      onClick={() => { onSelectConversation(result.conversationId); setSearch(""); }}
+                      className="flex flex-col items-start gap-0.5 px-2.5 py-2 rounded-lg text-sm w-full h-auto"
+                    >
+                      <span className="text-[12px] font-medium text-foreground/80 truncate w-full">
+                        {result.conversationTitle}
+                      </span>
+                      {result.role !== "title" && (
+                        <span className="text-[11px] text-muted-foreground/60 line-clamp-2 text-left w-full leading-snug">
+                          {result.snippet}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-4 py-14 text-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center mb-1">
@@ -294,7 +467,7 @@ export function AppSidebar({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground/80">
-                {search ? "No matches found" : "No conversations"}
+                {search ? "No matches found" : tagFilter ? `No conversations tagged #${tagFilter}` : "No conversations"}
               </p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 {search ? "Try a different search term" : "Start a new chat to get going"}

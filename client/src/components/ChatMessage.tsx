@@ -1,10 +1,15 @@
 import { useState, useRef, useEffect, memo, lazy, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X } from "lucide-react";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
 
 const CodeBlock = lazy(() => import("@/components/CodeBlock"));
 
@@ -25,6 +30,48 @@ function CopyCodeButton({ text }: { text: string }) {
   );
 }
 
+function MermaidBlock({ code }: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>("");
+  const [error, setError] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    import("mermaid").then((mod) => {
+      const mermaid = mod.default;
+      mermaid.initialize({ startOnLoad: false, theme: "dark", darkMode: true });
+      const id = "mermaid-" + Math.random().toString(36).slice(2);
+      mermaid.render(id, code).then(({ svg: rendered }) => {
+        if (!cancelled) setSvg(rendered);
+      }).catch((e: Error) => {
+        if (!cancelled) setError(e.message || "Diagram render failed");
+      });
+    });
+    return () => { cancelled = true; };
+  }, [code]);
+
+  if (error) {
+    return (
+      <div className="my-4 rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-400 font-mono">
+        Mermaid error: {error}
+      </div>
+    );
+  }
+  if (!svg) {
+    return (
+      <div className="my-4 rounded-xl border border-border bg-muted/20 p-6 flex items-center justify-center text-xs text-muted-foreground">
+        Rendering diagram…
+      </div>
+    );
+  }
+  return (
+    <div
+      className="my-4 rounded-xl border border-border bg-muted/10 p-4 overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 function AILogo() {
   return (
     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-violet-400 flex items-center justify-center flex-shrink-0 shadow-md mt-0.5">
@@ -36,21 +83,37 @@ function AILogo() {
   );
 }
 
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
   onRegenerate?: () => void;
   onEdit?: (messageId: string, newContent: string) => void;
   isLast?: boolean;
+  conversationId?: string;
+  assistantName?: string;
+  fontSize?: string;
 }
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast, conversationId, assistantName = "Assistant", fontSize = "normal" }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.content);
+  const [localReaction, setLocalReaction] = useState<string | null>(message.reaction ?? null);
   const editRef = useRef<HTMLTextAreaElement>(null);
+
+  const fontClass = fontSize === "compact" ? "text-xs" : fontSize === "large" ? "text-base" : "text-sm";
+
+  useEffect(() => {
+    setLocalReaction(message.reaction ?? null);
+  }, [message.reaction]);
 
   useEffect(() => {
     if (isEditing && editRef.current) {
@@ -58,6 +121,26 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
       editRef.current.setSelectionRange(editRef.current.value.length, editRef.current.value.length);
     }
   }, [isEditing]);
+
+  const reactionMutation = useMutation({
+    mutationFn: (reaction: string | null) => {
+      if (!conversationId) return Promise.resolve();
+      return apiRequest("PATCH", `/api/conversations/${conversationId}/messages/${message.id}/reaction`, { reaction });
+    },
+    onMutate: (reaction) => {
+      setLocalReaction(reaction);
+    },
+    onSuccess: () => {
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId, "messages"] });
+      }
+    },
+  });
+
+  const handleReaction = (r: "up" | "down") => {
+    const next = localReaction === r ? null : r;
+    reactionMutation.mutate(next);
+  };
 
   const handleCopyResponse = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -146,7 +229,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
               <>
                 {message.content && (
                   <div className="relative group/bubble">
-                    <div className="px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-md" data-testid="content-user">
+                    <div className={cn("px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground leading-relaxed shadow-md", fontClass)} data-testid="content-user">
                       <p className="whitespace-pre-wrap break-words font-[450]">{message.content}</p>
                     </div>
                     {onEdit && (
@@ -186,7 +269,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
     >
       <AILogo />
       <div className="flex-1 min-w-0 pt-0.5">
-        <div className="text-sm leading-relaxed text-foreground/90" data-testid="content-assistant">
+        <div className={cn("leading-relaxed text-foreground/90", fontClass)} data-testid="content-assistant">
           {message.content === "" && isStreaming ? (
             <div className="flex items-center gap-1.5 py-2">
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground inline-block" />
@@ -196,11 +279,17 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
           ) : (
             <div className="prose prose-sm dark:prose-invert max-w-none">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || "");
                     const codeString = String(children).replace(/\n$/, "");
+
+                    if (match?.[1] === "mermaid") {
+                      return <MermaidBlock code={codeString} />;
+                    }
+
                     if (!match) {
                       return (
                         <code className="bg-muted/80 text-foreground/90 rounded-md px-1.5 py-0.5 font-mono text-[0.8em] border border-border/50" {...props}>
@@ -264,6 +353,13 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
           )}
         </div>
 
+        {message.stopped && (
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-500/80">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500/60 inline-block" />
+            Response stopped
+          </div>
+        )}
+
         {!isStreaming && message.content && (
           <div
             className={cn(
@@ -280,6 +376,35 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copied ? "Copied!" : "Copy"}</span>
             </button>
+
+            {/* Reactions */}
+            <button
+              onClick={() => handleReaction("up")}
+              data-testid="button-reaction-up"
+              title="Helpful"
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
+                localReaction === "up"
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+              )}
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => handleReaction("down")}
+              data-testid="button-reaction-down"
+              title="Not helpful"
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
+                localReaction === "down"
+                  ? "text-red-400 bg-red-500/10"
+                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
+              )}
+            >
+              <ThumbsDown className="w-3.5 h-3.5" />
+            </button>
+
             {onRegenerate && isLast && (
               <button
                 onClick={onRegenerate}
@@ -291,6 +416,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
                 <span>Regenerate</span>
               </button>
             )}
+
             {message.modelUsed && (() => {
               const style = BADGE_STYLE[message.modelUsed];
               if (!style) return null;
@@ -306,6 +432,17 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
                 </span>
               );
             })()}
+
+            {/* Token badge */}
+            {(message.outputTokens ?? 0) > 0 && (
+              <span
+                data-testid="badge-token-count"
+                className="ml-auto text-[10px] text-muted-foreground/40 tabular-nums"
+                title={`${message.inputTokens ?? 0} input / ${message.outputTokens ?? 0} output tokens`}
+              >
+                {fmtTokens((message.outputTokens ?? 0))} tok
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -316,8 +453,12 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, isLast }
 export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.message.content === next.message.content &&
   prev.message.modelUsed === next.message.modelUsed &&
+  prev.message.reaction === next.message.reaction &&
+  prev.message.stopped === next.message.stopped &&
   prev.isStreaming === next.isStreaming &&
   prev.isLast === next.isLast &&
+  prev.assistantName === next.assistantName &&
+  prev.fontSize === next.fontSize &&
   prev.onRegenerate === next.onRegenerate &&
   prev.onEdit === next.onEdit
 );

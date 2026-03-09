@@ -14,6 +14,10 @@ export interface Message {
   attachments?: Attachment[];
   timestamp: number;
   modelUsed?: string;
+  reaction?: string | null;
+  stopped?: boolean;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
 }
 
 export interface Conversation {
@@ -23,6 +27,7 @@ export interface Conversation {
   userId?: string;
   isPinned: boolean;
   shareToken?: string | null;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +39,9 @@ export interface ApiMessage {
   modelUsed?: string | null;
   attachments?: string | null;
   createdAt: string;
+  reaction?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
 }
 
 export function apiMessageToLocal(m: ApiMessage): Message {
@@ -44,6 +52,9 @@ export function apiMessageToLocal(m: ApiMessage): Message {
     modelUsed: m.modelUsed ?? undefined,
     attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
     timestamp: new Date(m.createdAt).getTime(),
+    reaction: m.reaction ?? null,
+    inputTokens: m.inputTokens ?? null,
+    outputTokens: m.outputTokens ?? null,
   };
 }
 

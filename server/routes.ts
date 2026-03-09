@@ -344,10 +344,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── settings: update ── */
   app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
-    const { systemPrompt } = req.body;
-    const settings = await storage.updateUserSettings(req.session.userId!, {
-      systemPrompt: systemPrompt ?? "",
-    });
+    const { systemPrompt, fontSize, assistantName, activePromptId } = req.body;
+    const updateData: Parameters<typeof storage.updateUserSettings>[1] = {};
+    if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
+    if (fontSize !== undefined) updateData.fontSize = fontSize;
+    if (assistantName !== undefined) updateData.assistantName = assistantName;
+    if ("activePromptId" in req.body) updateData.activePromptId = activePromptId ?? null;
+    const settings = await storage.updateUserSettings(req.session.userId!, updateData);
     return res.json(settings);
   });
 
@@ -386,6 +389,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     await storage.updateConversation(conv.id, { shareToken: null as any });
     return res.json({ ok: true });
+  });
+
+  /* ── messages: set reaction ── */
+  app.patch("/api/conversations/:convId/messages/:msgId/reaction", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.convId);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const reaction = req.body.reaction ?? null;
+    if (reaction !== null && reaction !== "up" && reaction !== "down") {
+      return res.status(400).json({ error: "reaction must be 'up', 'down', or null" });
+    }
+    const msg = await storage.updateMessage(req.params.msgId, { reaction });
+    return res.json(msg);
+  });
+
+  /* ── conversations: update tags ── */
+  app.patch("/api/conversations/:id/tags", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { tags } = req.body;
+    if (!Array.isArray(tags)) return res.status(400).json({ error: "tags must be an array" });
+    const updated = await storage.updateConversation(conv.id, { tags });
+    return res.json(updated);
+  });
+
+  /* ── search: full-text across messages ── */
+  app.get("/api/search", requireAuth as any, async (req: Request, res: Response) => {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) return res.json([]);
+    const results = await storage.searchMessages(req.session.userId!, q);
+    return res.json(results);
   });
 
   /* ── conversations: delete messages from index ── */
@@ -508,7 +541,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     /* ── load system prompt ── */
     const settings = await storage.getUserSettings(user.id);
-    const systemPrompt = settings.systemPrompt?.trim() || undefined;
+    let systemPrompt = settings.systemPrompt?.trim() || undefined;
+    if (settings.activePromptId) {
+      const prompts = await storage.getSavedPrompts(user.id);
+      const active = prompts.find((p) => p.id === settings.activePromptId);
+      if (active) systemPrompt = active.content;
+    }
 
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);
     const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-6);
