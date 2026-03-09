@@ -28,11 +28,11 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   powerful: {
     key: "powerful",
     friendlyName: "Powerful",
-    exactName: "Claude Opus 4",
+    exactName: "Claude Opus 4.5",
     bedrockId: "anthropic.claude-opus-4-5-20251101-v1:0",
     provider: "anthropic",
     description: "Most intelligent, complex reasoning",
-    badgeLabel: "Opus 4",
+    badgeLabel: "Opus 4.5",
   },
   creative: {
     key: "creative",
