@@ -23,6 +23,7 @@ interface Settings {
   autoTitle: boolean;
   showTokenUsage: boolean;
   customInstructions: string;
+  notificationSound: boolean;
 }
 
 interface SavedPrompt {
@@ -116,6 +117,7 @@ export function SettingsModal({ onClose }: Props) {
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
 
+  const [notificationSound, setNotificationSound] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [isMac] = useState(() => navigator.platform.toUpperCase().includes("MAC"));
 
@@ -140,6 +142,7 @@ export function SettingsModal({ onClose }: Props) {
       setAutoTitle(settings.autoTitle ?? true);
       setShowTokenUsage(settings.showTokenUsage ?? false);
       setCustomInstructions(settings.customInstructions ?? "");
+      setNotificationSound(settings.notificationSound ?? false);
     }
   }, [settings]);
 
@@ -435,6 +438,7 @@ export function SettingsModal({ onClose }: Props) {
                   { key: "autoScroll" as const, label: "Auto-scroll to new messages", desc: "Automatically scroll to the bottom as responses arrive", value: autoScroll, onChange: setAutoScroll, testId: "toggle-auto-scroll" },
                   { key: "autoTitle" as const, label: "Auto-generate conversation titles", desc: "Generate a title from the first message automatically", value: autoTitle, onChange: setAutoTitle, testId: "toggle-auto-title" },
                   { key: "showTokenUsage" as const, label: "Show token usage per message", desc: "Display input/output token counts below each AI response", value: showTokenUsage, onChange: setShowTokenUsage, testId: "toggle-token-usage" },
+                  { key: "notificationSound" as const, label: "Notification sound", desc: "Play a soft chime when the AI finishes a long response", value: notificationSound, onChange: setNotificationSound, testId: "toggle-notification-sound" },
                 ].map(({ label, desc, value, onChange, testId }) => (
                   <div key={testId} className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-border/50 bg-muted/10">
                     <div>
@@ -449,7 +453,7 @@ export function SettingsModal({ onClose }: Props) {
               <div className="flex items-center gap-3">
                 {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
                 <button
-                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage })}
+                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage, notificationSound })}
                   disabled={saveMutation.isPending}
                   data-testid="button-save-behavior"
                   className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"

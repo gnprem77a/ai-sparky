@@ -63,6 +63,17 @@ const FOLDER_COLORS = [
   { name: "orange", class: "bg-orange-500" },
 ];
 
+const TAG_COLORS = [
+  { id: "gray",   chip: "bg-muted/70 text-muted-foreground",           dot: "bg-gray-400",   filter: "bg-gray-400/20 text-gray-500 dark:text-gray-400" },
+  { id: "blue",   chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400",   dot: "bg-blue-500",   filter: "bg-blue-500/20 text-blue-600 dark:text-blue-400" },
+  { id: "green",  chip: "bg-green-500/15 text-green-600 dark:text-green-400",  dot: "bg-green-500",  filter: "bg-green-500/20 text-green-600 dark:text-green-400" },
+  { id: "red",    chip: "bg-red-500/15 text-red-600 dark:text-red-400",    dot: "bg-red-500",    filter: "bg-red-500/20 text-red-600 dark:text-red-400" },
+  { id: "yellow", chip: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400", dot: "bg-yellow-400", filter: "bg-yellow-400/20 text-yellow-700 dark:text-yellow-400" },
+  { id: "purple", chip: "bg-purple-500/15 text-purple-600 dark:text-purple-400", dot: "bg-purple-500", filter: "bg-purple-500/20 text-purple-600 dark:text-purple-400" },
+  { id: "pink",   chip: "bg-pink-500/15 text-pink-600 dark:text-pink-400",   dot: "bg-pink-500",   filter: "bg-pink-500/20 text-pink-600 dark:text-pink-400" },
+  { id: "orange", chip: "bg-orange-500/15 text-orange-600 dark:text-orange-400", dot: "bg-orange-500", filter: "bg-orange-500/20 text-orange-600 dark:text-orange-400" },
+];
+
 export function AppSidebar({
   conversations,
   activeId,
@@ -96,6 +107,19 @@ export function AppSidebar({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [tagColorMap, setTagColorMap] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem("tag-color-map") || "{}"); } catch { return {}; }
+  });
+  const [newTagColor, setNewTagColor] = useState("gray");
+
+  const saveTagColor = (tag: string, colorId: string) => {
+    const updated = { ...tagColorMap, [tag]: colorId };
+    setTagColorMap(updated);
+    localStorage.setItem("tag-color-map", JSON.stringify(updated));
+  };
+
+  const getTagStyle = (tag: string) =>
+    TAG_COLORS.find((c) => c.id === (tagColorMap[tag] || "gray")) || TAG_COLORS[0];
 
   /* Debounce search for full-text lookup */
   useEffect(() => {
@@ -319,20 +343,22 @@ export function AppSidebar({
         {/* Tag chips */}
         {(conv.tags ?? []).length > 0 && !isRenaming && (
           <div className="flex flex-wrap gap-1 px-2.5 pb-1.5 -mt-1" onClick={(e) => e.stopPropagation()}>
-            {(conv.tags ?? []).map((tag) => (
-              <span
-                key={tag}
-                onClick={(e) => { e.stopPropagation(); setTagFilter(tag === tagFilter ? null : tag); }}
-                className={cn(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer transition-colors",
-                  tag === tagFilter
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted/60 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
-                )}
-              >
-                # {tag}
-              </span>
-            ))}
+            {(conv.tags ?? []).map((tag) => {
+              const style = getTagStyle(tag);
+              return (
+                <span
+                  key={tag}
+                  onClick={(e) => { e.stopPropagation(); setTagFilter(tag === tagFilter ? null : tag); }}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer transition-colors",
+                    tag === tagFilter ? "ring-1 ring-current opacity-100" : "opacity-80 hover:opacity-100",
+                    style.chip
+                  )}
+                >
+                  # {tag}
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -348,18 +374,31 @@ export function AppSidebar({
             </p>
             {(conv.tags ?? []).length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
-                {(conv.tags ?? []).map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-primary/10 text-primary cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    onClick={() => tagMutation.mutate({ convId: conv.id, tags: (conv.tags ?? []).filter((t) => t !== tag) })}
-                    title="Click to remove"
-                  >
-                    # {tag} <X className="w-2.5 h-2.5" />
-                  </span>
-                ))}
+                {(conv.tags ?? []).map((tag) => {
+                  const style = getTagStyle(tag);
+                  return (
+                    <span
+                      key={tag}
+                      className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] cursor-pointer hover:opacity-70 transition-opacity", style.chip)}
+                      onClick={() => tagMutation.mutate({ convId: conv.id, tags: (conv.tags ?? []).filter((t) => t !== tag) })}
+                      title="Click to remove"
+                    >
+                      # {tag} <X className="w-2.5 h-2.5" />
+                    </span>
+                  );
+                })}
               </div>
             )}
+            <div className="flex gap-1 mb-2">
+              {TAG_COLORS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setNewTagColor(c.id)}
+                  className={cn("w-4 h-4 rounded-full transition-transform", c.dot, newTagColor === c.id ? "ring-2 ring-offset-1 ring-foreground/40 scale-110" : "hover:scale-110")}
+                  title={c.id}
+                />
+              ))}
+            </div>
             <div className="flex gap-1.5">
               <input
                 type="text"
@@ -373,6 +412,7 @@ export function AppSidebar({
                     const newTag = tagInput.trim().toLowerCase().replace(/\s+/g, "-");
                     const current = conv.tags ?? [];
                     if (!current.includes(newTag)) {
+                      saveTagColor(newTag, newTagColor);
                       tagMutation.mutate({ convId: conv.id, tags: [...current, newTag] });
                     }
                     setTagInput("");
@@ -495,20 +535,22 @@ export function AppSidebar({
         {/* Tag filter bar */}
         {allTags.length > 0 && !search && (
           <div className="flex flex-wrap gap-1 px-1 pt-2 pb-1">
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
-                className={cn(
-                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors",
-                  tag === tagFilter
-                    ? "bg-primary/20 text-primary"
-                    : "bg-muted/50 text-muted-foreground/70 hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Filter className="w-2.5 h-2.5" /> {tag}
-              </button>
-            ))}
+            {allTags.map((tag) => {
+              const style = getTagStyle(tag);
+              return (
+                <button
+                  key={tag}
+                  onClick={() => setTagFilter(tag === tagFilter ? null : tag)}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-all",
+                    tag === tagFilter ? cn(style.filter, "ring-1 ring-current") : cn(style.filter, "opacity-70 hover:opacity-100")
+                  )}
+                >
+                  <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", style.dot)} />
+                  {tag}
+                </button>
+              );
+            })}
             {tagFilter && (
               <button
                 onClick={() => setTagFilter(null)}

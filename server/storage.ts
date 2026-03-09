@@ -36,7 +36,7 @@ export interface IStorage {
   searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
-  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions">>): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound">>): Promise<UserSettings>;
   deleteAllConversations(userId: string): Promise<void>;
 
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
@@ -233,7 +233,7 @@ export class DatabaseStorage implements IStorage {
     return settings;
   }
 
-  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions">>): Promise<UserSettings> {
+  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound">>): Promise<UserSettings> {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;

@@ -501,7 +501,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── settings: update ── */
   app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
-    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions } = req.body;
+    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions, notificationSound } = req.body;
     const updateData: Parameters<typeof storage.updateUserSettings>[1] = {};
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (fontSize !== undefined) updateData.fontSize = fontSize;
@@ -512,6 +512,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (autoTitle !== undefined) updateData.autoTitle = autoTitle;
     if (showTokenUsage !== undefined) updateData.showTokenUsage = showTokenUsage;
     if (customInstructions !== undefined) updateData.customInstructions = customInstructions;
+    if (notificationSound !== undefined) updateData.notificationSound = notificationSound;
     const settings = await storage.updateUserSettings(req.session.userId!, updateData);
     return res.json(settings);
   });

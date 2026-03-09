@@ -107,6 +107,7 @@ export default function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
+  const inputRef = useRef("");
   const streamStartRef = useRef<number>(0);
 
   const isPro = isProActive(user);
@@ -115,6 +116,7 @@ export default function ChatPage() {
   const { data: userSettings } = useQuery<{
     fontSize: string; assistantName: string; activePromptId: string | null;
     defaultModel: string; autoScroll: boolean; autoTitle: boolean; showTokenUsage: boolean;
+    notificationSound: boolean;
   }>({
     queryKey: ["/api/settings"],
     queryFn: () => fetch("/api/settings", { credentials: "include" }).then((r) => r.json()),
@@ -125,6 +127,49 @@ export default function ChatPage() {
   const autoScroll = userSettings?.autoScroll ?? true;
   const autoTitle = userSettings?.autoTitle ?? true;
   const showTokenUsage = userSettings?.showTokenUsage ?? false;
+  const notificationSound = userSettings?.notificationSound ?? false;
+
+  /* ── Web Audio chime ── */
+  const playChime = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const notes = [523.25, 659.25, 783.99];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.12;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.18, t + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+        osc.start(t);
+        osc.stop(t + 0.35);
+      });
+    } catch { /* audio not supported */ }
+  };
+
+  /* Keep inputRef in sync for use in callbacks */
+  useEffect(() => { inputRef.current = input; }, [input]);
+
+  /* ── Draft helpers (use refs to avoid stale closures) ── */
+  const saveDraft = (id: string | null, text: string) => {
+    if (!id) return;
+    if (text.trim()) localStorage.setItem(`draft-${id}`, text);
+    else localStorage.removeItem(`draft-${id}`);
+  };
+  const getDraft = (id: string | null) => (id ? localStorage.getItem(`draft-${id}`) || "" : "");
+
+  /* Persist draft as user types (debounced 400ms) */
+  useEffect(() => {
+    if (!activeId) return;
+    const id = activeId;
+    const text = input;
+    const t = setTimeout(() => saveDraft(id, text), 400);
+    return () => clearTimeout(t);
+  }, [input, activeId]);
 
   /* ── Apply default model once settings load (only for new chats) ── */
   useEffect(() => {
@@ -228,7 +273,8 @@ export default function ChatPage() {
   const handleSelectConversation = useCallback(async (id: string) => {
     abortRef.current?.abort();
     setError(null);
-    setInput("");
+    saveDraft(activeIdRef.current, inputRef.current);
+    setInput(getDraft(id));
     setActiveId(id);
     setActiveConversationId(id);
     const conv = conversations.find((c) => c.id === id);
@@ -249,6 +295,7 @@ export default function ChatPage() {
 
   const handleNewChat = () => {
     abortRef.current?.abort();
+    saveDraft(activeIdRef.current, inputRef.current);
     setActiveId(null);
     setActiveConversationId(null);
     setMessages([]);
@@ -608,6 +655,7 @@ export default function ChatPage() {
       setIsStreaming(false);
       setStreamingMessageId(null);
       isSubmittingRef.current = false;
+      if (notificationSound && accumulated.length > 80) playChime();
     }
   };
 
@@ -625,6 +673,7 @@ export default function ChatPage() {
     isSubmittingRef.current = true;
     setError(null);
     setInput("");
+    saveDraft(activeId, "");
 
     /* Prepend quoted message if set */
     const contentWithQuote = quotedMessage

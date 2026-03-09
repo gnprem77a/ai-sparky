@@ -62,6 +62,7 @@ export const userSettings = pgTable("user_settings", {
   autoTitle: boolean("auto_title").notNull().default(true),
   showTokenUsage: boolean("show_token_usage").notNull().default(false),
   customInstructions: text("custom_instructions").notNull().default(""),
+  notificationSound: boolean("notification_sound").notNull().default(false),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {
