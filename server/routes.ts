@@ -217,7 +217,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (isFirstUser) await storage.setAdmin(user.id, true);
     const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
     req.session.userId = finalUser.id;
-    return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin });
+    return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
   });
 
   /* ── auth: login ── */
@@ -239,7 +239,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     req.session.userId = user.id;
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
 
   /* ── auth: logout ── */
@@ -260,13 +260,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       req.session.destroy(() => {});
       return res.status(401).json({ error: "User not found" });
     }
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
 
   /* ── admin: list users ── */
   app.get("/api/admin/users", requireAdmin as any, async (req: Request, res: Response) => {
     const allUsers = await storage.getAllUsers();
-    return res.json(allUsers.map((u) => ({ id: u.id, username: u.username, isAdmin: u.isAdmin })));
+    return res.json(allUsers.map((u) => ({
+      id: u.id,
+      username: u.username,
+      isAdmin: u.isAdmin,
+      plan: u.plan,
+      planExpiresAt: u.planExpiresAt,
+      createdAt: u.createdAt,
+    })));
   });
 
   /* ── admin: toggle admin ── */
@@ -289,6 +296,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     await storage.deleteUser(id);
     return res.json({ ok: true });
+  });
+
+  /* ── admin: set plan ── */
+  app.patch("/api/admin/users/:id/plan", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { plan, expiresAt } = req.body; // plan: 'free'|'pro', expiresAt: ISO string | null
+    if (!["free", "pro"].includes(plan)) {
+      return res.status(400).json({ error: "plan must be 'free' or 'pro'" });
+    }
+    const expiry = expiresAt ? new Date(expiresAt) : null;
+    const user = await storage.setPlan(id, plan, expiry);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({
+      id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
+      plan: user.plan,
+      planExpiresAt: user.planExpiresAt,
+    });
   });
 
   /* ── chat (protected) ── */

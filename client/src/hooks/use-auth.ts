@@ -5,6 +5,8 @@ export interface AuthUser {
   id: string;
   username: string;
   isAdmin: boolean;
+  plan: "free" | "pro";
+  planExpiresAt: string | null;
 }
 
 export function useAuth() {

@@ -1,6 +1,6 @@
 import { type User, type InsertUser, users } from "@shared/schema";
 import { db } from "./db";
-import { eq, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -9,6 +9,7 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<User | undefined>;
+  setPlan(id: string, plan: "free" | "pro", expiresAt: Date | null): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -39,6 +40,15 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db
       .update(users)
       .set({ isAdmin })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async setPlan(id: string, plan: "free" | "pro", expiresAt: Date | null): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ plan, planExpiresAt: expiresAt })
       .where(eq(users.id, id))
       .returning();
     return user;
