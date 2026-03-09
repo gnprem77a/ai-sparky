@@ -20,6 +20,11 @@
         } else {
           document.documentElement.classList.add('dark');
         }
+        var colorTheme = localStorage.getItem('color-theme');
+        var colorMap = { ocean: 'theme-ocean', sunset: 'theme-sunset', forest: 'theme-forest', midnight: 'theme-midnight', rose: 'theme-rose', hacker: 'theme-hacker' };
+        if (colorTheme && colorMap[colorTheme]) {
+          document.documentElement.classList.add(colorMap[colorTheme]);
+        }
       })();
     </script>
   </head>

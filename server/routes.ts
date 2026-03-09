@@ -929,6 +929,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(images);
   });
 
+  /* ── Conversation summary ── */
+  app.post("/api/summarize", requireAuth as any, async (req: Request, res: Response) => {
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: "messages array is required" });
+    }
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      return res.status(500).json({ error: "AWS credentials not configured" });
+    }
+    const client = getClient();
+    const conversationText = messages
+      .filter((m: any) => m.role === "user" || m.role === "assistant")
+      .map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
+      .join("\n\n");
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 600,
+      system: "You are a concise summarizer. Respond ONLY with bullet points — no intro, no conclusion.",
+      messages: [
+        {
+          role: "user",
+          content: `Summarize this conversation as 3–5 clear bullet points. Each bullet should capture a key topic, question answered, or decision made.\n\n${conversationText}`,
+        },
+      ],
+    };
+    try {
+      const command = new InvokeModelCommand({
+        modelId: FALLBACK_MODEL.bedrockId,
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(payload),
+      });
+      const response = await client.send(command);
+      const body = JSON.parse(new TextDecoder().decode(response.body));
+      const summary = body.content?.[0]?.text || "Unable to generate summary.";
+      res.json({ summary });
+    } catch (err: unknown) {
+      console.error("[bedrock] summarize error:", err);
+      res.status(500).json({ error: "Failed to generate summary" });
+    }
+  });
+
   /* ── PDF text extraction ── */
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
   app.post("/api/extract-pdf", requireAuth as any, upload.single("file") as any, async (req: Request, res: Response) => {

@@ -176,6 +176,24 @@
   --chart-1: 221 83% 53%;
 }
 
+.theme-rose {
+  --primary: 340 82% 52%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 340 82% 52%;
+  --sidebar-primary: 340 82% 52%;
+  --sidebar-ring: 340 82% 52%;
+  --chart-1: 340 82% 52%;
+}
+
+.theme-hacker {
+  --primary: 120 100% 35%;
+  --primary-foreground: 0 0% 0%;
+  --ring: 120 100% 35%;
+  --sidebar-primary: 120 100% 35%;
+  --sidebar-ring: 120 100% 35%;
+  --chart-1: 120 100% 35%;
+}
+
 @layer base {
   * {
     @apply border-border;

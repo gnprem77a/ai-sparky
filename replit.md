@@ -99,6 +99,9 @@ server/
 - **PDF Chat**: Upload PDF → server extracts text via pdf-parse → extracted content sent to AI as context with page count badge
 - **More Tools**: `get_weather(location)` via wttr.in free API; `fetch_url(url)` with HTML stripping (8000 char limit)
 - **Mobile Responsive**: Non-essential header buttons hidden on small screens (sm: breakpoints); sidebar uses shadcn Sheet for mobile drawer
+- **Export Dropdown**: Single FileDown icon button in header opens a dropdown with "Download Markdown" and "Export as PDF" options; visible on all screen sizes
+- **Custom Chat Themes**: Settings → Appearance tab has Color Mode (Light/Dark toggle) + Accent Color picker with 7 themes (Default, Ocean, Sunset, Forest, Midnight, Rose, Hacker); theme classes applied to `document.documentElement`; persisted in `localStorage("color-theme")`; initialized in index.html IIFE before React loads
+- **Conversation Summary**: Sparkles icon button in header; calls `POST /api/summarize` with current messages; returns 3–5 bullet-point TL;DR from Claude Haiku (InvokeModelCommand, non-streaming); displayed in a Dialog modal
 
 ### Admin
 - **User management**: list users, change plans (Free/Pro with duration)

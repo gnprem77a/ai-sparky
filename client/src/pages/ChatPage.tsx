@@ -12,10 +12,12 @@ import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command, Sparkles, FileDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   type Conversation,
   type Message,
@@ -73,6 +75,33 @@ export default function ChatPage() {
 
   /* ── Quote reply state ── */
   const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
+
+  /* ── Summary state ── */
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  const handleSummarize = async () => {
+    if (!messages.length) return;
+    setSummaryOpen(true);
+    setSummaryText("");
+    setSummaryLoading(true);
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ messages: messages.map((m) => ({ role: m.role, content: m.content })) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to summarize");
+      setSummaryText(data.summary);
+    } catch (err: unknown) {
+      setSummaryText(`Error: ${(err as Error).message}`);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -800,25 +829,37 @@ export default function ChatPage() {
                   </SheetContent>
                 </Sheet>
 
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      data-testid="button-export-dropdown"
+                      title="Export conversation"
+                      className="h-9 w-9 text-muted-foreground"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={handleExport} data-testid="button-export-md" className="gap-2 cursor-pointer">
+                      <Download className="w-3.5 h-3.5" /> Download Markdown
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportPDF} data-testid="button-export-pdf" className="gap-2 cursor-pointer">
+                      <Printer className="w-3.5 h-3.5" /> Export as PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={handleExport}
-                  data-testid="button-export"
-                  title="Export as Markdown"
-                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
+                  onClick={handleSummarize}
+                  data-testid="button-summarize"
+                  title="Summarize conversation"
+                  className="h-9 w-9 text-muted-foreground"
                 >
-                  <Download className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={handleExportPDF}
-                  data-testid="button-export-pdf"
-                  title="Export as PDF"
-                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
-                >
-                  <Printer className="w-4 h-4" />
+                  <Sparkles className="w-4 h-4" />
                 </Button>
               </>
             )}
@@ -996,6 +1037,29 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
         onAction={handleCommandAction}
       />
+
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Conversation Summary
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-2 min-h-[80px]">
+            {summaryLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
+                <span className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin inline-block" />
+                Generating summary…
+              </div>
+            ) : (
+              <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {summaryText}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
