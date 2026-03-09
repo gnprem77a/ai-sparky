@@ -4,8 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { useLocation } from "wouter";
 
 const schema = z.object({
   username: z.string().min(3, "At least 3 characters").max(32, "At most 32 characters"),
@@ -17,6 +18,7 @@ export default function AuthPage() {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [showPass, setShowPass] = useState(false);
   const { login, register } = useAuth();
+  const [, navigate] = useLocation();
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -45,6 +47,16 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
+
+        {/* Back link */}
+        <button
+          onClick={() => navigate("/")}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6 group"
+          data-testid="link-back-to-home"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+          Back to home
+        </button>
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">

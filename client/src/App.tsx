@@ -11,6 +11,7 @@ import { LanguageProvider } from "@/lib/i18n";
 
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
+const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
@@ -64,7 +65,7 @@ function AppInner() {
   if (!user) {
     return (
       <Suspense fallback={null}>
-        <AuthPage />
+        {location === "/login" ? <AuthPage /> : <LandingPage />}
       </Suspense>
     );
   }
