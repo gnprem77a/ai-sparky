@@ -3,11 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Crown, Shield, User, Lock, Palette, MessageSquare,
   Eye, EyeOff, Check, Save, LogOut, ChevronRight, Zap, Calendar,
-  Hash, Bot, Type, Key,
+  Hash, Bot, Type, Key, Sun, Moon,
 } from "lucide-react";
 
 interface Settings {
@@ -50,6 +51,7 @@ function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: 
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
 
   const [fontSize, setFontSize]         = useState("normal");
@@ -309,7 +311,39 @@ export default function ProfilePage() {
           <div className="space-y-5">
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                <Palette className="w-3.5 h-3.5" /> Theme
+                {theme === "dark" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />} Mode
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { if (theme !== "light") toggleTheme(); }}
+                  data-testid="button-theme-light"
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
+                    theme === "light"
+                      ? "border-primary/60 bg-primary/10 text-primary"
+                      : "border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  <Sun className="w-4 h-4" /> Light
+                </button>
+                <button
+                  onClick={() => { if (theme !== "dark") toggleTheme(); }}
+                  data-testid="button-theme-dark"
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
+                    theme === "dark"
+                      ? "border-primary/60 bg-primary/10 text-primary"
+                      : "border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  <Moon className="w-4 h-4" /> Dark
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                <Palette className="w-3.5 h-3.5" /> Color Theme
               </label>
               <div className="flex flex-wrap gap-3">
                 {themes.map((t) => (

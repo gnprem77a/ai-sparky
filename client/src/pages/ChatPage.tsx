@@ -8,10 +8,9 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { SettingsModal } from "@/components/SettingsModal";
 import { type ModelId } from "@/components/ModelSelector";
-import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer } from "lucide-react";
+import { Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, UserCircle, Search, X, ChevronUp, FileText, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type Conversation,
@@ -44,30 +43,9 @@ export default function ChatPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
 
-  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
-  const [themeColor, setThemeColor] = useState(() => localStorage.getItem("theme-color") || "default");
-
-  const themes = [
-    { name: "default", color: "bg-[#7c3aed]" },
-    { name: "ocean", color: "bg-[#0ea5e9]" },
-    { name: "sunset", color: "bg-[#f97316]" },
-    { name: "forest", color: "bg-[#22c55e]" },
-    { name: "midnight", color: "bg-[#3b82f6]" },
-  ];
-
-  const handleThemeChange = (name: string) => {
-    themes.forEach(t => {
-      document.documentElement.classList.remove(`theme-${t.name}`);
-    });
-    if (name !== "default") {
-      document.documentElement.classList.add(`theme-${name}`);
-    }
-    setThemeColor(name);
-    localStorage.setItem("theme-color", name);
-  };
 
   /* ── Image generation state ── */
   const [isImageMode, setIsImageMode] = useState(false);
@@ -738,31 +716,6 @@ export default function ChatPage() {
               className="h-9 w-9 text-muted-foreground"
             >
               <Plus className="w-4 h-4" />
-            </Button>
-            <div className="hidden sm:flex items-center gap-1.5 px-2">
-              {themes.map((t) => (
-                <button
-                  key={t.name}
-                  onClick={() => handleThemeChange(t.name)}
-                  data-testid={`button-theme-${t.name}`}
-                  title={t.name.charAt(0).toUpperCase() + t.name.slice(1)}
-                  className={cn(
-                    "w-3 h-3 rounded-full transition-all hover:scale-125 hover-elevate active-elevate-2",
-                    t.color,
-                    themeColor === t.name ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : "opacity-60"
-                  )}
-                />
-              ))}
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-              data-testid="button-theme-toggle"
-              title="Toggle theme"
-              className="h-9 w-9 text-muted-foreground"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
             {user && (
               <div className="relative" ref={profileRef}>
