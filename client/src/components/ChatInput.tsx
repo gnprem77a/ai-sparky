@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, File, ChevronDown,
+  ClipboardPaste, Plus, File, ChevronDown, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
@@ -70,10 +70,11 @@ interface ChatInputProps {
   disabled?: boolean;
   model: ModelId;
   onModelChange: (model: ModelId) => void;
+  isPro?: boolean;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -164,9 +165,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
           } else if (type === "text/plain") {
             const blob = await item.getType(type);
             const text = await blob.text();
-            if (text.trim()) {
-              onChange(value + (value ? "\n" : "") + text);
-            }
+            if (text.trim()) onChange(value + (value ? "\n" : "") + text);
           }
         }
       }
@@ -190,6 +189,9 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
   const removeAttachment = (id: string) => setAttachments(prev => prev.filter(a => a.id !== id));
   const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !isStreaming && !disabled && !isProcessing;
+
+  const effectiveModel = isPro ? model : "fast";
+  const selectedModel = MODELS.find(m => m.id === effectiveModel) ?? MODELS[MODELS.length - 1];
 
   return (
     <div className="px-4 pb-5 pt-2">
@@ -320,17 +322,11 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                     "disabled:opacity-30 disabled:cursor-not-allowed"
                   )}
                 >
-                  {(() => {
-                    const selected = MODELS.find(m => m.id === model);
-                    return selected ? (
-                      <>
-                        <span className={cn("w-3.5 h-3.5 flex-shrink-0", modelOpen ? "text-primary" : selected.iconColor)}>
-                          {selected.icon}
-                        </span>
-                        <span>{selected.friendlyName}</span>
-                      </>
-                    ) : <span>Auto</span>;
-                  })()}
+                  <span className={cn("w-3.5 h-3.5 flex-shrink-0", modelOpen ? "text-primary" : selectedModel.iconColor)}>
+                    {selectedModel.icon}
+                  </span>
+                  <span>{selectedModel.friendlyName}</span>
+                  {!isPro && <Lock className="w-2.5 h-2.5 opacity-50" />}
                   <ChevronDown className={cn("w-3.5 h-3.5 opacity-60 transition-transform duration-200", modelOpen && "rotate-180")} />
                 </button>
 
@@ -341,42 +337,62 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
                         Model
                       </p>
-                      {MODELS.map(m => (
-                        <button
-                          key={m.id}
-                          onClick={() => { onModelChange(m.id); setModelOpen(false); }}
-                          data-testid={`option-model-${m.id}`}
-                          className={cn(
-                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
-                            m.id === model ? "bg-primary/8" : "hover:bg-muted/50"
-                          )}
-                        >
-                          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg, m.iconColor)}>
-                            {m.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-1.5 mb-0.5">
-                              <p className={cn("text-sm font-medium leading-none", m.id === model ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
-                                {m.friendlyName}
-                              </p>
-                              {m.id !== "auto" && (
-                                <span className="text-[10px] text-muted-foreground/40 leading-none font-normal">
-                                  {m.exactName}
-                                </span>
-                              )}
+                      {MODELS.map(m => {
+                        const locked = m.proOnly && !isPro;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              if (locked) return;
+                              onModelChange(m.id);
+                              setModelOpen(false);
+                            }}
+                            disabled={locked}
+                            data-testid={`option-model-${m.id}`}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
+                              m.id === effectiveModel ? "bg-primary/8" : "hover:bg-muted/50",
+                              locked && "opacity-45 cursor-not-allowed"
+                            )}
+                          >
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg, m.iconColor)}>
+                              {m.icon}
                             </div>
-                            <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
-                          </div>
-                          {m.id === model && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                          )}
-                        </button>
-                      ))}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-1.5 mb-0.5">
+                                <p className={cn("text-sm font-medium leading-none", m.id === effectiveModel ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
+                                  {m.friendlyName}
+                                </p>
+                                {locked && (
+                                  <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-500">
+                                    <Lock className="w-2 h-2" /> Pro
+                                  </span>
+                                )}
+                                {!locked && m.id !== "auto" && (
+                                  <span className="text-[10px] text-muted-foreground/40 leading-none font-normal">
+                                    {m.exactName}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
+                            </div>
+                            {m.id === effectiveModel && !locked && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                      {!isPro && (
+                        <div className="mx-1 mt-1 mb-0.5 px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15">
+                          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                            Upgrade to Pro to unlock all models
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
-
 
               {isProcessing && (
                 <span className="text-[11px] text-muted-foreground/50 animate-pulse">Reading…</span>

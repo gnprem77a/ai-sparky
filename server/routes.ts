@@ -8,9 +8,7 @@ import { insertUserSchema } from "../shared/schema";
 
 /* ─── auth middleware ─────────────────────────────────────────── */
 function requireAuth(req: Request, res: Response, next: () => void) {
-  if (!req.session.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
   next();
 }
 
@@ -19,6 +17,12 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
   const user = await storage.getUser(req.session.userId);
   if (!user?.isAdmin) return res.status(403).json({ error: "Forbidden" });
   next();
+}
+
+function isProActive(user: { plan: string; planExpiresAt: Date | null }): boolean {
+  if (user.plan !== "pro") return false;
+  if (!user.planExpiresAt) return true;
+  return user.planExpiresAt > new Date();
 }
 
 /* ─── bedrock client ─────────────────────────────────────────── */
@@ -101,16 +105,20 @@ function buildClaudeContent(msg: RawMessage): string | ClaudeBlock[] {
   return blocks;
 }
 
-function buildClaudeBody(messages: RawMessage[], maxTokens: number) {
+function buildClaudeBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string) {
   return {
     anthropic_version: "bedrock-2023-05-31",
     max_tokens: maxTokens,
+    ...(systemPrompt ? { system: systemPrompt } : {}),
     messages: messages.map((m) => ({ role: m.role, content: buildClaudeContent(m) })),
   };
 }
 
-function buildLlamaPrompt(messages: RawMessage[]): string {
+function buildLlamaPrompt(messages: RawMessage[], systemPrompt?: string): string {
   let prompt = "<|begin_of_text|>";
+  if (systemPrompt) {
+    prompt += `<|start_header_id|>system<|end_header_id|>\n\n${systemPrompt}<|eot_id|>`;
+  }
   for (const msg of messages) {
     const role = msg.role === "user" ? "user" : "assistant";
     const textAtts = msg.attachments?.filter((a) => a.type === "text") ?? [];
@@ -126,9 +134,9 @@ function buildLlamaPrompt(messages: RawMessage[]): string {
   return prompt;
 }
 
-function buildLlamaBody(messages: RawMessage[], maxTokens: number) {
+function buildLlamaBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string) {
   return {
-    prompt: buildLlamaPrompt(messages),
+    prompt: buildLlamaPrompt(messages, systemPrompt),
     max_gen_len: Math.min(maxTokens, 2048),
     temperature: 0.8,
     top_p: 0.9,
@@ -162,10 +170,11 @@ async function streamModel(
   maxTokens: number,
   res: Response,
   sendHeader: boolean,
+  systemPrompt?: string,
 ): Promise<void> {
   const body = entry.provider === "anthropic"
-    ? buildClaudeBody(messages, maxTokens)
-    : buildLlamaBody(messages, maxTokens);
+    ? buildClaudeBody(messages, maxTokens, systemPrompt)
+    : buildLlamaBody(messages, maxTokens, systemPrompt);
 
   const command = new InvokeModelWithResponseStreamCommand({
     modelId: entry.bedrockId,
@@ -199,18 +208,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── auth: register ── */
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Username and password are required." });
-    }
+    if (!parsed.success) return res.status(400).json({ error: "Username and password are required." });
     const { username, password } = parsed.data;
 
     const existing = await storage.getUserByUsername(username);
-    if (existing) {
-      return res.status(409).json({ error: "Username already taken." });
-    }
+    if (existing) return res.status(409).json({ error: "Username already taken." });
 
     const hashed = await bcrypt.hash(password, 12);
-    // First registered user becomes admin automatically
     const allUsers = await storage.getAllUsers();
     const isFirstUser = allUsers.length === 0;
     const user = await storage.createUser({ username, password: hashed });
@@ -223,20 +227,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── auth: login ── */
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Username and password are required." });
-    }
+    if (!parsed.success) return res.status(400).json({ error: "Username and password are required." });
     const { username, password } = parsed.data;
 
     const user = await storage.getUserByUsername(username);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid username or password." });
-    }
+    if (!user) return res.status(401).json({ error: "Invalid username or password." });
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      return res.status(401).json({ error: "Invalid username or password." });
-    }
+    if (!valid) return res.status(401).json({ error: "Invalid username or password." });
 
     req.session.userId = user.id;
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
@@ -252,38 +250,117 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── auth: me ── */
   app.get("/api/auth/me", async (req: Request, res: Response) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ error: "Not logged in" });
-    }
+    if (!req.session.userId) return res.status(401).json({ error: "Not logged in" });
     const user = await storage.getUser(req.session.userId);
-    if (!user) {
-      req.session.destroy(() => {});
-      return res.status(401).json({ error: "User not found" });
-    }
+    if (!user) { req.session.destroy(() => {}); return res.status(401).json({ error: "User not found" }); }
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
+  });
+
+  /* ── auth: change password ── */
+  app.post("/api/auth/change-password", requireAuth as any, async (req: Request, res: Response) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: "Both current and new password are required." });
+    if (newPassword.length < 6) return res.status(400).json({ error: "New password must be at least 6 characters." });
+
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(401).json({ error: "Current password is incorrect." });
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await storage.updatePassword(user.id, hashed);
+    return res.json({ ok: true });
+  });
+
+  /* ── conversations: list ── */
+  app.get("/api/conversations", requireAuth as any, async (req: Request, res: Response) => {
+    const convs = await storage.getConversations(req.session.userId!);
+    return res.json(convs);
+  });
+
+  /* ── conversations: create ── */
+  app.post("/api/conversations", requireAuth as any, async (req: Request, res: Response) => {
+    const { title = "New Chat", model = "auto" } = req.body;
+    const conv = await storage.createConversation(req.session.userId!, title, model);
+    return res.status(201).json(conv);
+  });
+
+  /* ── conversations: get with messages ── */
+  app.get("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const msgs = await storage.getMessages(conv.id);
+    return res.json({ ...conv, messages: msgs });
+  });
+
+  /* ── conversations: update ── */
+  app.patch("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { title, model } = req.body;
+    const updated = await storage.updateConversation(conv.id, {
+      ...(title !== undefined ? { title } : {}),
+      ...(model !== undefined ? { model } : {}),
+      updatedAt: new Date(),
+    });
+    return res.json(updated);
+  });
+
+  /* ── conversations: delete ── */
+  app.delete("/api/conversations/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    await storage.deleteConversation(conv.id);
+    return res.json({ ok: true });
+  });
+
+  /* ── messages: add ── */
+  app.post("/api/conversations/:id/messages", requireAuth as any, async (req: Request, res: Response) => {
+    const conv = await storage.getConversation(req.params.id);
+    if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
+    const { role, content, modelUsed, attachments } = req.body;
+    if (!role || content === undefined) return res.status(400).json({ error: "role and content are required" });
+    const msg = await storage.createMessage({
+      conversationId: conv.id,
+      role,
+      content,
+      modelUsed,
+      attachments: attachments ? JSON.stringify(attachments) : undefined,
+    });
+    await storage.updateConversation(conv.id, { updatedAt: new Date() });
+    return res.status(201).json(msg);
+  });
+
+  /* ── settings: get ── */
+  app.get("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
+    const settings = await storage.getUserSettings(req.session.userId!);
+    return res.json(settings);
+  });
+
+  /* ── settings: update ── */
+  app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
+    const { systemPrompt } = req.body;
+    const settings = await storage.updateUserSettings(req.session.userId!, {
+      systemPrompt: systemPrompt ?? "",
+    });
+    return res.json(settings);
   });
 
   /* ── admin: list users ── */
   app.get("/api/admin/users", requireAdmin as any, async (req: Request, res: Response) => {
     const allUsers = await storage.getAllUsers();
     return res.json(allUsers.map((u) => ({
-      id: u.id,
-      username: u.username,
-      isAdmin: u.isAdmin,
-      plan: u.plan,
-      planExpiresAt: u.planExpiresAt,
-      createdAt: u.createdAt,
+      id: u.id, username: u.username, isAdmin: u.isAdmin,
+      plan: u.plan, planExpiresAt: u.planExpiresAt, createdAt: u.createdAt,
     })));
   });
 
   /* ── admin: toggle admin ── */
   app.patch("/api/admin/users/:id/admin", requireAdmin as any, async (req: Request, res: Response) => {
     const { id } = req.params;
-    if (id === req.session.userId) {
-      return res.status(400).json({ error: "Cannot change your own admin status." });
-    }
-    const { isAdmin } = req.body;
-    const user = await storage.setAdmin(id, Boolean(isAdmin));
+    if (id === req.session.userId) return res.status(400).json({ error: "Cannot change your own admin status." });
+    const user = await storage.setAdmin(id, Boolean(req.body.isAdmin));
     if (!user) return res.status(404).json({ error: "User not found" });
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
   });
@@ -291,9 +368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── admin: delete user ── */
   app.delete("/api/admin/users/:id", requireAdmin as any, async (req: Request, res: Response) => {
     const { id } = req.params;
-    if (id === req.session.userId) {
-      return res.status(400).json({ error: "Cannot delete your own account." });
-    }
+    if (id === req.session.userId) return res.status(400).json({ error: "Cannot delete your own account." });
     await storage.deleteUser(id);
     return res.json({ ok: true });
   });
@@ -301,24 +376,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── admin: set plan ── */
   app.patch("/api/admin/users/:id/plan", requireAdmin as any, async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { plan, expiresAt } = req.body; // plan: 'free'|'pro', expiresAt: ISO string | null
-    if (!["free", "pro"].includes(plan)) {
-      return res.status(400).json({ error: "plan must be 'free' or 'pro'" });
-    }
+    const { plan, expiresAt } = req.body;
+    if (!["free", "pro"].includes(plan)) return res.status(400).json({ error: "plan must be 'free' or 'pro'" });
     const expiry = expiresAt ? new Date(expiresAt) : null;
     const user = await storage.setPlan(id, plan, expiry);
     if (!user) return res.status(404).json({ error: "User not found" });
-    return res.json({
-      id: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin,
-      plan: user.plan,
-      planExpiresAt: user.planExpiresAt,
-    });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
 
   /* ── chat (protected) ── */
-  app.post("/api/chat", requireAuth, async (req: Request, res: Response) => {
+  app.post("/api/chat", requireAuth as any, async (req: Request, res: Response) => {
     const { messages, model = "auto", maxTokens = 4096 } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
@@ -331,7 +398,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     }
 
-    const selected = resolveModel(model, messages as RawMessage[]);
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const pro = isProActive(user);
+
+    /* ── Free plan enforcement ── */
+    let effectiveModel = model;
+    if (!pro) {
+      effectiveModel = "fast";
+      const today = new Date().toISOString().split("T")[0];
+      const settings = await storage.getUserSettings(user.id);
+      const count = settings.lastMessageDate === today ? settings.dailyMessageCount : 0;
+      const FREE_DAILY_LIMIT = 20;
+      if (count >= FREE_DAILY_LIMIT) {
+        return res.status(429).json({
+          error: `Daily message limit reached (${FREE_DAILY_LIMIT}/day). Upgrade to Pro for unlimited access.`,
+          limitReached: true,
+        });
+      }
+      await storage.updateUserSettings(user.id, {
+        dailyMessageCount: count + 1,
+        lastMessageDate: today,
+      });
+    }
+
+    /* ── load system prompt ── */
+    const settings = await storage.getUserSettings(user.id);
+    const systemPrompt = settings.systemPrompt?.trim() || undefined;
+
+    const selected = resolveModel(effectiveModel, messages as RawMessage[]);
     const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-6);
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -339,10 +435,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
 
+    if (!pro) {
+      res.write(`data: ${JSON.stringify({ planEnforced: true })}\n\n`);
+    }
+
     const client = getClient();
 
     try {
-      await streamModel(client, selected, recentMessages, maxTokens, res, true);
+      await streamModel(client, selected, recentMessages, maxTokens, res, true, systemPrompt);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
@@ -352,7 +452,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (selected.bedrockId !== FALLBACK_MODEL.bedrockId) {
         console.log(`[bedrock] Falling back to ${FALLBACK_MODEL.exactName}…`);
         try {
-          await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false);
+          await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false, systemPrompt);
           res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
           res.end();
           return;

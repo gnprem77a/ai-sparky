@@ -1,42 +1,61 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
+import { SettingsModal } from "@/components/SettingsModal";
 import { type ModelId } from "@/components/ModelSelector";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Moon, Sun, Plus, LogOut, Shield, ChevronDown } from "lucide-react";
+import { Moon, Sun, Plus, LogOut, Shield, ChevronDown, Settings, Download, Crown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   type Conversation,
   type Message,
   type Attachment,
-  getConversations,
+  type ApiMessage,
+  apiMessageToLocal,
+  generateTitle,
+  exportConversationAsMarkdown,
   getActiveConversationId,
   setActiveConversationId,
-  createConversation,
-  updateConversation,
-  deleteConversation,
-  generateTitle,
 } from "@/lib/chat-storage";
 
+function isProActive(user: { plan: string; planExpiresAt: string | null } | null): boolean {
+  if (!user) return false;
+  if (user.plan !== "pro") return false;
+  if (!user.planExpiresAt) return true;
+  return new Date(user.planExpiresAt) > new Date();
+}
+
 export default function ChatPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelId>("auto");
   const [error, setError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const isSubmittingRef = useRef(false);
+  const activeIdRef = useRef<string | null>(null);
 
+  const isPro = isProActive(user);
+
+  /* ── Click-outside for profile menu ── */
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -46,67 +65,97 @@ export default function ChatPage() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const isSubmittingRef = useRef(false);
 
-  const activeConversation = conversations.find((c) => c.id === activeId) ?? null;
-  const messages = activeConversation?.messages ?? [];
+  /* ── Load conversations from API ── */
+  const { data: conversations = [] } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
+    queryFn: () =>
+      fetch("/api/conversations", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user,
+  });
 
+  /* ── Restore last active conversation on mount ── */
   useEffect(() => {
-    const saved = getConversations();
-    setConversations(saved);
-    const savedActiveId = getActiveConversationId();
-    if (savedActiveId && saved.some((c) => c.id === savedActiveId)) {
-      setActiveId(savedActiveId);
-      const conv = saved.find((c) => c.id === savedActiveId);
-      if (conv) setModel(conv.model as ModelId);
+    if (!user || conversations.length === 0) return;
+    const savedId = getActiveConversationId();
+    if (savedId && conversations.some((c) => c.id === savedId) && !activeId) {
+      handleSelectConversation(savedId);
     }
-  }, []);
+  }, [user, conversations.length]);
 
+  /* ── Sync activeIdRef ── */
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  /* ── Auto-scroll ── */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, isStreaming]);
 
-  const refreshConversations = useCallback(() => {
-    setConversations(getConversations());
-  }, []);
+  /* ── Keyboard shortcuts ── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        handleNewChat();
+      }
+      if (e.key === "Escape" && isStreaming) {
+        abortRef.current?.abort();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isStreaming]);
+
+  /* ── Load messages when selecting a conversation ── */
+  const handleSelectConversation = useCallback(async (id: string) => {
+    abortRef.current?.abort();
+    setError(null);
+    setInput("");
+    setActiveId(id);
+    setActiveConversationId(id);
+    const conv = conversations.find((c) => c.id === id);
+    if (conv) setModel(conv.model as ModelId);
+
+    setIsLoadingMessages(true);
+    try {
+      const res = await fetch(`/api/conversations/${id}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const msgs: Message[] = (data.messages as ApiMessage[]).map(apiMessageToLocal);
+        setMessages(msgs);
+      }
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [conversations]);
 
   const handleNewChat = () => {
     abortRef.current?.abort();
     setActiveId(null);
     setActiveConversationId(null);
+    setMessages([]);
     setInput("");
     setError(null);
   };
 
-  const handleSelectConversation = (id: string) => {
-    abortRef.current?.abort();
-    const conv = conversations.find((c) => c.id === id);
-    if (conv) {
-      setActiveId(id);
-      setActiveConversationId(id);
-      setModel(conv.model as ModelId);
-      setInput("");
-      setError(null);
-    }
-  };
-
-  const handleDeleteConversation = (id: string) => {
-    deleteConversation(id);
+  const handleDeleteConversation = async (id: string) => {
+    await apiRequest("DELETE", `/api/conversations/${id}`);
+    queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     if (activeId === id) {
       setActiveId(null);
       setActiveConversationId(null);
+      setMessages([]);
     }
-    refreshConversations();
   };
 
-  const handleModelChange = (newModel: ModelId) => {
+  const handleModelChange = async (newModel: ModelId) => {
+    if (!isPro) return;
     setModel(newModel);
-    if (activeConversation) {
-      const updated = { ...activeConversation, model: newModel };
-      updateConversation(updated);
-      refreshConversations();
+    if (activeId) {
+      await apiRequest("PATCH", `/api/conversations/${activeId}`, { model: newModel });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     }
   };
 
@@ -116,18 +165,25 @@ export default function ChatPage() {
     setStreamingMessageId(null);
   };
 
+  const handleExport = () => {
+    if (!messages.length) return;
+    const conv = conversations.find((c) => c.id === activeId);
+    exportConversationAsMarkdown(conv?.title ?? "Conversation", messages);
+  };
+
+  /* ── Stream assistant reply ── */
   const streamAssistantReply = async (
-    conversation: Conversation,
-    assistantMsgId: string
+    convId: string,
+    msgs: Message[],
+    assistantMsgId: string,
   ) => {
-    let currentConversation = conversation;
     const controller = new AbortController();
     abortRef.current = controller;
 
     setIsStreaming(true);
     setStreamingMessageId(assistantMsgId);
 
-    const historyForApi = currentConversation.messages
+    const historyForApi = msgs
       .filter((m) => m.id !== assistantMsgId)
       .map((m) => ({
         role: m.role,
@@ -140,11 +196,14 @@ export default function ChatPage() {
         })),
       }));
 
+    let accumulated = "";
+    let finalModelUsed: string | undefined;
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: historyForApi, model, maxTokens: 4096 }),
+        body: JSON.stringify({ messages: historyForApi, model: isPro ? model : "fast", maxTokens: 4096 }),
         signal: controller.signal,
       });
 
@@ -157,9 +216,6 @@ export default function ChatPage() {
       if (!reader) throw new Error("No response stream");
 
       const decoder = new TextDecoder();
-      let accumulated = "";
-
-      // 50ms stream buffer — batches token updates so React re-renders at most ~20x/sec
       let pendingText = "";
       let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -168,15 +224,10 @@ export default function ChatPage() {
         if (!pendingText) return;
         accumulated += pendingText;
         pendingText = "";
-        const updated: Conversation = {
-          ...currentConversation,
-          messages: currentConversation.messages.map((m) =>
-            m.id === assistantMsgId ? { ...m, content: accumulated } : m
-          ),
-        };
-        currentConversation = updated;
-        updateConversation(updated);
-        refreshConversations();
+        const text = accumulated;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMsgId ? { ...m, content: text } : m))
+        );
       };
 
       while (true) {
@@ -193,17 +244,13 @@ export default function ChatPage() {
             const parsed = JSON.parse(data);
             if (parsed.error) throw new Error(parsed.error);
             if (parsed.modelUsed) {
-              // Flush any pending text first, then apply modelUsed immediately
+              finalModelUsed = parsed.modelUsed;
               if (flushTimeout) { clearTimeout(flushTimeout); flush(); }
-              const updated: Conversation = {
-                ...currentConversation,
-                messages: currentConversation.messages.map((m) =>
+              setMessages((prev) =>
+                prev.map((m) =>
                   m.id === assistantMsgId ? { ...m, modelUsed: parsed.modelUsed } : m
-                ),
-              };
-              currentConversation = updated;
-              updateConversation(updated);
-              refreshConversations();
+                )
+              );
             }
             if (parsed.text) {
               pendingText += parsed.text;
@@ -218,21 +265,35 @@ export default function ChatPage() {
         }
       }
 
-      // Flush any remaining buffered text
       if (flushTimeout) clearTimeout(flushTimeout);
       flush();
+
+      /* ── Save completed assistant message to DB ── */
+      if (convId === activeIdRef.current || activeIdRef.current === null) {
+        await apiRequest("POST", `/api/conversations/${convId}/messages`, {
+          role: "assistant",
+          content: accumulated,
+          modelUsed: finalModelUsed,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+      }
     } catch (err: unknown) {
       const error = err as Error;
       if (error.name === "AbortError") {
-        // stopped by user or conversation switch
+        /* user stopped */
+        if (accumulated && convId) {
+          try {
+            await apiRequest("POST", `/api/conversations/${convId}/messages`, {
+              role: "assistant",
+              content: accumulated,
+              modelUsed: finalModelUsed,
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+          } catch { /* ignore save error on abort */ }
+        }
       } else {
         setError(error.message || "Something went wrong. Please try again.");
-        const errorConv = {
-          ...currentConversation,
-          messages: currentConversation.messages.filter((m) => m.id !== assistantMsgId),
-        };
-        updateConversation(errorConv);
-        refreshConversations();
+        setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
       }
     } finally {
       setIsStreaming(false);
@@ -241,6 +302,7 @@ export default function ChatPage() {
     }
   };
 
+  /* ── Submit message ── */
   const handleSubmit = async (attachments: Attachment[]) => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
@@ -249,15 +311,17 @@ export default function ChatPage() {
     setError(null);
     setInput("");
 
+    const userMsgId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+
     const userMsg: Message = {
-      id: crypto.randomUUID(),
+      id: userMsgId,
       role: "user",
       content: text,
       attachments: attachments.length > 0 ? attachments : undefined,
       timestamp: Date.now(),
     };
 
-    const assistantMsgId = crypto.randomUUID();
     const assistantMsg: Message = {
       id: assistantMsgId,
       role: "assistant",
@@ -265,34 +329,44 @@ export default function ChatPage() {
       timestamp: Date.now(),
     };
 
-    let currentConversation: Conversation;
+    /* Get or create conversation */
+    let convId = activeId;
 
-    if (activeConversation) {
-      currentConversation = {
-        ...activeConversation,
-        messages: [...activeConversation.messages, userMsg, assistantMsg],
-        updatedAt: Date.now(),
-      };
-    } else {
-      // Optimistic title: set immediately before the API round-trip
-      currentConversation = createConversation(model);
-      currentConversation.title = generateTitle(text || attachments[0]?.name || "File upload");
-      currentConversation.messages = [userMsg, assistantMsg];
-      setActiveId(currentConversation.id);
-      setActiveConversationId(currentConversation.id);
+    if (!convId) {
+      const title = generateTitle(text || attachments[0]?.name || "File upload");
+      const res = await apiRequest("POST", "/api/conversations", {
+        title,
+        model: isPro ? model : "fast",
+      });
+      const newConv: Conversation = await res.json();
+      convId = newConv.id;
+      setActiveId(convId);
+      setActiveConversationId(convId);
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     }
 
-    updateConversation(currentConversation);
-    refreshConversations();
+    /* Optimistically add messages to UI */
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    await streamAssistantReply(currentConversation, assistantMsgId);
+    /* Save user message to DB */
+    try {
+      await apiRequest("POST", `/api/conversations/${convId}/messages`, {
+        role: "user",
+        content: text,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+    } catch {
+      /* non-fatal — streaming continues */
+    }
+
+    await streamAssistantReply(convId, [...messages, userMsg, assistantMsg], assistantMsgId);
   };
 
+  /* ── Regenerate last assistant message ── */
   const handleRegenerate = useCallback(async () => {
-    if (!activeConversation || isStreaming) return;
+    if (!activeId || isStreaming || messages.length === 0) return;
 
-    const msgs = activeConversation.messages;
-    const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
     if (!lastAssistant) return;
 
     const assistantMsgId = crypto.randomUUID();
@@ -303,24 +377,18 @@ export default function ChatPage() {
       timestamp: Date.now(),
     };
 
-    const updatedMsgs = msgs.filter((m) => m.id !== lastAssistant.id);
+    const updatedMsgs = messages.filter((m) => m.id !== lastAssistant.id);
     updatedMsgs.push(newAssistantMsg);
-
-    const updatedConversation: Conversation = {
-      ...activeConversation,
-      messages: updatedMsgs,
-      updatedAt: Date.now(),
-    };
 
     isSubmittingRef.current = true;
     setError(null);
-    updateConversation(updatedConversation);
-    refreshConversations();
+    setMessages(updatedMsgs);
 
-    await streamAssistantReply(updatedConversation, assistantMsgId);
-  }, [activeConversation, isStreaming]);
+    await streamAssistantReply(activeId, updatedMsgs, assistantMsgId);
+  }, [activeId, messages, isStreaming]);
 
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+  const activeConvTitle = conversations.find((c) => c.id === activeId)?.title;
 
   return (
     <>
@@ -330,6 +398,7 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
         onDeleteConversation={handleDeleteConversation}
+        user={user}
       />
 
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
@@ -337,14 +406,31 @@ export default function ChatPage() {
         <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
           <div className="flex items-center gap-1">
             <SidebarTrigger data-testid="button-sidebar-toggle" className="h-9 w-9 text-muted-foreground" />
+            {activeConvTitle && (
+              <span className="hidden sm:block ml-1 text-sm text-muted-foreground/60 truncate max-w-[200px]">
+                {activeConvTitle}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1">
+            {messages.length > 0 && activeId && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleExport}
+                data-testid="button-export"
+                title="Export as Markdown"
+                className="h-9 w-9 text-muted-foreground"
+              >
+                <Download className="w-4 h-4" />
+              </Button>
+            )}
             <Button
               size="icon"
               variant="ghost"
               onClick={handleNewChat}
               data-testid="button-new-chat-header"
-              title="New chat"
+              title="New chat (Ctrl+K)"
               className="h-9 w-9 text-muted-foreground"
             >
               <Plus className="w-4 h-4" />
@@ -366,7 +452,10 @@ export default function ChatPage() {
                   data-testid="button-profile-menu"
                   className="flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors text-sm"
                 >
-                  <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[11px] font-bold text-primary">
+                  <div className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold",
+                    isPro ? "bg-amber-500/20 text-amber-500" : "bg-primary/20 text-primary"
+                  )}>
                     {user.username[0].toUpperCase()}
                   </div>
                   <span className="hidden sm:block max-w-[100px] truncate font-medium">{user.username}</span>
@@ -375,15 +464,26 @@ export default function ChatPage() {
                 </button>
 
                 {profileOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-52 z-50 rounded-xl border border-border/60 bg-popover shadow-xl overflow-hidden py-1">
+                  <div className="absolute right-0 top-full mt-1.5 w-56 z-50 rounded-xl border border-border/60 bg-popover shadow-xl overflow-hidden py-1">
                     <div className="px-3 py-2.5 border-b border-border/40">
                       <p className="text-xs text-muted-foreground">Signed in as</p>
                       <p className="font-semibold text-sm text-foreground truncate">{user.username}</p>
-                      {user.isAdmin && (
-                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-500">
-                          <Shield className="w-2.5 h-2.5" /> Admin
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {user.isAdmin && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/15 text-violet-500">
+                            <Shield className="w-2.5 h-2.5" /> Admin
+                          </span>
+                        )}
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",
+                          isPro
+                            ? "bg-amber-500/15 text-amber-500"
+                            : "bg-muted text-muted-foreground"
+                        )}>
+                          {isPro ? <Crown className="w-2.5 h-2.5" /> : null}
+                          {isPro ? "Pro" : "Free plan"}
                         </span>
-                      )}
+                      </div>
                     </div>
 
                     {user.isAdmin && (
@@ -396,6 +496,15 @@ export default function ChatPage() {
                         Admin Dashboard
                       </button>
                     )}
+
+                    <button
+                      onClick={() => { setProfileOpen(false); setSettingsOpen(true); }}
+                      data-testid="button-open-settings"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      <Settings className="w-4 h-4 text-muted-foreground" />
+                      Settings
+                    </button>
 
                     <button
                       onClick={() => { setProfileOpen(false); logout.mutate(); }}
@@ -414,7 +523,13 @@ export default function ChatPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {messages.length === 0 ? (
+          {isLoadingMessages ? (
+            <div className="flex items-center justify-center h-full gap-2">
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+            </div>
+          ) : messages.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="max-w-3xl mx-auto py-6">
@@ -441,6 +556,21 @@ export default function ChatPage() {
           )}
         </div>
 
+        {/* Plan banner for free users */}
+        {!isPro && messages.length === 0 && !activeId && (
+          <div className="flex-shrink-0 mx-4 mb-1">
+            <div className="max-w-3xl mx-auto px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center gap-2">
+              <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                <span className="font-semibold">Free plan:</span> 20 messages/day · Fast model only ·{" "}
+                <span className="underline cursor-pointer" onClick={() => { setSettingsOpen(false); navigate("/admin"); }}>
+                  Admin can upgrade your plan
+                </span>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Input */}
         <div className="flex-shrink-0">
           <ChatInput
@@ -449,11 +579,14 @@ export default function ChatPage() {
             onSubmit={handleSubmit}
             onStop={handleStop}
             isStreaming={isStreaming}
-            model={model}
+            model={isPro ? model : "fast"}
             onModelChange={handleModelChange}
+            isPro={isPro}
           />
         </div>
       </div>
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </>
   );
 }
@@ -478,7 +611,6 @@ function EmptyState() {
         Ask me anything — code, writing, analysis, ideas, and more.
         You can also attach files and images.
       </p>
-
     </div>
   );
 }
