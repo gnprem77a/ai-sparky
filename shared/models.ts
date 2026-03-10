@@ -46,11 +46,11 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   fast: {
     key: "fast",
     friendlyName: "Fast",
-    exactName: "Claude Haiku 4.5",
-    apiModelId: "claude-haiku-4-5",
+    exactName: "Claude Sonnet 4.6",
+    apiModelId: "claude-sonnet-4-6",
     provider: "anthropic",
     description: "Instant responses for quick tasks",
-    badgeLabel: "Haiku 4.5",
+    badgeLabel: "Sonnet 4.6",
   },
 };
 

@@ -139,15 +139,16 @@ async function streamModelWithTools(
   maxTokens: number,
   res: Response,
   systemPrompt?: string,
+  useTools = false,
 ): Promise<{ inputTokens: number; outputTokens: number; toolCalls: ToolCallRecord[] }> {
   const allToolCalls: ToolCallRecord[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
   let isFirstCall = true;
-  const MAX_TOOL_ROUNDS = 3;
+  const MAX_TOOL_ROUNDS = useTools ? 3 : 1;
 
   const openAIMessages = buildOpenAIMessages(messages, systemPrompt);
-  const openAITools = toOpenAITools(TOOL_DEFINITIONS);
+  const openAITools = useTools ? toOpenAITools(TOOL_DEFINITIONS) : undefined;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const body: Record<string, unknown> = {
@@ -155,8 +156,7 @@ async function streamModelWithTools(
       max_tokens: maxTokens,
       messages: openAIMessages,
       stream: true,
-      tools: openAITools,
-      tool_choice: "auto",
+      ...(useTools ? { tools: openAITools, tool_choice: "auto" } : {}),
     };
 
     const httpRes = await fetch(`${BLUESMINDS_BASE}/chat/completions`, {
@@ -789,7 +789,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const { inputTokens, outputTokens } = await streamModelWithTools(selected, recentMessages, maxTokens, res, systemPrompt);
+      const { inputTokens, outputTokens } = await streamModelWithTools(selected, recentMessages, maxTokens, res, systemPrompt, webSearch);
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
@@ -799,7 +799,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (selected.apiModelId !== FALLBACK_MODEL.apiModelId) {
         console.log(`[bluesminds] Falling back to ${FALLBACK_MODEL.exactName}…`);
         try {
-          const { inputTokens, outputTokens } = await streamModelWithTools(FALLBACK_MODEL, recentMessages, maxTokens, res, systemPrompt);
+          const { inputTokens, outputTokens } = await streamModelWithTools(FALLBACK_MODEL, recentMessages, maxTokens, res, systemPrompt, webSearch);
           res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
           res.end();
           return;
