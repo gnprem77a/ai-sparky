@@ -1183,25 +1183,23 @@ const SUGGESTIONS = [
 function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   const { t } = useLanguage();
   return (
-    <div className="flex flex-col items-center justify-center min-h-full py-12 px-6">
-      <div className="relative mb-6">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-primary/25">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
-            <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
-          </svg>
-        </div>
-        <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-2xl scale-150 -z-10" />
+    <div className="relative flex flex-col items-center justify-center min-h-full py-12 px-6 overflow-hidden">
+      {/* Ambient glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none -z-10" />
+
+      <div className="relative mb-5">
+        <img src="/logo.png" alt="AI Sparky" className="w-16 h-16 rounded-2xl object-cover shadow-2xl shadow-primary/30" />
+        <div className="absolute inset-0 rounded-2xl bg-primary/25 blur-2xl scale-150 -z-10" />
       </div>
 
-      <h1 className="text-[1.75rem] font-semibold text-foreground mb-2 tracking-tight text-center">
+      <h1 className="text-3xl font-black tracking-tight text-foreground mb-2 text-center">
         {t("chat.empty.title")}
       </h1>
-      <p className="text-muted-foreground/60 text-sm mb-8 text-center max-w-[320px] leading-relaxed">
+      <p className="text-muted-foreground/60 text-sm mb-10 text-center max-w-[320px] leading-relaxed">
         {t("chat.empty.subtitle")}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 w-full max-w-2xl">
         {SUGGESTIONS.map((s) => {
           const Icon = s.icon;
           return (
@@ -1210,15 +1208,15 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
               onClick={() => onSuggest(s.prompt)}
               data-testid={`suggestion-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
               className={cn(
-                "flex flex-col items-start gap-2 px-4 py-3.5 rounded-xl border text-left transition-all duration-150 group",
-                s.bg
+                "group relative flex flex-col items-start gap-2 px-4 py-3.5 rounded-xl border border-border/40 bg-card/40 hover:bg-card/80 hover:border-border text-left transition-all duration-200 backdrop-blur-sm overflow-hidden",
               )}
             >
-              <Icon className={cn("w-4 h-4", s.color)} />
-              <span className="text-[13px] font-medium text-foreground/80 group-hover:text-foreground leading-tight">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-transparent transition-all duration-300 rounded-xl" />
+              <Icon className={cn("w-4 h-4 relative", s.color)} />
+              <span className="text-[13px] font-semibold text-foreground/80 group-hover:text-foreground leading-tight relative">
                 {s.label}
               </span>
-              <span className="text-[11px] text-muted-foreground/60 leading-snug line-clamp-2">
+              <span className="text-[11px] text-muted-foreground/50 leading-snug line-clamp-2 relative">
                 {s.prompt}
               </span>
             </button>
