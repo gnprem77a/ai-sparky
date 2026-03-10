@@ -7,13 +7,12 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { SettingsModal } from "@/components/SettingsModal";
-import { CommandPalette } from "@/components/CommandPalette";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Command, Sparkles, FileDown } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,7 +53,6 @@ export default function ChatPage() {
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
   });
@@ -221,30 +219,9 @@ export default function ChatPage() {
     if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, isStreaming, autoScroll]);
 
-  const handleCommandAction = (action: string) => {
-    switch (action) {
-      case "new-chat":
-        handleNewChat();
-        break;
-      case "open-settings":
-        setSettingsOpen(true);
-        break;
-      case "go-to-analytics":
-        navigate("/analytics");
-        break;
-      case "go-to-admin":
-        navigate("/admin");
-        break;
-    }
-  };
-
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
-      }
       if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         if (messages.length > 0) {
           e.preventDefault();
@@ -948,16 +925,6 @@ export default function ChatPage() {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => setCommandPaletteOpen(true)}
-              data-testid="button-command-palette"
-              title="Command palette (Ctrl+K)"
-              className="hidden sm:flex h-9 w-9 text-muted-foreground"
-            >
-              <Command className="w-4 h-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
               onClick={() => setSplitView(!splitView)}
               data-testid="button-toggle-split-view"
               title={splitView ? "Single view" : "Split view"}
@@ -1105,13 +1072,6 @@ export default function ChatPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
-      <CommandPalette
-        open={commandPaletteOpen}
-        onOpenChange={setCommandPaletteOpen}
-        conversations={conversations}
-        onSelectConversation={handleSelectConversation}
-        onAction={handleCommandAction}
-      />
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">
