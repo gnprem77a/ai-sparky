@@ -37,6 +37,7 @@ export default function AuthPage() {
   const onSubmit = async (data: FormData) => {
     try {
       await mutation.mutateAsync(data);
+      navigate("/");
     } catch {
       // error displayed via serverError
     }

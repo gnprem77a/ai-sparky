@@ -83,9 +83,6 @@ function AppInner() {
   return (
     <Suspense fallback={null}>
       <Switch>
-        <Route path="/login">
-          <AuthPage />
-        </Route>
         <Route path="/admin">
           <AdminPage />
         </Route>
