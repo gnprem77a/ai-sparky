@@ -15,7 +15,11 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function AuthPage() {
-  const [tab, setTab] = useState<"login" | "register">("login");
+  const initialTab = (): "login" | "register" => {
+    const p = new URLSearchParams(window.location.search).get("tab");
+    return p === "register" ? "register" : "login";
+  };
+  const [tab, setTab] = useState<"login" | "register">(initialTab);
   const [showPass, setShowPass] = useState(false);
   const { login, register } = useAuth();
   const [, navigate] = useLocation();

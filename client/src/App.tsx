@@ -11,7 +11,6 @@ import { LanguageProvider } from "@/lib/i18n";
 
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
-const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
@@ -63,9 +62,20 @@ function AppInner() {
   }
 
   if (!user) {
+    if (location === "/login" || location.startsWith("/login?")) {
+      return (
+        <Suspense fallback={null}>
+          <AuthPage />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={null}>
-        {location === "/login" ? <AuthPage /> : <LandingPage />}
+        <SidebarProvider style={style} defaultOpen={true}>
+          <div className="flex h-screen w-full overflow-hidden bg-background">
+            <ChatPage />
+          </div>
+        </SidebarProvider>
       </Suspense>
     );
   }
@@ -73,6 +83,9 @@ function AppInner() {
   return (
     <Suspense fallback={null}>
       <Switch>
+        <Route path="/login">
+          <AuthPage />
+        </Route>
         <Route path="/admin">
           <AdminPage />
         </Route>

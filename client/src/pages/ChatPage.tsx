@@ -8,6 +8,7 @@ import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { SettingsModal } from "@/components/SettingsModal";
 import { CommandPalette } from "@/components/CommandPalette";
+import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
@@ -52,6 +53,7 @@ export default function ChatPage() {
 
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
@@ -681,6 +683,7 @@ export default function ChatPage() {
 
   /* ── Submit message ── */
   const handleSubmit = async (attachments: Attachment[]) => {
+    if (!user) { setLoginModalOpen(true); return; }
     const text = input.trim();
     if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
 
@@ -1101,6 +1104,7 @@ export default function ChatPage() {
       </div>
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
