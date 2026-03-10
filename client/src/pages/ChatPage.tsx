@@ -875,6 +875,7 @@ export default function ChatPage() {
         user={user}
         onOpenSettings={() => setSettingsOpen(true)}
         onLogout={() => logout.mutate()}
+        onLogin={() => setLoginModalOpen(true)}
       />
 
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
