@@ -12,9 +12,9 @@ import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -43,6 +43,8 @@ export default function ChatPage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
 
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
@@ -723,11 +725,21 @@ export default function ChatPage() {
       isSubmittingRef.current = false;
       if (notificationSound && accumulated.length > 80) playChime();
     }
+    /* ── Fetch follow-up suggestions (non-blocking) ── */
+    setFollowUpSuggestions([]);
+    apiRequest("POST", "/api/suggestions", {
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    }).then((r) => r.json()).then((d) => {
+      if (Array.isArray(d.suggestions) && d.suggestions.length > 0) {
+        setFollowUpSuggestions(d.suggestions);
+      }
+    }).catch(() => {});
   };
 
   /* ── Submit message ── */
   const handleSubmit = async (attachments: Attachment[]) => {
     if (!user) { setLoginModalOpen(true); return; }
+    setFollowUpSuggestions([]);
     const text = input.trim();
     if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
 
@@ -890,19 +902,46 @@ export default function ChatPage() {
                   <Search className="w-4 h-4" />
                 </Button>
 
-                {/* Pinned Messages Panel */}
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      data-testid="button-view-pinned"
-                      title="View pinned messages"
-                      className="h-9 w-9 text-muted-foreground"
-                    >
-                      <Pin className="w-4 h-4" />
+                {/* Pinned Messages Panel — desktop trigger */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setPinnedOpen(true)}
+                  data-testid="button-view-pinned"
+                  title="View pinned messages"
+                  className="h-9 w-9 text-muted-foreground hidden sm:flex"
+                >
+                  <Pin className="w-4 h-4" />
+                </Button>
+
+                {/* Mobile: More menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" variant="ghost" className="sm:hidden h-9 w-9 text-muted-foreground" data-testid="button-mobile-more">
+                      <MoreHorizontal className="w-4 h-4" />
                     </Button>
-                  </SheetTrigger>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }} className="gap-2 cursor-pointer">
+                      <Search className="w-3.5 h-3.5" /> Search in chat
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setPinnedOpen(true)} className="gap-2 cursor-pointer">
+                      <Pin className="w-3.5 h-3.5" /> Pinned messages
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExport} className="gap-2 cursor-pointer">
+                      <Download className="w-3.5 h-3.5" /> Download Markdown
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportPDF} className="gap-2 cursor-pointer">
+                      <Printer className="w-3.5 h-3.5" /> Export as PDF
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleSummarize} className="gap-2 cursor-pointer">
+                      <Sparkles className="w-3.5 h-3.5" /> Summarize
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Pinned Messages Sheet (state-driven) */}
+                <Sheet open={pinnedOpen} onOpenChange={setPinnedOpen}>
                   <SheetContent side="right" className="w-[400px] sm:w-[540px]">
                     <SheetHeader>
                       <SheetTitle className="flex items-center gap-2">
@@ -956,7 +995,7 @@ export default function ChatPage() {
                       variant="ghost"
                       data-testid="button-export-dropdown"
                       title="Export conversation"
-                      className="h-9 w-9 text-muted-foreground"
+                      className="hidden sm:flex h-9 w-9 text-muted-foreground"
                     >
                       <FileDown className="w-4 h-4" />
                     </Button>
@@ -977,7 +1016,7 @@ export default function ChatPage() {
                   onClick={handleSummarize}
                   data-testid="button-summarize"
                   title="Summarize conversation"
-                  className="h-9 w-9 text-muted-foreground"
+                  className="hidden sm:flex h-9 w-9 text-muted-foreground"
                 >
                   <Sparkles className="w-4 h-4" />
                 </Button>
@@ -1143,6 +1182,23 @@ export default function ChatPage() {
                     </span>
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Follow-up suggestion chips */}
+            {followUpSuggestions.length > 0 && !isStreaming && (
+              <div className="flex flex-wrap gap-2 px-4 pb-3 max-w-3xl mx-auto w-full">
+                {followUpSuggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    data-testid={`suggestion-chip-${i}`}
+                    onClick={() => { setInput(s); setFollowUpSuggestions([]); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border/50 bg-card/50 hover:bg-card hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150 backdrop-blur-sm"
+                  >
+                    <Sparkles className="w-3 h-3 text-primary/60 flex-shrink-0" />
+                    {s}
+                  </button>
+                ))}
               </div>
             )}
 

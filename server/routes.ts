@@ -1031,6 +1031,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  /* ── Follow-up suggestions ── */
+  app.post("/api/suggestions", requireAuth as any, async (req: Request, res: Response) => {
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.json({ suggestions: [] });
+    }
+    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+      return res.json({ suggestions: [] });
+    }
+    const client = getClient();
+    const recent = messages
+      .filter((m: any) => m.role === "user" || m.role === "assistant")
+      .slice(-6)
+      .map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${typeof m.content === "string" ? m.content.slice(0, 300) : "[attachment]"}`)
+      .join("\n\n");
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      max_tokens: 150,
+      system: "You generate short follow-up questions. Respond ONLY with a JSON array of exactly 3 strings. No explanation, no markdown, just valid JSON like: [\"Question 1?\",\"Question 2?\",\"Question 3?\"]",
+      messages: [{ role: "user", content: `Based on this conversation, suggest 3 short follow-up questions the user might ask next. Keep each under 60 characters.\n\n${recent}` }],
+    };
+    try {
+      const command = new InvokeModelCommand({
+        modelId: FALLBACK_MODEL.bedrockId,
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(payload),
+      });
+      const response = await client.send(command);
+      const body = JSON.parse(new TextDecoder().decode(response.body));
+      const text = body.content?.[0]?.text?.trim() || "[]";
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const suggestions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      return res.json({ suggestions: Array.isArray(suggestions) ? suggestions.slice(0, 3) : [] });
+    } catch {
+      return res.json({ suggestions: [] });
+    }
+  });
+
   /* ── PDF text extraction ── */
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
   app.post("/api/extract-pdf", requireAuth as any, upload.single("file") as any, async (req: Request, res: Response) => {
