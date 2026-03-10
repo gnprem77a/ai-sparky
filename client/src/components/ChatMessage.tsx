@@ -239,9 +239,9 @@ function ArtifactBlock({ code, lang, langColor }: { code: string; lang: string; 
   };
 
   return (
-    <div className="relative rounded-xl overflow-hidden my-4 border border-white/8 shadow-xl bg-[#0d0d18]" data-testid={`artifact-block-${lang}`}>
+    <div className="relative rounded-xl overflow-hidden my-4 border border-white/12 shadow-xl bg-[#141627]" data-testid={`artifact-block-${lang}`}>
       {/* Header */}
-      <div className="flex items-center justify-between bg-[#0a0a15] border-b border-white/6 px-4 py-2.5">
+      <div className="flex items-center justify-between bg-[#10121e] border-b border-white/6 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
             <div className="w-3 h-3 rounded-full bg-red-500/70" />
@@ -281,10 +281,10 @@ function ArtifactBlock({ code, lang, langColor }: { code: string; lang: string; 
       {/* Content */}
       {activeTab === "code" ? (
         <>
-          <Suspense fallback={<pre className="bg-[#0d0d18] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">{code}</pre>}>
+          <Suspense fallback={<pre className="bg-[#141627] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">{code}</pre>}>
             <CodeBlock code={code} language={lang} />
           </Suspense>
-          <div className="flex items-center justify-between bg-[#0a0a15] border-t border-white/5 px-4 py-1.5">
+          <div className="flex items-center justify-between bg-[#10121e] border-t border-white/5 px-4 py-1.5">
             <span className="text-[10px] text-zinc-600 font-mono">{code.split("\n").length} lines</span>
             <span className="text-[10px] text-zinc-600">{code.length} chars</span>
           </div>
@@ -685,9 +685,9 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                     }
 
                     return (
-                      <div className="relative rounded-xl overflow-hidden my-4 border border-white/8 shadow-xl bg-[#0d0d18]" data-testid={`code-block-${lang}`}>
+                      <div className="relative rounded-xl overflow-hidden my-4 border border-white/12 shadow-xl bg-[#141627]" data-testid={`code-block-${lang}`}>
                         {/* Header bar */}
-                        <div className="flex items-center justify-between bg-[#0a0a15] border-b border-white/6 px-4 py-2.5">
+                        <div className="flex items-center justify-between bg-[#10121e] border-b border-white/6 px-4 py-2.5">
                           <div className="flex items-center gap-3">
                             {/* Traffic lights */}
                             <div className="flex gap-1.5">
@@ -709,7 +709,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
 
                         {/* Code content */}
                         <Suspense fallback={
-                          <pre className="bg-[#0d0d18] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">
+                          <pre className="bg-[#141627] text-[#e2e8f0] font-mono text-[0.8125rem] p-5 overflow-auto m-0 leading-relaxed">
                             {codeString}
                           </pre>
                         }>
@@ -717,7 +717,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                         </Suspense>
 
                         {/* Bottom bar with line count */}
-                        <div className="flex items-center justify-between bg-[#0a0a15] border-t border-white/5 px-4 py-1.5">
+                        <div className="flex items-center justify-between bg-[#10121e] border-t border-white/5 px-4 py-1.5">
                           <span className="text-[10px] text-zinc-600 font-mono">
                             {codeString.split("\n").length} line{codeString.split("\n").length !== 1 ? "s" : ""}
                           </span>
@@ -750,13 +750,13 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                     const isOrdered = (props as { ordered?: boolean }).ordered;
                     if (isOrdered) {
                       return (
-                        <li className="leading-[1.8] text-foreground/88 pl-1" {...props}>
+                        <li className="leading-[1.8] text-foreground/95 pl-1" {...props}>
                           {children}
                         </li>
                       );
                     }
                     return (
-                      <li className="flex items-start gap-2.5 leading-[1.8] text-foreground/88" {...(props as object)}>
+                      <li className="flex items-start gap-2.5 leading-[1.8] text-foreground/95" {...(props as object)}>
                         <span className="mt-[0.55em] w-[5px] h-[5px] rounded-full bg-primary/60 flex-shrink-0" />
                         <span className="flex-1 min-w-0">{children}</span>
                       </li>
@@ -787,7 +787,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                   blockquote({ children }) {
                     return (
                       <blockquote className="border-l-[3px] border-primary/60 pl-4 pr-3 py-0.5 my-4 bg-primary/5 rounded-r-xl">
-                        <div className="text-foreground/75 leading-[1.8] italic">{children}</div>
+                        <div className="text-foreground/88 leading-[1.8] italic">{children}</div>
                       </blockquote>
                     );
                   },
