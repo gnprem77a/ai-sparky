@@ -9,8 +9,8 @@ export interface ModelDefinition {
   key: ModelKey;
   friendlyName: string;
   exactName: string;
-  bedrockId: string;
-  provider: "anthropic" | "meta";
+  apiModelId: string;
+  provider: "anthropic";
   description: string;
   badgeLabel: string;
 }
@@ -19,38 +19,38 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   balanced: {
     key: "balanced",
     friendlyName: "Balanced",
-    exactName: "Claude Sonnet 3.5",
-    bedrockId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    exactName: "Claude Sonnet 4.6",
+    apiModelId: "claude-sonnet-4-6",
     provider: "anthropic",
     description: "Fast & capable everyday model",
-    badgeLabel: "Sonnet 3.5",
+    badgeLabel: "Sonnet 4.6",
   },
   powerful: {
     key: "powerful",
     friendlyName: "Powerful",
-    exactName: "Claude Opus 4.5",
-    bedrockId: "anthropic.claude-opus-4-5-20251101-v1:0",
+    exactName: "Claude Sonnet 4.6",
+    apiModelId: "claude-sonnet-4-6",
     provider: "anthropic",
     description: "Most intelligent, complex reasoning",
-    badgeLabel: "Opus 4.5",
+    badgeLabel: "Sonnet 4.6",
   },
   creative: {
     key: "creative",
     friendlyName: "Creative",
-    exactName: "Llama 3.1 70B",
-    bedrockId: "meta.llama3-1-70b-instruct-v1:0",
-    provider: "meta",
+    exactName: "Claude Sonnet 4.6",
+    apiModelId: "claude-sonnet-4-6",
+    provider: "anthropic",
     description: "Imaginative writing & brainstorming",
-    badgeLabel: "Llama 3.1",
+    badgeLabel: "Sonnet 4.6",
   },
   fast: {
     key: "fast",
     friendlyName: "Fast",
-    exactName: "Claude Haiku 3",
-    bedrockId: "anthropic.claude-3-haiku-20240307-v1:0",
+    exactName: "Claude Haiku 4.5",
+    apiModelId: "claude-haiku-4-5",
     provider: "anthropic",
     description: "Instant responses for quick tasks",
-    badgeLabel: "Haiku 3",
+    badgeLabel: "Haiku 4.5",
   },
 };
 

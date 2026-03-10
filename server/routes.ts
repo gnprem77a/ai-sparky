@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
@@ -30,15 +29,26 @@ function isProActive(user: { plan: string; planExpiresAt: Date | null }): boolea
   return user.planExpiresAt > new Date();
 }
 
-/* ─── bedrock client ─────────────────────────────────────────── */
-function getClient() {
-  return new BedrockRuntimeClient({
-    region: process.env.AWS_REGION || "us-east-1",
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-    },
-  });
+/* ─── bluesminds API client helpers ──────────────────────────── */
+const BLUESMINDS_BASE = "https://api.bluesminds.com/v1";
+
+function bluesmindsHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${process.env.BLUESMINDS_API_KEY ?? ""}`,
+  };
+}
+
+function hasApiKey() {
+  return !!process.env.BLUESMINDS_API_KEY;
+}
+
+/* Convert Anthropic tool definitions → OpenAI function format */
+function toOpenAITools(tools: typeof TOOL_DEFINITIONS) {
+  return tools.map((t) => ({
+    type: "function" as const,
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }));
 }
 
 /* ─── message types ──────────────────────────────────────────── */
@@ -83,133 +93,39 @@ function resolveModel(requestedModel: string, messages: RawMessage[]): ModelDefi
   return getModel(requestedModel);
 }
 
-/* ─── request builders ───────────────────────────────────────── */
-type ClaudeBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
-
-function buildClaudeContent(msg: RawMessage): string | ClaudeBlock[] {
-  const textAtts = msg.attachments?.filter((a) => a.type === "text") ?? [];
-  let text = msg.content;
-  if (textAtts.length > 0) {
-    text += textAtts
-      .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
-      .join("");
-  }
-  const images = msg.attachments?.filter((a) => a.type === "image") ?? [];
-  if (images.length === 0) return text;
-  const blocks: ClaudeBlock[] = images.map((att) => ({
-    type: "image",
-    source: {
-      type: "base64",
-      media_type: att.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-      data: att.data.includes(",") ? att.data.split(",")[1] : att.data,
-    },
-  }));
-  if (text.trim()) blocks.push({ type: "text", text });
-  return blocks;
-}
-
-function buildClaudeBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string) {
-  return {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: maxTokens,
-    ...(systemPrompt ? { system: systemPrompt } : {}),
-    messages: messages.map((m) => ({ role: m.role, content: buildClaudeContent(m) })),
-  };
-}
-
-function buildLlamaPrompt(messages: RawMessage[], systemPrompt?: string): string {
-  let prompt = "<|begin_of_text|>";
-  if (systemPrompt) {
-    prompt += `<|start_header_id|>system<|end_header_id|>\n\n${systemPrompt}<|eot_id|>`;
-  }
-  for (const msg of messages) {
-    const role = msg.role === "user" ? "user" : "assistant";
-    const textAtts = msg.attachments?.filter((a) => a.type === "text") ?? [];
-    let text = msg.content;
+/* ─── build OpenAI-compatible message array ──────────────────── */
+function buildOpenAIMessages(
+  messages: RawMessage[],
+  systemPrompt?: string,
+): Array<{ role: string; content: unknown }> {
+  const out: Array<{ role: string; content: unknown }> = [];
+  if (systemPrompt) out.push({ role: "system", content: systemPrompt });
+  for (const m of messages) {
+    const images = (m.attachments ?? []).filter((a) => a.type === "image");
+    const textAtts = (m.attachments ?? []).filter((a) => a.type === "text");
+    let text = m.content;
     if (textAtts.length > 0) {
       text += textAtts
         .map((a) => `\n\n--- File: ${a.name} ---\n${a.data}\n--- End of ${a.name} ---`)
         .join("");
     }
-    prompt += `<|start_header_id|>${role}<|end_header_id|>\n\n${text}<|eot_id|>`;
-  }
-  prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n";
-  return prompt;
-}
-
-function buildLlamaBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string) {
-  return {
-    prompt: buildLlamaPrompt(messages, systemPrompt),
-    max_gen_len: Math.min(maxTokens, 2048),
-    temperature: 0.8,
-    top_p: 0.9,
-  };
-}
-
-/* ─── stream runner (returns token counts) ───────────────────── */
-async function streamModel(
-  client: BedrockRuntimeClient,
-  entry: ModelDefinition,
-  messages: RawMessage[],
-  maxTokens: number,
-  res: Response,
-  sendHeader: boolean,
-  systemPrompt?: string,
-): Promise<{ inputTokens: number; outputTokens: number }> {
-  const body = entry.provider === "anthropic"
-    ? buildClaudeBody(messages, maxTokens, systemPrompt)
-    : buildLlamaBody(messages, maxTokens, systemPrompt);
-
-  const command = new InvokeModelWithResponseStreamCommand({
-    modelId: entry.bedrockId,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify(body),
-  });
-
-  const response = await client.send(command);
-  if (!response.body) throw new Error("No response body");
-
-  if (sendHeader) {
-    res.write(`data: ${JSON.stringify({ modelUsed: entry.badgeLabel, exactName: entry.exactName })}\n\n`);
-  }
-
-  const decoder = new TextDecoder();
-  let inputTokens = 0;
-  let outputTokens = 0;
-
-  for await (const event of response.body) {
-    if (event.chunk?.bytes) {
-      const decoded = decoder.decode(event.chunk.bytes);
-      try {
-        const parsed = JSON.parse(decoded);
-        if (entry.provider === "anthropic") {
-          if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-            res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
-          }
-          if (parsed.type === "message_start" && parsed.message?.usage) {
-            inputTokens = parsed.message.usage.input_tokens ?? 0;
-          }
-          if (parsed.type === "message_delta" && parsed.usage) {
-            outputTokens = parsed.usage.output_tokens ?? 0;
-          }
-        } else {
-          if (parsed.generation) {
-            res.write(`data: ${JSON.stringify({ text: parsed.generation })}\n\n`);
-          }
-          if (parsed.prompt_token_count) inputTokens = parsed.prompt_token_count;
-          if (parsed.generation_token_count) outputTokens = parsed.generation_token_count;
-        }
-      } catch { /* ignore parse errors */ }
+    if (images.length > 0) {
+      const parts: unknown[] = images.map((att) => ({
+        type: "image_url",
+        image_url: {
+          url: att.data.startsWith("data:") ? att.data : `data:${att.mimeType};base64,${att.data}`,
+        },
+      }));
+      if (text.trim()) parts.unshift({ type: "text", text });
+      out.push({ role: m.role, content: parts });
+    } else {
+      out.push({ role: m.role, content: text });
     }
   }
-
-  return { inputTokens, outputTokens };
+  return out;
 }
 
-/* ─── streaming with tool-use loop (Anthropic only) ─────────── */
+/* ─── stream runner (OpenAI SSE format) ─────────────────────── */
 interface ToolCallRecord {
   id: string;
   name: string;
@@ -217,137 +133,153 @@ interface ToolCallRecord {
   result?: string;
 }
 
-type AnthropicContent = string | unknown[];
-interface AnthropicMessage { role: "user" | "assistant"; content: AnthropicContent }
-
 async function streamModelWithTools(
-  client: BedrockRuntimeClient,
   entry: ModelDefinition,
   messages: RawMessage[],
   maxTokens: number,
   res: Response,
   systemPrompt?: string,
 ): Promise<{ inputTokens: number; outputTokens: number; toolCalls: ToolCallRecord[] }> {
-  if (entry.provider !== "anthropic") {
-    const { inputTokens, outputTokens } = await streamModel(client, entry, messages, maxTokens, res, true, systemPrompt);
-    return { inputTokens, outputTokens, toolCalls: [] };
-  }
-
   const allToolCalls: ToolCallRecord[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
   let isFirstCall = true;
   const MAX_TOOL_ROUNDS = 3;
 
-  /* Build initial Anthropic-format message array */
-  const anthropicMessages: AnthropicMessage[] = messages.map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: buildClaudeContent(m),
-  }));
+  const openAIMessages = buildOpenAIMessages(messages, systemPrompt);
+  const openAITools = toOpenAITools(TOOL_DEFINITIONS);
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const body = {
-      anthropic_version: "bedrock-2023-05-31",
+    const body: Record<string, unknown> = {
+      model: entry.apiModelId,
       max_tokens: maxTokens,
-      ...(systemPrompt ? { system: systemPrompt } : {}),
-      tools: TOOL_DEFINITIONS,
-      tool_choice: { type: "auto" },
-      messages: anthropicMessages,
+      messages: openAIMessages,
+      stream: true,
+      tools: openAITools,
+      tool_choice: "auto",
     };
 
-    const command = new InvokeModelWithResponseStreamCommand({
-      modelId: entry.bedrockId,
-      contentType: "application/json",
-      accept: "application/json",
+    const httpRes = await fetch(`${BLUESMINDS_BASE}/chat/completions`, {
+      method: "POST",
+      headers: bluesmindsHeaders(),
       body: JSON.stringify(body),
     });
 
-    const response = await client.send(command);
-    if (!response.body) throw new Error("No response body");
+    if (!httpRes.ok) {
+      const errText = await httpRes.text();
+      throw new Error(errText || `API error ${httpRes.status}`);
+    }
 
     if (isFirstCall) {
       res.write(`data: ${JSON.stringify({ modelUsed: entry.badgeLabel, exactName: entry.exactName })}\n\n`);
       isFirstCall = false;
     }
 
+    if (!httpRes.body) throw new Error("No response body");
+
+    const reader = httpRes.body.getReader();
     const decoder = new TextDecoder();
-    let stopReason = "end_turn";
+    let buffer = "";
+    let finishReason = "stop";
 
-    const pendingBlocks: Record<number, { type: string; id: string; name: string; jsonBuffer: string }> = {};
-    const assistantContentBlocks: unknown[] = [];
-    let currentTextBlock = "";
+    /* Accumulate tool call deltas */
+    const pendingToolCalls: Record<number, { id: string; name: string; argsBuffer: string }> = {};
+    let assistantTextAccum = "";
 
-    for await (const event of response.body) {
-      if (!event.chunk?.bytes) continue;
-      const decoded = decoder.decode(event.chunk.bytes);
-      try {
-        const parsed = JSON.parse(decoded);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try {
+          const parsed = JSON.parse(data);
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+          if (choice.finish_reason) finishReason = choice.finish_reason;
+          const delta = choice.delta ?? {};
 
-        if (parsed.type === "message_start" && parsed.message?.usage) {
-          inputTokens += parsed.message.usage.input_tokens ?? 0;
-        }
-        if (parsed.type === "message_delta" && parsed.usage) {
-          outputTokens += parsed.usage.output_tokens ?? 0;
-          if (parsed.delta?.stop_reason) stopReason = parsed.delta.stop_reason;
-        }
-        if (parsed.type === "content_block_start") {
-          const cb = parsed.content_block;
-          if (cb.type === "text") {
-            pendingBlocks[parsed.index] = { type: "text", id: "", name: "", jsonBuffer: "" };
-            currentTextBlock = "";
-          } else if (cb.type === "tool_use") {
-            pendingBlocks[parsed.index] = { type: "tool_use", id: cb.id, name: cb.name, jsonBuffer: "" };
+          /* Text streaming */
+          if (delta.content) {
+            res.write(`data: ${JSON.stringify({ text: delta.content })}\n\n`);
+            assistantTextAccum += delta.content;
           }
-        }
-        if (parsed.type === "content_block_delta") {
-          const blk = pendingBlocks[parsed.index];
-          if (!blk) continue;
-          if (parsed.delta?.type === "text_delta" && blk.type === "text") {
-            res.write(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`);
-            currentTextBlock += parsed.delta.text;
-          } else if (parsed.delta?.type === "input_json_delta" && blk.type === "tool_use") {
-            blk.jsonBuffer += parsed.delta.partial_json ?? "";
+
+          /* Tool call streaming — accumulate per-index */
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!pendingToolCalls[idx]) {
+                pendingToolCalls[idx] = { id: tc.id ?? "", name: tc.function?.name ?? "", argsBuffer: "" };
+              }
+              if (tc.id) pendingToolCalls[idx].id = tc.id;
+              if (tc.function?.name) pendingToolCalls[idx].name = tc.function.name;
+              if (tc.function?.arguments) pendingToolCalls[idx].argsBuffer += tc.function.arguments;
+            }
           }
-        }
-        if (parsed.type === "content_block_stop") {
-          const blk = pendingBlocks[parsed.index];
-          if (!blk) continue;
-          if (blk.type === "text") {
-            if (currentTextBlock) assistantContentBlocks.push({ type: "text", text: currentTextBlock });
-          } else if (blk.type === "tool_use") {
-            let parsedInput: Record<string, string> = {};
-            try { parsedInput = JSON.parse(blk.jsonBuffer); } catch { /* ignore */ }
-            assistantContentBlocks.push({ type: "tool_use", id: blk.id, name: blk.name, input: parsedInput });
+
+          /* Usage */
+          if (parsed.usage) {
+            inputTokens += parsed.usage.prompt_tokens ?? 0;
+            outputTokens += parsed.usage.completion_tokens ?? 0;
           }
-          delete pendingBlocks[parsed.index];
-        }
-      } catch { /* ignore parse errors */ }
+        } catch { /* ignore parse errors */ }
+      }
     }
 
-    if (stopReason !== "tool_use") break;
+    if (finishReason !== "tool_calls") break;
 
-    /* Execute tool calls and collect results */
-    const toolUseBlocks = assistantContentBlocks.filter(
-      (b: unknown) => (b as { type: string }).type === "tool_use"
-    ) as Array<{ type: string; id: string; name: string; input: Record<string, string> }>;
-    if (toolUseBlocks.length === 0) break;
+    /* Execute tool calls */
+    const toolEntries = Object.values(pendingToolCalls);
+    if (toolEntries.length === 0) break;
 
-    const toolResults: Array<{ type: string; tool_use_id: string; content: string }> = [];
+    const toolMessages: Array<{ role: string; content: string; tool_call_id: string }> = [];
 
-    for (const block of toolUseBlocks) {
-      res.write(`data: ${JSON.stringify({ toolCall: { name: block.name, input: block.input } })}\n\n`);
-      const result = await executeTool(block.name, block.input);
-      res.write(`data: ${JSON.stringify({ toolResult: { name: block.name, input: block.input, result } })}\n\n`);
-      allToolCalls.push({ id: block.id, name: block.name, input: block.input, result });
-      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
+    for (const tc of toolEntries) {
+      let input: Record<string, string> = {};
+      try { input = JSON.parse(tc.argsBuffer); } catch { /* ignore */ }
+      res.write(`data: ${JSON.stringify({ toolCall: { name: tc.name, input } })}\n\n`);
+      const result = await executeTool(tc.name, input);
+      res.write(`data: ${JSON.stringify({ toolResult: { name: tc.name, input, result } })}\n\n`);
+      allToolCalls.push({ id: tc.id, name: tc.name, input, result });
+      toolMessages.push({ role: "tool", content: result, tool_call_id: tc.id });
     }
 
-    /* Append assistant tool-use blocks + user tool-result blocks to conversation */
-    anthropicMessages.push({ role: "assistant", content: assistantContentBlocks });
-    anthropicMessages.push({ role: "user", content: toolResults });
+    /* Append assistant + tool-result messages */
+    openAIMessages.push({
+      role: "assistant",
+      content: assistantTextAccum || null,
+    } as unknown as { role: string; content: unknown });
+
+    for (const tm of toolMessages) {
+      openAIMessages.push(tm as unknown as { role: string; content: unknown });
+    }
   }
 
   return { inputTokens, outputTokens, toolCalls: allToolCalls };
+}
+
+/* Simple non-streaming call for summarize / suggestions */
+async function callAPI(modelId: string, systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
+  const res = await fetch(`${BLUESMINDS_BASE}/chat/completions`, {
+    method: "POST",
+    headers: bluesmindsHeaders(),
+    body: JSON.stringify({
+      model: modelId,
+      max_tokens: maxTokens,
+      stream: false,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    }),
+  });
+  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
 /* ─── route registration ─────────────────────────────────────── */
@@ -856,25 +788,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    const client = getClient();
-
     try {
-      const { inputTokens, outputTokens } = await streamModelWithTools(client, selected, recentMessages, maxTokens, res, systemPrompt);
+      const { inputTokens, outputTokens } = await streamModelWithTools(selected, recentMessages, maxTokens, res, systemPrompt);
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
-      console.error(`[bedrock] ${selected.exactName} failed:`, err.message);
+      console.error(`[bluesminds] ${selected.exactName} failed:`, err.message);
 
-      if (selected.bedrockId !== FALLBACK_MODEL.bedrockId) {
-        console.log(`[bedrock] Falling back to ${FALLBACK_MODEL.exactName}…`);
+      if (selected.apiModelId !== FALLBACK_MODEL.apiModelId) {
+        console.log(`[bluesminds] Falling back to ${FALLBACK_MODEL.exactName}…`);
         try {
-          const { inputTokens, outputTokens } = await streamModel(client, FALLBACK_MODEL, recentMessages, maxTokens, res, false, systemPrompt);
+          const { inputTokens, outputTokens } = await streamModelWithTools(FALLBACK_MODEL, recentMessages, maxTokens, res, systemPrompt);
           res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
           res.end();
           return;
         } catch (fallbackErr: unknown) {
-          console.error("[bedrock] Fallback also failed:", (fallbackErr as Error).message);
+          console.error("[bluesminds] Fallback also failed:", (fallbackErr as Error).message);
         }
       }
 
@@ -884,45 +814,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   /* ── Image generation via Bedrock Titan ── */
-  app.post("/api/generate-image", requireAuth as any, async (req: Request, res: Response) => {
-    const { prompt } = req.body;
-    if (!prompt?.trim()) return res.status(400).json({ error: "Prompt is required" });
-
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {
-      return res.status(503).json({ error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to Secrets." });
-    }
-
-    const client = getClient();
-    try {
-      const payload = {
-        taskType: "TEXT_IMAGE",
-        textToImageParams: { text: prompt.trim() },
-        imageGenerationConfig: {
-          numberOfImages: 1,
-          height: 512,
-          width: 512,
-          cfgScale: 8.0,
-        },
-      };
-
-      const command = new InvokeModelCommand({
-        modelId: "amazon.titan-image-generator-v1",
-        contentType: "application/json",
-        accept: "application/json",
-        body: JSON.stringify(payload),
-      });
-
-      const response = await client.send(command);
-      const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-      const base64Image = responseBody.images?.[0];
-      if (!base64Image) return res.status(500).json({ error: "No image returned from Bedrock" });
-
-      return res.json({ imageBase64: base64Image, mimeType: "image/png" });
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error("[bedrock-image]", error.message);
-      return res.status(500).json({ error: error.message || "Image generation failed" });
-    }
+  app.post("/api/generate-image", requireAuth as any, async (_req: Request, res: Response) => {
+    return res.status(503).json({ error: "Image generation is not available with the current API provider." });
   });
 
   /* ── messages: pin/unpin ── */
@@ -995,38 +888,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages array is required" });
     }
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      return res.status(500).json({ error: "AWS credentials not configured" });
-    }
-    const client = getClient();
+    if (!hasApiKey()) return res.status(500).json({ error: "API key not configured" });
     const conversationText = messages
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
       .join("\n\n");
-    const payload = {
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 600,
-      system: "You are a concise summarizer. Respond ONLY with bullet points — no intro, no conclusion.",
-      messages: [
-        {
-          role: "user",
-          content: `Summarize this conversation as 3–5 clear bullet points. Each bullet should capture a key topic, question answered, or decision made.\n\n${conversationText}`,
-        },
-      ],
-    };
     try {
-      const command = new InvokeModelCommand({
-        modelId: FALLBACK_MODEL.bedrockId,
-        contentType: "application/json",
-        accept: "application/json",
-        body: JSON.stringify(payload),
-      });
-      const response = await client.send(command);
-      const body = JSON.parse(new TextDecoder().decode(response.body));
-      const summary = body.content?.[0]?.text || "Unable to generate summary.";
-      res.json({ summary });
+      const summary = await callAPI(
+        FALLBACK_MODEL.apiModelId,
+        "You are a concise summarizer. Respond ONLY with bullet points — no intro, no conclusion.",
+        `Summarize this conversation as 3–5 clear bullet points. Each bullet should capture a key topic, question answered, or decision made.\n\n${conversationText}`,
+        600,
+      );
+      res.json({ summary: summary || "Unable to generate summary." });
     } catch (err: unknown) {
-      console.error("[bedrock] summarize error:", err);
+      console.error("[bluesminds] summarize error:", err);
       res.status(500).json({ error: "Failed to generate summary" });
     }
   });
@@ -1037,31 +913,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.json({ suggestions: [] });
     }
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      return res.json({ suggestions: [] });
-    }
-    const client = getClient();
+    if (!hasApiKey()) return res.json({ suggestions: [] });
     const recent = messages
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .slice(-6)
       .map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${typeof m.content === "string" ? m.content.slice(0, 300) : "[attachment]"}`)
       .join("\n\n");
-    const payload = {
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 150,
-      system: "You generate short follow-up questions. Respond ONLY with a JSON array of exactly 3 strings. No explanation, no markdown, just valid JSON like: [\"Question 1?\",\"Question 2?\",\"Question 3?\"]",
-      messages: [{ role: "user", content: `Based on this conversation, suggest 3 short follow-up questions the user might ask next. Keep each under 60 characters.\n\n${recent}` }],
-    };
     try {
-      const command = new InvokeModelCommand({
-        modelId: FALLBACK_MODEL.bedrockId,
-        contentType: "application/json",
-        accept: "application/json",
-        body: JSON.stringify(payload),
-      });
-      const response = await client.send(command);
-      const body = JSON.parse(new TextDecoder().decode(response.body));
-      const text = body.content?.[0]?.text?.trim() || "[]";
+      const text = await callAPI(
+        FALLBACK_MODEL.apiModelId,
+        "You generate short follow-up questions. Respond ONLY with a JSON array of exactly 3 strings. No explanation, no markdown, just valid JSON like: [\"Question 1?\",\"Question 2?\",\"Question 3?\"]",
+        `Based on this conversation, suggest 3 short follow-up questions the user might ask next. Keep each under 60 characters.\n\n${recent}`,
+        150,
+      );
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       const suggestions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
       return res.json({ suggestions: Array.isArray(suggestions) ? suggestions.slice(0, 3) : [] });
