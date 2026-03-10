@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe, Cloud, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message, ToolCall } from "@/lib/chat-storage";
 import { BADGE_STYLE } from "@/components/ModelSelector";
@@ -319,12 +319,14 @@ function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; i
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           {toolCalls.map((tc, i) => (
             <span key={i} className="flex items-center gap-1 bg-background/60 border border-border/30 rounded-md px-2 py-0.5 text-xs font-medium text-foreground/70">
-              {tc.name === "web_search" ? (
-                <Search className="w-3 h-3 text-blue-400 shrink-0" />
-              ) : (
-                <Hash className="w-3 h-3 text-green-400 shrink-0" />
-              )}
-              {tc.name === "web_search" ? "Web search" : "Calculator"}
+              {tc.name === "web_search" ? <Search className="w-3 h-3 text-blue-400 shrink-0" />
+                : tc.name === "get_weather" ? <Cloud className="w-3 h-3 text-sky-400 shrink-0" />
+                : tc.name === "fetch_url" ? <Link className="w-3 h-3 text-purple-400 shrink-0" />
+                : <Hash className="w-3 h-3 text-green-400 shrink-0" />}
+              {tc.name === "web_search" ? "Web search"
+                : tc.name === "get_weather" ? "Weather lookup"
+                : tc.name === "fetch_url" ? "Fetched URL"
+                : "Calculator"}
             </span>
           ))}
           {hasPending && isStreaming && (
@@ -342,18 +344,23 @@ function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; i
           {toolCalls.map((tc, i) => (
             <div key={i} className="px-3 py-2.5 space-y-1.5">
               <div className="flex items-center gap-2">
-                {tc.name === "web_search" ? (
-                  <Search className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                ) : (
-                  <Hash className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                )}
+                {tc.name === "web_search" ? <Search className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  : tc.name === "get_weather" ? <Cloud className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  : tc.name === "fetch_url" ? <Link className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  : <Hash className="w-3.5 h-3.5 text-green-400 shrink-0" />}
                 <span className="font-medium text-foreground/80">
-                  {tc.name === "web_search" ? "Searched the web" : "Calculated"}
+                  {tc.name === "web_search" ? "Searched the web"
+                    : tc.name === "get_weather" ? "Checked weather"
+                    : tc.name === "fetch_url" ? "Fetched page"
+                    : "Calculated"}
                 </span>
               </div>
               <div className="pl-5 space-y-1">
                 <p className="text-xs text-muted-foreground font-mono bg-background/50 rounded px-2 py-1 border border-border/20">
-                  {tc.name === "web_search" ? tc.input.query : tc.input.expression}
+                  {tc.name === "web_search" ? tc.input.query
+                    : tc.name === "get_weather" ? tc.input.location
+                    : tc.name === "fetch_url" ? tc.input.url
+                    : tc.input.expression}
                 </p>
                 {tc.result !== undefined ? (
                   <p className="text-xs text-foreground/60 leading-relaxed line-clamp-4">{tc.result}</p>
