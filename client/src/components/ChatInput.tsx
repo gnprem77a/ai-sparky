@@ -357,10 +357,10 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            "relative rounded-2xl border transition-all duration-200 shadow-lg bg-card",
-            isDragOver        ? "border-primary/60 shadow-primary/15 ring-2 ring-primary/20"
-            : isStreaming     ? "border-primary/25"
-                              : "border-card-border focus-within:border-border focus-within:shadow-xl"
+            "relative rounded-3xl border transition-all duration-300 shadow-xl bg-card",
+            isDragOver        ? "border-primary/60 shadow-primary/20 ring-2 ring-primary/20"
+            : isStreaming     ? "border-primary/30 shadow-primary/10"
+                              : "border-card-border focus-within:border-primary/30 focus-within:shadow-2xl focus-within:shadow-primary/8"
           )}
         >
           {/* drag overlay */}

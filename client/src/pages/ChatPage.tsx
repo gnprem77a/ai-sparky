@@ -1193,7 +1193,7 @@ export default function ChatPage() {
                     key={i}
                     data-testid={`suggestion-chip-${i}`}
                     onClick={() => { setInput(s); setFollowUpSuggestions([]); }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border/50 bg-card/50 hover:bg-card hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150 backdrop-blur-sm"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-border/60 bg-card hover:bg-card hover:border-primary/40 hover:shadow-sm hover:shadow-primary/8 text-muted-foreground hover:text-foreground transition-all duration-200"
                   >
                     <Sparkles className="w-3 h-3 text-primary/60 flex-shrink-0" />
                     {s}
@@ -1314,19 +1314,19 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
       {/* Ambient glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-      <div className="relative mb-5">
-        <img src="/logo.png" alt="AI Sparky" className="w-16 h-16 rounded-2xl object-cover shadow-2xl shadow-primary/30" />
-        <div className="absolute inset-0 rounded-2xl bg-primary/25 blur-2xl scale-150 -z-10" />
+      <div className="relative mb-6">
+        <img src="/logo.png" alt="AI Sparky" className="w-18 h-18 w-[72px] h-[72px] rounded-2xl object-cover shadow-2xl shadow-primary/40 ring-1 ring-white/10" />
+        <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-3xl scale-[2] -z-10" />
       </div>
 
-      <h1 className="text-3xl font-black tracking-tight text-foreground mb-2 text-center">
+      <h1 className="text-[2rem] font-black tracking-tight text-foreground mb-2.5 text-center">
         {t("chat.empty.title")}
       </h1>
-      <p className="text-muted-foreground/60 text-sm mb-10 text-center max-w-[320px] leading-relaxed">
+      <p className="text-muted-foreground/70 text-sm mb-10 text-center max-w-[340px] leading-relaxed">
         {t("chat.empty.subtitle")}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 w-full max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl">
         {SUGGESTIONS.map((s) => {
           const Icon = s.icon;
           return (
@@ -1334,16 +1334,16 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
               key={s.label}
               onClick={() => onSuggest(s.prompt)}
               data-testid={`suggestion-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
-              className={cn(
-                "group relative flex flex-col items-start gap-2 px-4 py-3.5 rounded-xl border border-border/40 bg-card/40 hover:bg-card/80 hover:border-border text-left transition-all duration-200 backdrop-blur-sm overflow-hidden",
-              )}
+              className="group relative flex flex-col items-start gap-2.5 px-5 py-4 rounded-2xl border border-border/50 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/8 text-left transition-all duration-200 shadow-sm overflow-hidden"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-transparent transition-all duration-300 rounded-xl" />
-              <Icon className={cn("w-4 h-4 relative", s.color)} />
-              <span className="text-[13px] font-semibold text-foreground/80 group-hover:text-foreground leading-tight relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-transparent to-primary/0 group-hover:from-primary/5 group-hover:to-violet-500/3 transition-all duration-300 rounded-2xl" />
+              <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 relative", s.bg.split(" ")[0])}>
+                <Icon className={cn("w-4 h-4", s.color)} />
+              </div>
+              <span className="text-[13px] font-semibold text-foreground group-hover:text-foreground leading-tight relative">
                 {s.label}
               </span>
-              <span className="text-[11px] text-muted-foreground/50 leading-snug line-clamp-2 relative">
+              <span className="text-[11px] text-muted-foreground/60 leading-snug line-clamp-2 relative">
                 {s.prompt}
               </span>
             </button>

@@ -111,9 +111,9 @@ function MermaidBlock({ code }: { code: string }) {
 
 function AILogo() {
   return (
-    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-violet-400 flex items-center justify-center flex-shrink-0 shadow-md mt-0.5">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.35"/>
+    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 via-primary to-fuchsia-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-900/30 mt-0.5 ring-1 ring-white/10">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="white" opacity="0.3"/>
         <path d="M8 8h2.5l1.5 4 1.5-4H16l-2.5 8H11L8 8z" fill="white"/>
       </svg>
     </div>
@@ -502,7 +502,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
     return (
       <div
         data-testid={`message-${message.id}`}
-        className="flex justify-end px-4 py-2 animate-fade-up group/user-msg"
+        className="flex justify-end px-4 py-3 animate-fade-up group/user-msg"
         onMouseEnter={() => setActionsVisible(true)}
         onMouseLeave={() => setActionsVisible(false)}
       >
@@ -564,7 +564,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
               <>
                 {message.content && (
                   <div className="relative group/bubble">
-                    <div className={cn("px-4 py-3 rounded-2xl rounded-br-sm bg-primary text-primary-foreground leading-relaxed shadow-md", fontClass)} data-testid="content-user">
+                    <div className={cn("px-4 py-3 rounded-2xl rounded-br-sm bg-gradient-to-br from-violet-600 to-purple-600 text-white leading-relaxed shadow-lg shadow-violet-900/30 ring-1 ring-white/10", fontClass)} data-testid="content-user">
                       <p className="whitespace-pre-wrap break-words font-[450]">{highlightText(message.content, searchQuery)}</p>
                       {localIsPinned && (
                         <div className="absolute -top-2 -left-2 bg-yellow-500 rounded-full p-1 shadow-sm border border-background">
@@ -654,7 +654,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
             </div>
           )}
           {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
-            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-muted/30 border border-border/40 w-fit animate-fade-up shadow-sm">
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-card border border-border/50 w-fit animate-fade-up shadow-md shadow-black/10">
               <div className="flex gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
                 <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
