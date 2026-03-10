@@ -741,12 +741,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     /* ── load system prompt ── */
     const settings = await storage.getUserSettings(user.id);
-    let systemPrompt = settings.systemPrompt?.trim() || undefined;
+    const nowBlock = `Current date and time: ${new Date().toLocaleString("en-US", { timeZone: "UTC", dateStyle: "full", timeStyle: "long" })} (UTC). When the user asks for the current time, date, or day, use this information to answer directly.`;
+    let systemPrompt: string | undefined = settings.systemPrompt?.trim() || undefined;
     if (settings.activePromptId) {
       const prompts = await storage.getSavedPrompts(user.id);
       const active = prompts.find((p) => p.id === settings.activePromptId);
       if (active) systemPrompt = active.content;
     }
+    systemPrompt = systemPrompt ? `${nowBlock}\n\n${systemPrompt}` : nowBlock;
     const customInstructions = settings.customInstructions?.trim();
     if (customInstructions) {
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
