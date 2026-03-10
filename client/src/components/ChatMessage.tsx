@@ -671,7 +671,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
 
                     if (!match) {
                       return (
-                        <code className="bg-primary/8 text-primary/90 rounded-md px-1.5 py-0.5 font-mono text-[0.8em] border border-primary/15" {...props}>
+                        <code className="bg-muted/60 text-foreground/90 rounded-md px-1.5 py-0.5 font-mono text-[0.85em] border border-border/40" {...props}>
                           {children}
                         </code>
                       );
