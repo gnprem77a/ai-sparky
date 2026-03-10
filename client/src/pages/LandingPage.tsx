@@ -1,408 +1,456 @@
 import { useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Zap, MessageSquare, Globe, Mic, Paperclip, History,
-  Check, Star, ArrowRight, Sparkles, Shield, Brain,
-  Image as ImageIcon, Search, ChevronRight, X,
+  ArrowRight, Zap, Globe, Mic, Paperclip, Brain,
+  Image as ImageIcon, Search, Check, Star, Sparkles,
+  MessageSquare, History, ChevronRight,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const FEATURES = [
+/* ── tiny hook ── */
+function useInView(threshold = 0.15) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) setVisible(true); },
+      { threshold }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return { ref, visible };
+}
+
+/* ── data ── */
+const BENTO = [
   {
-    icon: <Zap className="w-5 h-5" />,
-    title: "Real-time Streaming",
-    desc: "Responses stream word-by-word instantly — no waiting for the full reply.",
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
+    icon: <Brain className="w-6 h-6" />,
+    title: "Multi-Model Intelligence",
+    desc: "Switch between Claude Sonnet, Opus, Haiku, and Llama 3.1 — pick the right brain for every job.",
+    span: "col-span-2",
+    accent: "from-violet-500/20 to-violet-500/5",
+    iconColor: "text-violet-400",
+    iconBg: "bg-violet-400/10",
   },
   {
-    icon: <Brain className="w-5 h-5" />,
-    title: "Multi-Model Routing",
-    desc: "Pick from Claude Sonnet, Opus, Haiku, or Llama — the right model for every task.",
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
+    icon: <Globe className="w-6 h-6" />,
+    title: "Live Web Search",
+    desc: "Real-time answers backed by the web, with source links.",
+    span: "col-span-1",
+    accent: "from-sky-500/20 to-sky-500/5",
+    iconColor: "text-sky-400",
+    iconBg: "bg-sky-400/10",
   },
   {
-    icon: <Globe className="w-5 h-5" />,
-    title: "Web Search Grounding",
-    desc: "AI answers backed by live web results with source citations you can verify.",
-    color: "text-sky-400",
-    bg: "bg-sky-400/10",
+    icon: <Zap className="w-6 h-6" />,
+    title: "Instant Streaming",
+    desc: "Responses appear word-by-word as they're generated.",
+    span: "col-span-1",
+    accent: "from-yellow-500/20 to-yellow-500/5",
+    iconColor: "text-yellow-400",
+    iconBg: "bg-yellow-400/10",
   },
   {
-    icon: <Mic className="w-5 h-5" />,
-    title: "Voice Input",
-    desc: "Speak naturally — live transcript appears as you talk, hands-free.",
-    color: "text-green-400",
-    bg: "bg-green-400/10",
-  },
-  {
-    icon: <Paperclip className="w-5 h-5" />,
-    title: "File & Image Uploads",
-    desc: "Attach PDFs, images, or documents. AI reads and analyzes them instantly.",
-    color: "text-orange-400",
-    bg: "bg-orange-400/10",
-  },
-  {
-    icon: <History className="w-5 h-5" />,
-    title: "Cloud Conversation History",
-    desc: "All your chats saved and searchable. Pick up where you left off, on any device.",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-  },
-  {
-    icon: <ImageIcon className="w-5 h-5" />,
+    icon: <ImageIcon className="w-6 h-6" />,
     title: "AI Image Generation",
-    desc: "Generate stunning images right inside your chat — just describe what you want.",
-    color: "text-fuchsia-400",
-    bg: "bg-fuchsia-400/10",
+    desc: "Describe it, see it. Generate stunning images inside your chat.",
+    span: "col-span-1",
+    accent: "from-pink-500/20 to-pink-500/5",
+    iconColor: "text-pink-400",
+    iconBg: "bg-pink-400/10",
   },
   {
-    icon: <Search className="w-5 h-5" />,
-    title: "Prompt Library",
-    desc: "Save your best prompts and reuse them with one click. Build your personal toolkit.",
-    color: "text-teal-400",
-    bg: "bg-teal-400/10",
+    icon: <Mic className="w-6 h-6" />,
+    title: "Voice Input",
+    desc: "Speak your thoughts. Live transcript, hands-free.",
+    span: "col-span-1",
+    accent: "from-green-500/20 to-green-500/5",
+    iconColor: "text-green-400",
+    iconBg: "bg-green-400/10",
   },
   {
-    icon: <Shield className="w-5 h-5" />,
-    title: "Private & Secure",
-    desc: "Your conversations are yours. No training on your data. Always encrypted.",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
+    icon: <Paperclip className="w-6 h-6" />,
+    title: "Files & Images",
+    desc: "Upload PDFs and images. AI reads, summarizes, and analyzes them.",
+    span: "col-span-2",
+    accent: "from-orange-500/20 to-orange-500/5",
+    iconColor: "text-orange-400",
+    iconBg: "bg-orange-400/10",
   },
 ];
 
 const MODELS = [
-  { name: "Claude Sonnet", badge: "Balanced", desc: "Fast, smart, affordable. Best for everyday tasks.", color: "border-violet-500/40 bg-violet-500/5" },
-  { name: "Claude Opus", badge: "Powerful", desc: "Maximum intelligence for complex reasoning and analysis.", color: "border-amber-500/40 bg-amber-500/5" },
-  { name: "Claude Haiku", badge: "Fast", desc: "Lightning-quick responses for simple questions.", color: "border-sky-500/40 bg-sky-500/5" },
-  { name: "Llama 3.1 70B", badge: "Creative", desc: "Open-source powerhouse, great for creative writing.", color: "border-green-500/40 bg-green-500/5" },
-];
-
-const FREE_FEATURES = [
-  "20 messages per day",
-  "Claude Haiku model",
-  "Conversation history",
-  "Voice input",
-  "File & image uploads",
-];
-
-const PRO_FEATURES = [
-  "Unlimited messages",
-  "All models (Sonnet, Opus, Llama)",
-  "Web search grounding",
-  "AI image generation",
-  "Priority response speed",
-  "Export to PDF & Markdown",
-  "Advanced prompt library",
-  "Custom AI personas",
+  { name: "Claude Sonnet", tag: "Balanced", glow: "shadow-violet-500/20", border: "border-violet-500/30", dot: "bg-violet-400" },
+  { name: "Claude Opus",   tag: "Powerful", glow: "shadow-amber-500/20",  border: "border-amber-500/30",  dot: "bg-amber-400"  },
+  { name: "Claude Haiku",  tag: "Fast",     glow: "shadow-sky-500/20",    border: "border-sky-500/30",    dot: "bg-sky-400"    },
+  { name: "Llama 3.1 70B", tag: "Creative", glow: "shadow-green-500/20",  border: "border-green-500/30",  dot: "bg-green-400"  },
 ];
 
 export default function LandingPage() {
   const [, navigate] = useLocation();
-  const [scrolled, setScrolled] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const heroSection = useInView(0.1);
+  const bentoSection = useInView(0.1);
+  const modelsSection = useInView(0.1);
+  const pricingSection = useInView(0.1);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
+    const fn = () => setScrollY(window.scrollY);
+    window.addEventListener("scroll", fn, { passive: true });
+    return () => window.removeEventListener("scroll", fn);
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="min-h-screen bg-[#07070f] text-white overflow-x-hidden">
 
-      {/* ── Nav ── */}
-      <header className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        scrolled ? "bg-background/90 backdrop-blur-md border-b border-border/40 shadow-sm" : "bg-transparent"
+      {/* ── Sticky Nav ── */}
+      <nav className={cn(
+        "fixed top-0 inset-x-0 z-50 transition-all duration-500",
+        scrollY > 40
+          ? "bg-[#07070f]/80 backdrop-blur-xl border-b border-white/5 py-3"
+          : "py-5"
       )}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="AI Sparky" className="w-8 h-8 rounded-lg object-cover" />
-            <span className="font-bold text-lg tracking-tight">AI Sparky</span>
+            <img src="/logo.png" alt="AI Sparky" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-violet-500/20" />
+            <span className="font-bold text-base tracking-tight">AI Sparky</span>
           </div>
-          <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">Features</a>
-            <a href="#models" className="hover:text-foreground transition-colors">Models</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/login")} data-testid="link-nav-signin">
-              Sign In
-            </Button>
-            <Button size="sm" onClick={() => navigate("/login")} data-testid="link-nav-getstarted"
-              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5">
-              Get Started <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
+
+          <div className="hidden md:flex items-center gap-7 text-sm text-white/50">
+            <a href="#features" className="hover:text-white transition-colors">Features</a>
+            <a href="#models"   className="hover:text-white transition-colors">Models</a>
+            <a href="#pricing"  className="hover:text-white transition-colors">Pricing</a>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/login")}
+              data-testid="link-nav-signin"
+              className="px-4 py-2 text-sm text-white/60 hover:text-white transition-colors"
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => navigate("/login")}
+              data-testid="link-nav-getstarted"
+              className="px-4 py-2 rounded-xl bg-white text-[#07070f] text-sm font-semibold hover:bg-white/90 transition-all shadow-lg shadow-white/10"
+            >
+              Get started
+            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
       {/* ── Hero ── */}
-      <section className="relative pt-32 pb-24 px-6 text-center overflow-hidden">
-        {/* Background glow */}
+      <section className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden">
+
+        {/* Full-bleed background */}
         <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px]" />
-          <div className="absolute top-20 left-1/4 w-[300px] h-[300px] bg-violet-600/8 rounded-full blur-[80px]" />
-          <div className="absolute top-20 right-1/4 w-[300px] h-[300px] bg-sky-600/8 rounded-full blur-[80px]" />
+          <img
+            src="/hero-bg.png"
+            alt=""
+            className="w-full h-full object-cover opacity-30"
+            style={{ transform: `translateY(${scrollY * 0.2}px)` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#07070f]/40 via-transparent to-[#07070f]" />
         </div>
 
-        <div className="max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-6">
-            <Sparkles className="w-3.5 h-3.5" />
-            Powered by Claude on Amazon Bedrock
+        {/* Glow orb */}
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-600/15 rounded-full blur-[120px] pointer-events-none" />
+
+        <div
+          ref={heroSection.ref}
+          className={cn(
+            "max-w-4xl mx-auto text-center transition-all duration-1000",
+            heroSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          )}
+        >
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-white/60 text-xs font-medium mb-8 backdrop-blur-sm">
+            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+            Built on Claude · Amazon Bedrock
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-tight mb-6">
-            Your personal AI,
-            <br />
-            <span className="bg-gradient-to-r from-primary via-violet-400 to-sky-400 bg-clip-text text-transparent">
-              supercharged
+          {/* Headline */}
+          <h1 className="text-6xl md:text-8xl font-black tracking-tighter leading-[0.9] mb-6">
+            <span className="block text-white">Think faster.</span>
+            <span className="block bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">
+              Create more.
             </span>
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI Sparky brings together the best AI models, live web search, voice input,
-            and image generation — all in one beautifully designed chat experience.
+          <p className="text-lg md:text-xl text-white/50 max-w-xl mx-auto mb-10 leading-relaxed font-light">
+            AI Sparky is your personal AI powered by frontier models — with web search,
+            voice, image generation, and more. All in one place.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
-            <Button
-              size="lg"
+          {/* CTAs */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
               onClick={() => navigate("/login")}
               data-testid="button-hero-getstarted"
-              className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base font-semibold gap-2 shadow-lg shadow-primary/20"
+              className="group w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-base font-semibold hover:from-violet-500 hover:to-fuchsia-500 transition-all shadow-xl shadow-violet-500/30"
             >
-              Get Started Free <ArrowRight className="w-4 h-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
+              Start for free
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+            <button
               onClick={() => navigate("/login")}
               data-testid="button-hero-signin"
-              className="w-full sm:w-auto px-8 h-12 text-base border-border/60"
+              className="w-full sm:w-auto px-7 py-3.5 rounded-2xl border border-white/10 text-white/70 text-base hover:border-white/20 hover:text-white hover:bg-white/5 transition-all backdrop-blur-sm"
             >
-              Sign In
-            </Button>
+              Sign in
+            </button>
           </div>
 
-          {/* Hero image */}
-          <div className="relative mx-auto max-w-5xl">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/30 via-violet-500/20 to-sky-500/30 rounded-2xl blur-sm" />
-            <div className="relative rounded-2xl overflow-hidden border border-border/40 shadow-2xl shadow-black/40">
-              <img
-                src="/hero-mockup.png"
-                alt="AI Sparky chat interface"
-                className="w-full h-auto"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent" />
-            </div>
-          </div>
+          {/* Social proof */}
+          <p className="mt-8 text-white/25 text-xs">No credit card required · Free plan available</p>
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 text-white/20 text-xs">
+          <div className="w-px h-8 bg-gradient-to-b from-transparent to-white/20" />
+          <span>scroll</span>
         </div>
       </section>
 
-      {/* ── Stat bar ── */}
-      <section className="border-y border-border/40 bg-muted/20 py-8 px-6">
-        <div className="max-w-4xl mx-auto grid grid-cols-3 gap-8 text-center">
+      {/* ── Capability strip ── */}
+      <div className="border-y border-white/5 bg-white/[0.02] py-5 overflow-hidden">
+        <div className="flex gap-10 items-center animate-marquee whitespace-nowrap">
           {[
-            { value: "4+", label: "AI Models" },
-            { value: "∞", label: "Conversations" },
-            { value: "100%", label: "Private" },
-          ].map((s) => (
-            <div key={s.label}>
-              <div className="text-3xl font-bold text-foreground mb-1">{s.value}</div>
-              <div className="text-sm text-muted-foreground">{s.label}</div>
-            </div>
+            "Streaming Responses", "Web Search", "Voice Input", "Image Generation",
+            "PDF Analysis", "Multi-Model", "Cloud History", "Prompt Library",
+            "Export to PDF", "Dark Mode", "Custom Themes", "Split View",
+            "Streaming Responses", "Web Search", "Voice Input", "Image Generation",
+            "PDF Analysis", "Multi-Model", "Cloud History", "Prompt Library",
+          ].map((item, i) => (
+            <span key={i} className="flex items-center gap-2 text-white/30 text-sm font-medium flex-shrink-0">
+              <span className="w-1 h-1 rounded-full bg-violet-400/50" />
+              {item}
+            </span>
           ))}
         </div>
-      </section>
+      </div>
 
-      {/* ── Features ── */}
-      <section id="features" className="py-24 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              Everything you need in one place
+      {/* ── Bento Features ── */}
+      <section id="features" className="py-28 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div
+            ref={bentoSection.ref}
+            className={cn(
+              "transition-all duration-700",
+              bentoSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+            )}
+          >
+            <p className="text-xs uppercase tracking-widest text-violet-400/70 font-semibold mb-4 text-center">Features</p>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-center mb-16">
+              Everything. One place.
             </h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              No switching between tools. AI Sparky packs in all the features power users actually want.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="group p-5 rounded-xl border border-border/40 bg-card hover:border-border hover:shadow-md transition-all duration-200"
-              >
-                <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center mb-4", f.bg, f.color)}>
-                  {f.icon}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {BENTO.map((b) => (
+                <div
+                  key={b.title}
+                  className={cn(
+                    "group relative p-6 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300 overflow-hidden",
+                    b.span
+                  )}
+                >
+                  {/* Card glow */}
+                  <div className={cn("absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500", b.accent)} />
+
+                  <div className="relative">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4", b.iconBg, b.iconColor)}>
+                      {b.icon}
+                    </div>
+                    <h3 className="font-bold text-base text-white mb-2">{b.title}</h3>
+                    <p className="text-white/40 text-sm leading-relaxed">{b.desc}</p>
+                  </div>
                 </div>
-                <h3 className="font-semibold text-sm mb-1.5">{f.title}</h3>
-                <p className="text-muted-foreground text-xs leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Models ── */}
-      <section id="models" className="py-24 px-6 bg-muted/10">
+      <section id="models" className="py-24 px-6">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              Pick your AI model
+          <div
+            ref={modelsSection.ref}
+            className={cn(
+              "transition-all duration-700",
+              modelsSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+            )}
+          >
+            <p className="text-xs uppercase tracking-widest text-violet-400/70 font-semibold mb-4 text-center">AI Models</p>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-center mb-6">
+              The right model,<br />every time.
             </h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Switch between frontier models on-the-fly. Use the right tool for the right task.
+            <p className="text-white/40 text-center text-lg mb-16 max-w-lg mx-auto font-light">
+              Switch between frontier AI models with a single tap.
             </p>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {MODELS.map((m) => (
-              <div key={m.name} className={cn(
-                "p-5 rounded-xl border flex items-start gap-4 transition-all duration-200 hover:shadow-md",
-                m.color
-              )}>
-                <div className="w-10 h-10 rounded-lg bg-background/60 border border-border/40 flex items-center justify-center flex-shrink-0">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold text-sm">{m.name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-background/60 border border-border/40 text-muted-foreground font-medium">
-                      {m.badge}
-                    </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {MODELS.map((m) => (
+                <div
+                  key={m.name}
+                  className={cn(
+                    "p-5 rounded-2xl border bg-white/[0.03] hover:bg-white/[0.06] transition-all duration-200 hover:shadow-lg",
+                    m.border, m.glow
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={cn("w-2 h-2 rounded-full flex-shrink-0", m.dot)} />
+                    <span className="text-xs font-semibold text-white/40 uppercase tracking-widest">{m.tag}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{m.desc}</p>
+                  <p className="font-bold text-sm text-white">{m.name}</p>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── Pricing ── */}
       <section id="pricing" className="py-24 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-              Simple, transparent pricing
+        <div className="max-w-3xl mx-auto">
+          <div
+            ref={pricingSection.ref}
+            className={cn(
+              "transition-all duration-700",
+              pricingSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+            )}
+          >
+            <p className="text-xs uppercase tracking-widest text-violet-400/70 font-semibold mb-4 text-center">Pricing</p>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-center mb-16">
+              Start free.<br />Scale when ready.
             </h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Start for free. Upgrade when you're ready for unlimited power.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Free */}
-            <div className="p-7 rounded-2xl border border-border/50 bg-card">
-              <div className="mb-6">
-                <div className="text-sm text-muted-foreground font-medium mb-1">Free</div>
-                <div className="text-4xl font-bold mb-1">$0</div>
-                <div className="text-sm text-muted-foreground">No credit card needed</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Free */}
+              <div className="p-7 rounded-2xl border border-white/8 bg-white/[0.03]">
+                <div className="text-sm text-white/40 font-medium mb-1">Free</div>
+                <div className="text-5xl font-black mb-1">$0</div>
+                <div className="text-white/30 text-sm mb-7">Forever free</div>
+                <button
+                  onClick={() => navigate("/login")}
+                  data-testid="button-free-plan"
+                  className="w-full py-3 rounded-xl border border-white/10 text-white/70 text-sm font-semibold hover:border-white/20 hover:text-white hover:bg-white/5 transition-all mb-7"
+                >
+                  Get started free
+                </button>
+                <ul className="space-y-3 text-sm text-white/40">
+                  {["20 messages / day", "Claude Haiku model", "Conversation history", "Voice input", "File uploads"].map(f => (
+                    <li key={f} className="flex items-center gap-2.5">
+                      <Check className="w-3.5 h-3.5 text-white/20 shrink-0" /> {f}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <Button
-                variant="outline"
-                className="w-full mb-6"
-                onClick={() => navigate("/login")}
-                data-testid="button-free-plan"
-              >
-                Get Started Free
-              </Button>
-              <ul className="space-y-3">
-                {FREE_FEATURES.map((f) => (
-                  <li key={f} className="flex items-center gap-2.5 text-sm text-muted-foreground">
-                    <Check className="w-4 h-4 text-green-400 shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
 
-            {/* Pro */}
-            <div className="relative p-7 rounded-2xl border border-primary/40 bg-card shadow-lg shadow-primary/5">
-              <div className="absolute -top-3 left-6">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-md">
-                  <Star className="w-3 h-3 fill-current" />
-                  Most Popular
+              {/* Pro */}
+              <div className="relative p-7 rounded-2xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-transparent overflow-hidden">
+                {/* Glow */}
+                <div className="absolute -top-20 -right-20 w-60 h-60 bg-violet-600/20 rounded-full blur-[60px] pointer-events-none" />
+
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-sm text-white/40 font-medium">Pro</div>
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 text-[10px] font-bold">
+                      <Star className="w-2.5 h-2.5 fill-current" /> Popular
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <div className="text-5xl font-black">$12</div>
+                    <div className="text-white/30 text-sm">/mo</div>
+                  </div>
+                  <div className="text-white/30 text-sm mb-7">Billed monthly</div>
+                  <button
+                    onClick={() => navigate("/login")}
+                    data-testid="button-pro-plan"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-sm font-bold hover:from-violet-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-violet-500/25 mb-7"
+                  >
+                    Start Pro
+                  </button>
+                  <ul className="space-y-3 text-sm text-white/70">
+                    {[
+                      "Unlimited messages",
+                      "All AI models",
+                      "Web search grounding",
+                      "AI image generation",
+                      "Export PDF & Markdown",
+                      "Advanced prompt library",
+                      "Priority speed",
+                    ].map(f => (
+                      <li key={f} className="flex items-center gap-2.5">
+                        <Check className="w-3.5 h-3.5 text-violet-400 shrink-0" /> {f}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
-              <div className="mb-6">
-                <div className="text-sm text-muted-foreground font-medium mb-1">Pro</div>
-                <div className="flex items-baseline gap-1">
-                  <div className="text-4xl font-bold">$12</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <div className="text-sm text-muted-foreground">Billed monthly</div>
-              </div>
-              <Button
-                className="w-full mb-6 bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 gap-1.5"
-                onClick={() => navigate("/login")}
-                data-testid="button-pro-plan"
-              >
-                Start Pro Trial <ChevronRight className="w-4 h-4" />
-              </Button>
-              <ul className="space-y-3">
-                {PRO_FEATURES.map((f) => (
-                  <li key={f} className="flex items-center gap-2.5 text-sm">
-                    <Check className="w-4 h-4 text-primary shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── CTA Banner ── */}
-      <section className="py-20 px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="relative p-10 rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/8 via-violet-500/5 to-sky-500/8 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent rounded-3xl" />
-            <div className="relative">
-              <img src="/logo.png" alt="AI Sparky" className="w-14 h-14 rounded-2xl object-cover mx-auto mb-5 shadow-xl shadow-primary/20" />
-              <h2 className="text-3xl font-bold mb-3">Ready to spark your productivity?</h2>
-              <p className="text-muted-foreground mb-8 text-lg">
-                Join thousands of users who've upgraded their AI workflow with AI Sparky.
-              </p>
-              <Button
-                size="lg"
-                onClick={() => navigate("/login")}
-                data-testid="button-cta-getstarted"
-                className="bg-primary hover:bg-primary/90 px-8 h-12 text-base font-semibold gap-2 shadow-lg shadow-primary/25"
-              >
-                Get Started Free <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
+      {/* ── Final CTA ── */}
+      <section className="py-24 px-6 relative overflow-hidden">
+        <div className="absolute inset-0 -z-10">
+          <img src="/hero-bg.png" alt="" className="w-full h-full object-cover opacity-15" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#07070f] via-[#07070f]/80 to-[#07070f]" />
+        </div>
+
+        <div className="max-w-2xl mx-auto text-center">
+          <img src="/logo.png" alt="AI Sparky" className="w-16 h-16 rounded-2xl object-cover mx-auto mb-6 shadow-2xl shadow-violet-500/30" />
+          <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-4">
+            Ready to spark<br />something great?
+          </h2>
+          <p className="text-white/40 text-lg mb-10 font-light">
+            Join thousands already using AI Sparky to think faster and create more.
+          </p>
+          <button
+            onClick={() => navigate("/login")}
+            data-testid="button-cta-getstarted"
+            className="group inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white text-lg font-bold hover:from-violet-500 hover:to-fuchsia-500 transition-all shadow-2xl shadow-violet-500/30"
+          >
+            Get started free
+            <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+          <p className="mt-4 text-white/20 text-xs">No credit card needed</p>
         </div>
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-border/40 py-10 px-6">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="AI Sparky" className="w-6 h-6 rounded-md object-cover" />
-            <span className="font-semibold text-sm">AI Sparky</span>
-            <span className="text-muted-foreground text-xs">— aisparky.dev</span>
+      <footer className="border-t border-white/5 py-8 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="AI Sparky" className="w-5 h-5 rounded-md object-cover" />
+            <span className="text-sm font-bold text-white/60">AI Sparky</span>
+            <span className="text-white/20 text-xs">— aisparky.dev</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} AI Sparky. Powered by Claude on Amazon Bedrock.
-          </p>
-          <div className="flex items-center gap-5 text-xs text-muted-foreground">
-            <button onClick={() => navigate("/login")} className="hover:text-foreground transition-colors">
-              Sign In
-            </button>
-            <button onClick={() => navigate("/login")} className="hover:text-foreground transition-colors">
-              Get Started
-            </button>
+          <p className="text-xs text-white/20">© {new Date().getFullYear()} AI Sparky. Powered by Claude on Amazon Bedrock.</p>
+          <div className="flex items-center gap-5 text-xs text-white/30">
+            <button onClick={() => navigate("/login")} className="hover:text-white/60 transition-colors">Sign in</button>
+            <button onClick={() => navigate("/login")} className="hover:text-white/60 transition-colors">Get started</button>
           </div>
         </div>
       </footer>
+
+      {/* Marquee animation */}
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 30s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }
