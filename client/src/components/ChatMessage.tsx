@@ -656,7 +656,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
               <span className="text-xs font-medium text-muted-foreground">Thinking…</span>
             </div>
           ) : (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
+            <div className="max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -730,51 +730,68 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                   },
                   pre({ children }) { return <>{children}</>; },
                   p({ children }) {
-                    return <p className="mb-3.5 last:mb-0 leading-7 text-foreground/85">{children}</p>;
+                    return <p className="mb-4 last:mb-0 leading-[1.8] text-foreground/90">{children}</p>;
                   },
                   ul({ children }) {
-                    return <ul className="mb-3.5 last:mb-0 ml-1 space-y-1.5 list-none">{children}</ul>;
+                    return (
+                      <ul className="mb-4 last:mb-0 space-y-1.5 pl-1">
+                        {children}
+                      </ul>
+                    );
                   },
                   ol({ children }) {
-                    return <ol className="mb-3.5 last:mb-0 ml-1 space-y-1.5 list-none counter-reset-item">{children}</ol>;
+                    return (
+                      <ol className="mb-4 last:mb-0 space-y-1.5 pl-1 list-decimal list-inside marker:text-primary/70 marker:font-semibold marker:text-sm">
+                        {children}
+                      </ol>
+                    );
                   },
                   li({ children, ...props }) {
+                    const isOrdered = (props as { ordered?: boolean }).ordered;
+                    if (isOrdered) {
+                      return (
+                        <li className="leading-[1.8] text-foreground/88 pl-1" {...props}>
+                          {children}
+                        </li>
+                      );
+                    }
                     return (
-                      <li className="flex items-start gap-2.5 leading-7 text-foreground/85" {...props}>
-                        <span className="mt-2.5 w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
-                        <span>{children}</span>
+                      <li className="flex items-start gap-2.5 leading-[1.8] text-foreground/88" {...(props as object)}>
+                        <span className="mt-[0.55em] w-[5px] h-[5px] rounded-full bg-primary/60 flex-shrink-0" />
+                        <span className="flex-1 min-w-0">{children}</span>
                       </li>
                     );
                   },
                   h1({ children }) {
                     return (
-                      <h1 className="text-xl font-bold mb-4 mt-6 first:mt-0 tracking-tight text-foreground pb-2 border-b border-border/50">
+                      <h1 className="text-[1.3em] font-bold mb-4 mt-7 first:mt-0 tracking-tight text-foreground pb-2 border-b border-border/40">
                         {children}
                       </h1>
                     );
                   },
                   h2({ children }) {
                     return (
-                      <h2 className="text-lg font-semibold mb-3 mt-5 first:mt-0 tracking-tight text-foreground">
+                      <h2 className="text-[1.15em] font-semibold mb-3 mt-6 first:mt-0 tracking-tight text-foreground flex items-center gap-2">
+                        <span className="w-1 h-[1em] rounded-full bg-primary/70 inline-block flex-shrink-0" />
                         {children}
                       </h2>
                     );
                   },
                   h3({ children }) {
                     return (
-                      <h3 className="text-base font-semibold mb-2.5 mt-4 first:mt-0 text-foreground/90">
+                      <h3 className="text-[1.05em] font-semibold mb-2.5 mt-5 first:mt-0 text-foreground/90">
                         {children}
                       </h3>
                     );
                   },
                   blockquote({ children }) {
                     return (
-                      <blockquote className="relative border-l-[3px] border-primary/50 pl-4 pr-3 py-2 my-4 bg-primary/5 rounded-r-lg">
-                        <div className="text-sm text-foreground/75 leading-relaxed italic">{children}</div>
+                      <blockquote className="border-l-[3px] border-primary/60 pl-4 pr-3 py-0.5 my-4 bg-primary/5 rounded-r-xl">
+                        <div className="text-foreground/75 leading-[1.8] italic">{children}</div>
                       </blockquote>
                     );
                   },
-                  hr() { return <hr className="border-border/40 my-6" />; },
+                  hr() { return <hr className="border-border/30 my-6" />; },
                   table({ children }) {
                     return (
                       <div className="overflow-x-auto my-4 rounded-xl border border-border/60 shadow-sm">
