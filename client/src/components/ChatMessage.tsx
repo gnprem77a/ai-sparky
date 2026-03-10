@@ -382,6 +382,8 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
 
   const fontClass = fontSize === "compact" ? "text-xs" : fontSize === "large" ? "text-base" : "text-sm";
 
+  const showThinkingIndicator = !isUser && isStreaming && message.content === "";
+
   useEffect(() => {
     setLocalReaction(message.reaction ?? null);
   }, [message.reaction]);
@@ -645,10 +647,13 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
             </div>
           )}
           {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
-            <div className="flex items-center gap-1.5 py-2">
-              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
-              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
-              <span className="typing-dot w-2 h-2 rounded-full bg-primary/60 inline-block" />
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-muted/30 border border-border/40 w-fit animate-fade-up shadow-sm">
+              <div className="flex gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground">Thinking…</span>
             </div>
           ) : (
             <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -816,7 +821,7 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                   },
                   img({ src, alt }) {
                     return (
-                      <span className="block my-3">
+                      <span className="block my-3 relative group/img">
                         <img
                           src={src}
                           alt={alt || "Generated image"}
@@ -824,6 +829,22 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
                           className="rounded-xl max-w-full shadow-md border border-border/30"
                           style={{ maxHeight: "512px" }}
                         />
+                        <button
+                          onClick={() => {
+                            if (!src) return;
+                            const link = document.createElement("a");
+                            link.href = src;
+                            link.download = `generated-${Date.now()}.png`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          data-testid={`button-download-overlay-${message.id}`}
+                          className="absolute top-2 right-2 p-2 rounded-lg bg-black/50 backdrop-blur-md text-white opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-black/70"
+                          title="Download image"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
                         {src?.startsWith("data:") && (
                           <a
                             href={src}

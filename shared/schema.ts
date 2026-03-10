@@ -64,6 +64,7 @@ export const userSettings = pgTable("user_settings", {
   showTokenUsage: boolean("show_token_usage").notNull().default(false),
   customInstructions: text("custom_instructions").notNull().default(""),
   notificationSound: boolean("notification_sound").notNull().default(false),
+  responseLanguage: text("response_language").notNull().default(""),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {
@@ -81,9 +82,22 @@ export const userMemories = pgTable("user_memories", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const broadcasts = pgTable("broadcasts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+});
+
+export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -94,3 +108,5 @@ export type UserSettings = typeof userSettings.$inferSelect;
 export type SavedPrompt = typeof savedPrompts.$inferSelect;
 export type Folder = typeof folders.$inferSelect;
 export type UserMemory = typeof userMemories.$inferSelect;
+export type Broadcast = typeof broadcasts.$inferSelect;
+export type InsertBroadcast = z.infer<typeof insertBroadcastSchema>;

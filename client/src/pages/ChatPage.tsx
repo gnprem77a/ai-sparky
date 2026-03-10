@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
@@ -12,23 +12,14 @@ import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  type Conversation,
-  type Message,
-  type Attachment,
-  type ApiMessage,
-  apiMessageToLocal,
-  generateTitle,
-  exportConversationAsMarkdown,
-  getActiveConversationId,
-  setActiveConversationId,
-} from "@/lib/chat-storage";
+import { type Conversation, type Message, type Attachment, type ApiMessage, apiMessageToLocal, generateTitle, exportConversationAsMarkdown, getActiveConversationId, setActiveConversationId } from "@/lib/chat-storage";
+import { type Broadcast } from "@shared/schema";
 import { useLanguage } from "@/lib/i18n";
 
 function isProActive(user: { plan: string; planExpiresAt: string | null } | null): boolean {
@@ -37,6 +28,8 @@ function isProActive(user: { plan: string; planExpiresAt: string | null } | null
   if (!user.planExpiresAt) return true;
   return new Date(user.planExpiresAt) > new Date();
 }
+
+import { UpgradeModal } from "@/components/UpgradeModal";
 
 export default function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -47,15 +40,52 @@ export default function ChatPage() {
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelId>("auto");
   const [error, setError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
 
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
+  const { setOpenMobile, isMobile, openMobile } = useSidebar();
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
   });
+
+  /* ── Swipe gestures state ── */
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || !isMobile) return;
+
+    const touchEnd = {
+      x: e.changedTouches[0].clientX,
+      y: e.changedTouches[0].clientY,
+    };
+
+    const deltaX = touchEnd.x - touchStartRef.current.x;
+    const deltaY = touchEnd.y - touchStartRef.current.y;
+
+    // Must be a primarily horizontal swipe
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+      if (deltaX > 0 && touchStartRef.current.x < 40) {
+        // Swipe right from edge -> open
+        setOpenMobile(true);
+      } else if (deltaX < 0 && openMobile) {
+        // Swipe left -> close
+        setOpenMobile(false);
+      }
+    }
+
+    touchStartRef.current = null;
+  };
 
   useEffect(() => {
     localStorage.setItem("chat-split-view", String(splitView));
@@ -76,8 +106,36 @@ export default function ChatPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  /* ── Quote reply state ── */
   const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
+
+  /* ── Broadcast state ── */
+  const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
+  const [broadcastDismissed, setBroadcastDismissed] = useState(false);
+
+  const { data: activeBroadcast } = useQuery<Broadcast | null>({
+    queryKey: ["/api/broadcast"],
+    queryFn: () => fetch("/api/broadcast", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    if (activeBroadcast) {
+      const dismissed = localStorage.getItem(`broadcast-dismissed-${activeBroadcast.id}`);
+      if (!dismissed) {
+        setBroadcast(activeBroadcast);
+        setBroadcastDismissed(false);
+      }
+    } else {
+      setBroadcast(null);
+    }
+  }, [activeBroadcast]);
+
+  const dismissBroadcast = () => {
+    if (broadcast) {
+      localStorage.setItem(`broadcast-dismissed-${broadcast.id}`, "true");
+      setBroadcastDismissed(true);
+    }
+  };
 
   /* ── Summary state ── */
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -555,7 +613,16 @@ export default function ChatPage() {
           const data = line.slice(6);
           try {
             const parsed = JSON.parse(data);
-            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.error || parsed.limitReached) {
+              if (parsed.limitReached || (parsed.error && String(parsed.error).includes("Daily message limit"))) {
+                setShowUpgradeModal(true);
+                setIsStreaming(false);
+                setStreamingMessageId(null);
+                setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
+                return;
+              }
+              throw new Error(parsed.error);
+            }
             if (parsed.searching) {
               setMessages((prev) =>
                 prev.map((m) => m.id === assistantMsgId ? { ...m, searching: parsed.query as string } : m)
@@ -779,7 +846,11 @@ export default function ChatPage() {
   };
 
   return (
-    <>
+    <div
+      className="flex h-screen w-full bg-background overflow-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <AppSidebar
         conversations={conversations}
         activeId={activeId}
@@ -935,6 +1006,28 @@ export default function ChatPage() {
           </div>
         </header>
 
+        {/* Broadcast Banner */}
+        {broadcast && !broadcastDismissed && (
+          <div className="flex-shrink-0 bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 no-print">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <Megaphone className="w-4 h-4 text-primary" />
+              </div>
+              <p className="text-sm text-foreground font-medium truncate">
+                {broadcast.message}
+              </p>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 rounded-full hover:bg-primary/20 flex-shrink-0"
+              onClick={dismissBroadcast}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Primary Chat */}
@@ -1016,8 +1109,21 @@ export default function ChatPage() {
                     </div>
                   )}
                   {error && (
-                    <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm">
-                      <span className="font-semibold">Error: </span>{error}
+                    <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-semibold">Error: </span>{error}
+                      </div>
+                      {error.includes("Daily message limit") && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-shrink-0 h-8 text-xs font-semibold bg-primary/10 border-primary/20 hover:bg-primary/20 text-primary"
+                          onClick={() => setShowUpgradeModal(true)}
+                          data-testid="button-error-upgrade"
+                        >
+                          <Crown className="w-3 h-3 mr-1" /> Upgrade
+                        </Button>
+                      )}
                     </div>
                   )}
                   <div ref={bottomRef} className="h-4" />
@@ -1072,6 +1178,7 @@ export default function ChatPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} onUpgrade={() => navigate("/admin")} />
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">
@@ -1095,7 +1202,7 @@ export default function ChatPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 

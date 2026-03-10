@@ -6,9 +6,10 @@ import {
   type SavedPrompt, savedPrompts,
   type Folder, folders,
   type UserMemory, userMemories,
+  type Broadcast, type InsertBroadcast, broadcasts,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, sql as drizzleSql } from "drizzle-orm";
+import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -36,7 +37,7 @@ export interface IStorage {
   searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
-  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound">>): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage">>): Promise<UserSettings>;
   deleteAllConversations(userId: string): Promise<void>;
 
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
@@ -56,6 +57,10 @@ export interface IStorage {
   createMemory(userId: string, content: string): Promise<UserMemory>;
   deleteMemory(id: string): Promise<void>;
   getGalleryImages(userId: string): Promise<{ messageId: string; conversationId: string; conversationTitle: string; imageData: string; createdAt: Date }[]>;
+
+  getActiveBroadcast(): Promise<Broadcast | undefined>;
+  createBroadcast(data: InsertBroadcast): Promise<Broadcast>;
+  getAllBroadcasts(): Promise<Broadcast[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -233,7 +238,7 @@ export class DatabaseStorage implements IStorage {
     return settings;
   }
 
-  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound">>): Promise<UserSettings> {
+  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage">>): Promise<UserSettings> {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;
@@ -368,6 +373,29 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return results.slice(0, 100);
+  }
+
+  async getActiveBroadcast(): Promise<Broadcast | undefined> {
+    const [broadcast] = await db.select().from(broadcasts)
+      .where(and(
+        eq(broadcasts.isActive, true),
+        or(
+          isNull(broadcasts.expiresAt),
+          gte(broadcasts.expiresAt, new Date())
+        )
+      ))
+      .orderBy(desc(broadcasts.createdAt))
+      .limit(1);
+    return broadcast;
+  }
+
+  async createBroadcast(data: InsertBroadcast): Promise<Broadcast> {
+    const [broadcast] = await db.insert(broadcasts).values(data).returning();
+    return broadcast;
+  }
+
+  async getAllBroadcasts(): Promise<Broadcast[]> {
+    return db.select().from(broadcasts).orderBy(desc(broadcasts.createdAt));
   }
 }
 

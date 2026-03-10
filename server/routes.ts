@@ -4,7 +4,7 @@ import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand, InvokeModel
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
-import { insertUserSchema } from "../shared/schema";
+import { insertUserSchema, insertBroadcastSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
 import { createRequire } from "module";
@@ -421,6 +421,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
+  /* ── auth: delete account ── */
+  app.delete("/api/auth/account", requireAuth as any, async (req: Request, res: Response) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: "Password is required to delete account." });
+
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: "Incorrect password." });
+
+    await storage.deleteUser(user.id);
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      res.json({ ok: true });
+    });
+  });
+
   /* ── conversations: list ── */
   app.get("/api/conversations", requireAuth as any, async (req: Request, res: Response) => {
     const convs = await storage.getConversations(req.session.userId!);
@@ -502,7 +520,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── settings: update ── */
   app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
-    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions, notificationSound } = req.body;
+    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions, notificationSound, responseLanguage } = req.body;
     const updateData: Parameters<typeof storage.updateUserSettings>[1] = {};
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (fontSize !== undefined) updateData.fontSize = fontSize;
@@ -514,6 +532,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (showTokenUsage !== undefined) updateData.showTokenUsage = showTokenUsage;
     if (customInstructions !== undefined) updateData.customInstructions = customInstructions;
     if (notificationSound !== undefined) updateData.notificationSound = notificationSound;
+    if (responseLanguage !== undefined) updateData.responseLanguage = responseLanguage;
     const settings = await storage.updateUserSettings(req.session.userId!, updateData);
     return res.json(settings);
   });
@@ -729,6 +748,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
 
+  /* ── broadcasts: get active ── */
+  app.get("/api/broadcast", requireAuth as any, async (req: Request, res: Response) => {
+    const broadcast = await storage.getActiveBroadcast();
+    return res.json(broadcast || null);
+  });
+
+  /* ── admin: list broadcasts ── */
+  app.get("/api/admin/broadcasts", requireAdmin as any, async (req: Request, res: Response) => {
+    const all = await storage.getAllBroadcasts();
+    return res.json(all);
+  });
+
+  /* ── admin: create broadcast ── */
+  app.post("/api/admin/broadcast", requireAdmin as any, async (req: Request, res: Response) => {
+    const parsed = insertBroadcastSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid broadcast data" });
+    const broadcast = await storage.createBroadcast(parsed.data);
+    return res.status(201).json(broadcast);
+  });
+
   /* ── chat (protected) ── */
   app.post("/api/chat", requireAuth as any, async (req: Request, res: Response) => {
     const { messages, model = "auto", maxTokens = 4096, webSearch = false } = req.body;
@@ -784,6 +823,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (memories.length > 0) {
       const memBlock = `Remembered facts about the user:\n${memories.map((m) => `- ${m.content}`).join("\n")}`;
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memBlock}` : memBlock;
+    }
+
+    if (settings.responseLanguage) {
+      const langPrompt = `Always respond in ${settings.responseLanguage}, regardless of the language the user writes in.`;
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${langPrompt}` : langPrompt;
     }
 
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);

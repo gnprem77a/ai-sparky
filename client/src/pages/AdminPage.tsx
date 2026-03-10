@@ -6,9 +6,10 @@ import { useEffect, useState } from "react";
 import {
   Shield, Trash2, UserCheck, UserX, ArrowLeft,
   Users, ShieldCheck, Crown, UserCircle, Calendar,
-  ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp,
+  ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { type Broadcast } from "@shared/schema";
 
 interface TokenStats {
   totalInputTokens: number;
@@ -202,6 +203,23 @@ export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const [, navigate] = useLocation();
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+
+  const broadcastMutation = useMutation({
+    mutationFn: (message: string) =>
+      apiRequest("POST", "/api/admin/broadcast", { message }).then((r) => r.json()),
+    onSuccess: () => {
+      setBroadcastMessage("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/broadcasts"] });
+    },
+  });
+
+  const { data: broadcasts = [] } = useQuery<Broadcast[]>({
+    queryKey: ["/api/admin/broadcasts"],
+    queryFn: () => fetch("/api/admin/broadcasts", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user?.isAdmin,
+  });
 
   useEffect(() => {
     if (!isLoading && (!user || !user.isAdmin)) navigate("/");
@@ -236,6 +254,10 @@ export default function AdminPage() {
   const adminCount = users.filter((u) => u.isAdmin).length;
   const proCount = users.filter((u) => u.plan === "pro" && !isExpired(u.planExpiresAt)).length;
   const freeCount = totalUsers - proCount;
+
+  const filteredUsers = users.filter(u =>
+    u.username.toLowerCase().includes(userSearch.toLowerCase())
+  );
 
   const stats = [
     { label: "Total Users", value: totalUsers, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -283,6 +305,55 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Broadcast Message Section */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-foreground">System Broadcast</h2>
+            </div>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="flex gap-2">
+              <textarea
+                value={broadcastMessage}
+                onChange={(e) => setBroadcastMessage(e.target.value)}
+                placeholder="Type a broadcast message to all users..."
+                className="flex-1 min-h-[80px] rounded-xl border border-border bg-muted/20 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => broadcastMutation.mutate(broadcastMessage)}
+                disabled={!broadcastMessage.trim() || broadcastMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {broadcastMutation.isPending ? "Sending..." : "Send Broadcast"}
+              </button>
+            </div>
+
+            {broadcasts.length > 0 && (
+              <div className="mt-6 space-y-2">
+                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Recent Broadcasts</p>
+                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                  {broadcasts.slice(0, 5).map((b) => (
+                    <div key={b.id} className="p-3 rounded-lg border border-border bg-muted/10 text-xs">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={cn("px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase", b.isActive ? "bg-emerald-500/15 text-emerald-500" : "bg-muted text-muted-foreground")}>
+                          {b.isActive ? "Active" : "Inactive"}
+                        </span>
+                        <span className="text-muted-foreground">{formatDate(b.createdAt.toString())}</span>
+                      </div>
+                      <p className="text-foreground">{b.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Token Usage Section */}
@@ -390,9 +461,19 @@ export default function AdminPage() {
 
         {/* Users table */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
-            <h2 className="font-semibold text-foreground">All Users</h2>
-            <span className="text-xs text-muted-foreground">{totalUsers} total</span>
+          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-4">
+            <h2 className="font-semibold text-foreground flex-shrink-0">All Users</h2>
+            <div className="relative flex-1 max-w-sm">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search by username..."
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-border bg-muted/20 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <span className="text-xs text-muted-foreground flex-shrink-0">{filteredUsers.length} users</span>
           </div>
 
           {usersLoading ? (
@@ -401,11 +482,11 @@ export default function AdminPage() {
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
             </div>
-          ) : users.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground text-sm">No users yet.</div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground text-sm">No users found.</div>
           ) : (
             <div className="divide-y divide-border/50">
-              {users.map((u) => {
+              {filteredUsers.map((u) => {
                 const expired = u.plan === "pro" && isExpired(u.planExpiresAt);
                 const activePlan = u.plan === "pro" && !expired ? "pro" : "free";
                 return (

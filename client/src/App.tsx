@@ -71,7 +71,7 @@ function AppInner() {
     }
     return (
       <Suspense fallback={null}>
-        <SidebarProvider style={style} defaultOpen={true}>
+        <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
           <div className="flex h-screen w-full overflow-hidden bg-background">
             <ChatPage />
           </div>
@@ -96,7 +96,7 @@ function AppInner() {
           <GalleryPage />
         </Route>
         <Route>
-          <SidebarProvider style={style} defaultOpen={true}>
+          <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
             <div className="flex h-screen w-full overflow-hidden bg-background">
               <ChatPage />
             </div>

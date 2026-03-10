@@ -16,6 +16,7 @@ export interface ToolCall {
 export interface WebSource {
   title: string;
   url: string;
+  snippet?: string;
 }
 
 export interface Message {

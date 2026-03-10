@@ -24,6 +24,7 @@ interface Settings {
   showTokenUsage: boolean;
   customInstructions: string;
   notificationSound: boolean;
+  responseLanguage: string;
 }
 
 interface SavedPrompt {
@@ -108,6 +109,7 @@ export function SettingsModal({ onClose }: Props) {
   const [autoTitle, setAutoTitle] = useState(true);
   const [showTokenUsage, setShowTokenUsage] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
+  const [responseLanguage, setResponseLanguage] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -119,6 +121,9 @@ export function SettingsModal({ onClose }: Props) {
 
   const [notificationSound, setNotificationSound] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [isMac] = useState(() => navigator.platform.toUpperCase().includes("MAC"));
 
   const { data: settings } = useQuery<Settings>({
@@ -143,6 +148,7 @@ export function SettingsModal({ onClose }: Props) {
       setShowTokenUsage(settings.showTokenUsage ?? false);
       setCustomInstructions(settings.customInstructions ?? "");
       setNotificationSound(settings.notificationSound ?? false);
+      setResponseLanguage(settings.responseLanguage ?? "");
     }
   }, [settings]);
 
@@ -188,6 +194,18 @@ export function SettingsModal({ onClose }: Props) {
   const deleteMemoryMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/memories/${id}`).then((r) => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/memories"] }),
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: (password: string) =>
+      apiRequest("DELETE", "/api/auth/account", { password }).then(async (r) => {
+        if (!r.ok) { const d = await r.json(); throw new Error(d.error || "Failed"); }
+        return r.json();
+      }),
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+    onError: (e: Error) => setDeleteError(e.message),
   });
 
   const handleChangePassword = () => {
@@ -450,10 +468,34 @@ export function SettingsModal({ onClose }: Props) {
                 ))}
               </div>
 
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">AI Response Language</p>
+                <p className="text-xs text-muted-foreground">The AI will always respond in this language.</p>
+                <select
+                  value={responseLanguage}
+                  onChange={(e) => setResponseLanguage(e.target.value)}
+                  data-testid="select-response-language"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="">Same as user (Default)</option>
+                  <option value="English">English</option>
+                  <option value="Spanish">Spanish</option>
+                  <option value="French">French</option>
+                  <option value="German">German</option>
+                  <option value="Chinese">Chinese</option>
+                  <option value="Japanese">Japanese</option>
+                  <option value="Korean">Korean</option>
+                  <option value="Portuguese">Portuguese</option>
+                  <option value="Italian">Italian</option>
+                  <option value="Russian">Russian</option>
+                  <option value="Arabic">Arabic</option>
+                </select>
+              </div>
+
               <div className="flex items-center gap-3">
                 {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
                 <button
-                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage, notificationSound })}
+                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage, notificationSound, responseLanguage })}
                   disabled={saveMutation.isPending}
                   data-testid="button-save-behavior"
                   className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
@@ -696,6 +738,55 @@ export function SettingsModal({ onClose }: Props) {
                 <Lock className="w-3.5 h-3.5" />
                 {changePasswordMutation.isPending ? "Saving…" : "Update Password"}
               </button>
+
+              <div className="pt-6 border-t border-destructive/20">
+                <p className="text-sm font-medium text-destructive mb-1 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Danger Zone
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">Deleting your account is permanent and cannot be undone.</p>
+                
+                {!deleteConfirm ? (
+                  <button
+                    onClick={() => setDeleteConfirm(true)}
+                    data-testid="button-delete-account"
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-destructive/50 text-destructive text-sm font-semibold hover:bg-destructive/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Account
+                  </button>
+                ) : (
+                  <div className="space-y-3 p-4 rounded-xl border border-destructive/30 bg-destructive/5">
+                    <p className="text-sm font-medium text-destructive">Are you absolutely sure?</p>
+                    <p className="text-xs text-muted-foreground">Please enter your password to confirm account deletion.</p>
+                    <input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="Enter password"
+                      data-testid="input-delete-password"
+                      className="w-full px-3 py-2 rounded-lg border border-destructive/30 bg-background text-sm focus:ring-1 focus:ring-destructive outline-none"
+                    />
+                    {deleteError && <p className="text-xs text-destructive">{deleteError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => deleteAccountMutation.mutate(deletePassword)}
+                        disabled={deleteAccountMutation.isPending || !deletePassword}
+                        data-testid="button-confirm-delete-account"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+                      >
+                        {deleteAccountMutation.isPending ? "Deleting…" : "Permanently Delete Account"}
+                      </button>
+                      <button
+                        onClick={() => { setDeleteConfirm(false); setDeletePassword(""); setDeleteError(""); }}
+                        className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
