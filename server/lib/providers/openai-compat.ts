@@ -113,7 +113,6 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         messages: conversationMessages,
         max_tokens: maxTokens,
         stream: true,
-        stream_options: { include_usage: true },
       };
       if (useTools) {
         body.tools = TOOL_DEFINITIONS_OPENAI;
