@@ -281,8 +281,15 @@ const PROVIDER_DEFAULTS: Record<string, {
   },
   anthropic: {
     apiUrl: "https://api.anthropic.com",
-    modelPlaceholder: "claude-3-5-sonnet-20241022",
-    modelSuggestions: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+    modelPlaceholder: "claude-sonnet-4-5",
+    modelSuggestions: [
+      "claude-sonnet-4-5",
+      "claude-haiku-4-5",
+      "claude-opus-4-5",
+      "claude-3-5-sonnet-20241022",
+      "claude-3-5-haiku-20241022",
+      "claude-3-opus-20240229",
+    ],
     keyPlaceholder: "sk-ant-...",
     keyLabel: "API Key",
     keyRequired: true,
