@@ -734,18 +734,14 @@ function ProvidersSection() {
             <div className="py-8 flex items-center justify-center text-muted-foreground text-sm">
               <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading providers…
             </div>
-          ) : sorted.length === 0 ? (
-            <div className="py-10 flex flex-col items-center gap-3 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
-                <Server className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">No providers configured</p>
-                <p className="text-xs text-muted-foreground mt-0.5">The system will fall back to the built-in Bluesminds connection.</p>
-              </div>
-            </div>
           ) : (
             <div className="space-y-2">
+              {sorted.length === 0 && (
+                <p className="text-[11px] text-muted-foreground text-center py-2">
+                  No custom providers added — only the built-in fallback is active.
+                </p>
+              )}
+
               {sorted.map((p, idx) => {
                 const meta = PROVIDER_TYPE_META[p.providerType] ?? { label: p.providerType, color: "text-foreground" };
                 const tr = testResults[p.id];
@@ -776,11 +772,11 @@ function ProvidersSection() {
                           <span className={cn("text-[10px] font-semibold uppercase tracking-wider", meta.color)}>{meta.label}</span>
                           {!p.isEnabled && <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Disabled</span>}
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
+                        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
                           <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />{p.modelName || "—"}</span>
-                          {p.apiUrl && <span className="flex items-center gap-1 truncate max-w-[160px]"><Globe className="w-3 h-3" />{p.apiUrl}</span>}
+                          {p.apiUrl && <span className="flex items-center gap-1 truncate max-w-[200px]"><Globe className="w-3 h-3" />{p.apiUrl}</span>}
                           {p.apiKey && <span className="flex items-center gap-1"><Key className="w-3 h-3" />••••••</span>}
-                          <span className="text-muted-foreground/50">Priority {p.priority}</span>
+                          <span className="text-muted-foreground/40">Priority {p.priority}</span>
                         </div>
                         {tr && (
                           <div className={cn(
@@ -793,37 +789,16 @@ function ProvidersSection() {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          onClick={() => handleTest(p.id)}
-                          disabled={testingId === p.id}
-                          data-testid={`button-test-provider-${p.id}`}
-                          title="Test connection"
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-40"
-                        >
+                        <button onClick={() => handleTest(p.id)} disabled={testingId === p.id} data-testid={`button-test-provider-${p.id}`} title="Test connection" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-40">
                           {testingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
                         </button>
-                        <button
-                          onClick={() => toggleMutation.mutate({ id: p.id, isEnabled: !p.isEnabled })}
-                          data-testid={`button-toggle-provider-${p.id}`}
-                          title={p.isEnabled ? "Disable" : "Enable"}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
-                        >
+                        <button onClick={() => toggleMutation.mutate({ id: p.id, isEnabled: !p.isEnabled })} data-testid={`button-toggle-provider-${p.id}`} title={p.isEnabled ? "Disable" : "Enable"} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
                           {p.isEnabled ? <Power className="w-3.5 h-3.5" /> : <PowerOff className="w-3.5 h-3.5" />}
                         </button>
-                        <button
-                          onClick={() => { setEditingProvider(p); setShowForm(true); }}
-                          data-testid={`button-edit-provider-${p.id}`}
-                          title="Edit"
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
-                        >
+                        <button onClick={() => { setEditingProvider(p); setShowForm(true); }} data-testid={`button-edit-provider-${p.id}`} title="Edit" className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => { if (confirm(`Delete provider "${p.name}"?`)) deleteMutation.mutate(p.id); }}
-                          data-testid={`button-delete-provider-${p.id}`}
-                          title="Delete"
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                        >
+                        <button onClick={() => { if (confirm(`Delete provider "${p.name}"?`)) deleteMutation.mutate(p.id); }} data-testid={`button-delete-provider-${p.id}`} title="Delete" className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -831,15 +806,44 @@ function ProvidersSection() {
                   </div>
                 );
               })}
+
+              {/* Built-in fallback — always shown, read-only */}
+              <div className="rounded-xl border border-dashed border-violet-500/30 bg-violet-500/5 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 flex-shrink-0" />
+                  <div className="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+                    <Cpu className="w-4 h-4 text-violet-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">Bluesminds (Built-in Fallback)</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-400">Bluesminds</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">
+                        {sorted.filter(p => p.isEnabled).length === 0 ? "● Active" : "Standby"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
+                      <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />claude-sonnet-4-6 / claude-haiku-4-5</span>
+                      <span className="flex items-center gap-1"><Globe className="w-3 h-3" />api.bluesminds.com/v1</span>
+                      <span className="flex items-center gap-1"><Key className="w-3 h-3" />BLUESMINDS_API_KEY (env)</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground/60 mt-1">
+                      Always available as last resort. Cannot be removed.
+                      {sorted.filter(p => p.isEnabled).length > 0 && " Only used if all custom providers above fail."}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 text-[11px] text-muted-foreground/40 italic">read-only</div>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="mt-4 pt-4 border-t border-border/60 flex items-start gap-2 text-[11px] text-muted-foreground">
-            <Server className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-60" />
-            <div>
-              Providers are tried in <strong className="text-foreground">priority order</strong>. If all configured providers fail, the system falls back to the built-in Bluesminds connection automatically.
+          {!isLoading && sorted.length > 0 && (
+            <div className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground">
+              <Server className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-50" />
+              <span>Providers are tried in <strong className="text-foreground">priority order</strong> (top → bottom). Lower priority number = tried first.</span>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
