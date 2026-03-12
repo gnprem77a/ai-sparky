@@ -110,7 +110,7 @@ export class BedrockAdapter implements ProviderAdapter {
         try {
           const ev = JSON.parse(match) as { contentBlockDelta?: { delta?: { text?: string } } };
           if (ev.contentBlockDelta?.delta?.text) {
-            res.write(`data: ${JSON.stringify({ delta: ev.contentBlockDelta.delta.text })}\n\n`);
+            res.write(`data: ${JSON.stringify({ text: ev.contentBlockDelta.delta.text })}\n\n`);
           }
         } catch {}
       }

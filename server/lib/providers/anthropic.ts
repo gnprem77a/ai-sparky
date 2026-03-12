@@ -127,7 +127,7 @@ export class AnthropicAdapter implements ProviderAdapter {
               if (ev.type === "content_block_delta") {
                 const idx = String(ev.index ?? 0);
                 if (ev.delta?.type === "text_delta" && ev.delta.text) {
-                  res.write(`data: ${JSON.stringify({ delta: ev.delta.text })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`);
                 }
                 if (ev.delta?.type === "input_json_delta" && ev.delta.partial_json) {
                   if (pendingToolUse[idx]) pendingToolUse[idx].input += ev.delta.partial_json;

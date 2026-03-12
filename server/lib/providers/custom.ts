@@ -107,7 +107,7 @@ export class CustomAdapter implements ProviderAdapter {
     const data: unknown = await response.json();
     const text = resolvePath(data, this.config.responsePath ?? "choices.0.message.content");
 
-    res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
+    res.write(`data: ${JSON.stringify({ text: text })}\n\n`);
     return { inputTokens: 0, outputTokens: 0 };
   }
 }

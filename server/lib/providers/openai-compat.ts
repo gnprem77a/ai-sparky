@@ -177,7 +177,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
             const delta = choice.delta;
             if (delta?.content) {
               assistantText += delta.content;
-              res.write(`data: ${JSON.stringify({ delta: delta.content })}\n\n`);
+              res.write(`data: ${JSON.stringify({ text: delta.content })}\n\n`);
             }
 
             if (delta?.tool_calls) {
