@@ -242,6 +242,110 @@ const EMPTY_FORM: ProviderFormData = {
   headers: "", bodyTemplate: "", responsePath: "", isEnabled: true,
 };
 
+/* Per-provider defaults applied when the type changes */
+const PROVIDER_DEFAULTS: Record<string, {
+  apiUrl: string;
+  modelPlaceholder: string;
+  modelSuggestions: string[];
+  keyPlaceholder: string;
+  keyLabel: string;
+  keyRequired: boolean;
+  urlLabel: string;
+  urlRequired: boolean;
+  hint: string;
+  hintColor: string;
+}> = {
+  bluesminds: {
+    apiUrl: "https://api.bluesminds.com/v1",
+    modelPlaceholder: "claude-sonnet-4-6",
+    modelSuggestions: ["claude-sonnet-4-6", "claude-haiku-4-5"],
+    keyPlaceholder: "Your Bluesminds API key",
+    keyLabel: "API Key",
+    keyRequired: true,
+    urlLabel: "API Base URL",
+    urlRequired: false,
+    hint: "OpenAI-compatible endpoint. Uses your BLUESMINDS_API_KEY env var if left blank.",
+    hintColor: "text-violet-400",
+  },
+  openai: {
+    apiUrl: "https://api.openai.com/v1",
+    modelPlaceholder: "gpt-4o",
+    modelSuggestions: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    keyPlaceholder: "sk-...",
+    keyLabel: "API Key",
+    keyRequired: true,
+    urlLabel: "API Base URL",
+    urlRequired: false,
+    hint: "Standard OpenAI API. Get your key from platform.openai.com.",
+    hintColor: "text-emerald-400",
+  },
+  anthropic: {
+    apiUrl: "https://api.anthropic.com",
+    modelPlaceholder: "claude-3-5-sonnet-20241022",
+    modelSuggestions: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+    keyPlaceholder: "sk-ant-...",
+    keyLabel: "API Key",
+    keyRequired: true,
+    urlLabel: "API Base URL",
+    urlRequired: false,
+    hint: "Anthropic direct API. Get your key from console.anthropic.com.",
+    hintColor: "text-orange-400",
+  },
+  azure: {
+    apiUrl: "https://<resource>.openai.azure.com/openai/deployments/<deployment>",
+    modelPlaceholder: "gpt-4o  (your deployment name)",
+    modelSuggestions: ["gpt-4o", "gpt-4", "gpt-35-turbo"],
+    keyPlaceholder: "Azure OpenAI API key",
+    keyLabel: "API Key",
+    keyRequired: true,
+    urlLabel: "Azure Endpoint (with deployment path)",
+    urlRequired: true,
+    hint: "URL format: https://<resource>.openai.azure.com/openai/deployments/<deployment-name>",
+    hintColor: "text-blue-400",
+  },
+  gemini: {
+    apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    modelPlaceholder: "gemini-1.5-pro",
+    modelSuggestions: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"],
+    keyPlaceholder: "Google AI Studio API key",
+    keyLabel: "API Key",
+    keyRequired: true,
+    urlLabel: "API Base URL",
+    urlRequired: false,
+    hint: "Uses Gemini's OpenAI-compatible endpoint. Get key from aistudio.google.com.",
+    hintColor: "text-amber-400",
+  },
+  bedrock: {
+    apiUrl: "",
+    modelPlaceholder: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    modelSuggestions: [
+      "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "anthropic.claude-3-haiku-20240307-v1:0",
+      "anthropic.claude-3-opus-20240229-v1:0",
+      "meta.llama3-70b-instruct-v1:0",
+    ],
+    keyPlaceholder: "Not needed — uses AWS env vars",
+    keyLabel: "API Key (not required)",
+    keyRequired: false,
+    urlLabel: "Custom Bedrock endpoint (optional)",
+    urlRequired: false,
+    hint: "Uses AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION env vars. No API key needed here.",
+    hintColor: "text-cyan-400",
+  },
+  custom: {
+    apiUrl: "",
+    modelPlaceholder: "model-name",
+    modelSuggestions: [],
+    keyPlaceholder: "Bearer token (optional)",
+    keyLabel: "API Key (optional)",
+    keyRequired: false,
+    urlLabel: "API Endpoint URL",
+    urlRequired: true,
+    hint: "POST request with configurable body. Use Advanced to set body template and response path.",
+    hintColor: "text-pink-400",
+  },
+};
+
 function ProviderFormModal({
   editing,
   onClose,
@@ -270,8 +374,22 @@ function ProviderFormModal({
   const [testStatus, setTestStatus] = useState<TestStatus>(null);
   const [testing, setTesting] = useState(false);
 
+  const def = PROVIDER_DEFAULTS[form.providerType] ?? PROVIDER_DEFAULTS.openai;
+
   const set = (k: keyof ProviderFormData, v: string | boolean) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const handleTypeChange = (newType: string) => {
+    const d = PROVIDER_DEFAULTS[newType] ?? PROVIDER_DEFAULTS.openai;
+    setForm((f) => ({
+      ...f,
+      providerType: newType,
+      apiUrl: d.apiUrl,
+      modelName: "",
+      apiKey: newType === "bedrock" ? "" : f.apiKey,
+    }));
+    setTestStatus(null);
+  };
 
   const handleTest = async () => {
     setTesting(true);
@@ -293,21 +411,16 @@ function ProviderFormModal({
     }
   };
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  const Field = ({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) => (
     <div className="space-y-1">
-      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
+      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        {label}{required && <span className="text-destructive ml-1">*</span>}
+      </label>
       {children}
     </div>
   );
-  const Input = ({ field, placeholder, type = "text" }: { field: keyof ProviderFormData; placeholder?: string; type?: string }) => (
-    <input
-      type={type}
-      value={form[field] as string}
-      onChange={(e) => set(field, e.target.value)}
-      placeholder={placeholder}
-      className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-    />
-  );
+
+  const inputClass = "w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -325,15 +438,22 @@ function ProviderFormModal({
         </div>
 
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Provider type selector */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Display Name">
-              <Input field="name" placeholder="My OpenAI Provider" />
+            <Field label="Display Name" required>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder={`My ${PROVIDER_TYPE_META[form.providerType]?.label ?? "AI"} Provider`}
+                className={inputClass}
+              />
             </Field>
             <Field label="Provider Type">
               <select
                 value={form.providerType}
-                onChange={(e) => set("providerType", e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                onChange={(e) => handleTypeChange(e.target.value)}
+                className={inputClass}
               >
                 {PROVIDER_TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -342,19 +462,77 @@ function ProviderFormModal({
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Model Name">
-              <Input field="modelName" placeholder="gpt-4o" />
-            </Field>
-            <Field label="API Key">
-              <Input field="apiKey" placeholder="sk-..." type="password" />
-            </Field>
+          {/* Provider hint bar */}
+          <div className={cn("flex items-start gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border/60 text-[11px]", def.hintColor)}>
+            <Globe className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-70" />
+            <span>{def.hint}</span>
           </div>
 
-          <Field label="API Base URL (optional)">
-            <Input field="apiUrl" placeholder="https://api.openai.com/v1" />
+          {/* Model + API Key */}
+          <div className={cn("gap-3", form.providerType === "bedrock" ? "flex flex-col" : "grid grid-cols-2")}>
+            <Field label="Model Name" required>
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={form.modelName}
+                  onChange={(e) => set("modelName", e.target.value)}
+                  placeholder={def.modelPlaceholder}
+                  className={inputClass}
+                />
+                {def.modelSuggestions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {def.modelSuggestions.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => set("modelName", m)}
+                        className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-mono border transition-all",
+                          form.modelName === m
+                            ? "bg-primary/15 border-primary/40 text-primary"
+                            : "bg-muted/50 border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Field>
+
+            {form.providerType !== "bedrock" && (
+              <Field label={def.keyLabel} required={def.keyRequired}>
+                <input
+                  type="password"
+                  value={form.apiKey}
+                  onChange={(e) => set("apiKey", e.target.value)}
+                  placeholder={def.keyPlaceholder}
+                  className={inputClass}
+                />
+              </Field>
+            )}
+
+            {form.providerType === "bedrock" && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-cyan-500/8 border border-cyan-500/20 text-[11px] text-cyan-400">
+                <Key className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>No API key needed. Bedrock authenticates using <strong>AWS_ACCESS_KEY_ID</strong>, <strong>AWS_SECRET_ACCESS_KEY</strong>, and <strong>AWS_REGION</strong> environment variables.</span>
+              </div>
+            )}
+          </div>
+
+          {/* API URL */}
+          <Field label={def.urlLabel} required={def.urlRequired}>
+            <input
+              type="text"
+              value={form.apiUrl}
+              onChange={(e) => set("apiUrl", e.target.value)}
+              placeholder={def.apiUrl || "https://your-api-endpoint.com/v1"}
+              className={cn(inputClass, "font-mono text-xs")}
+            />
           </Field>
 
+          {/* Enable toggle */}
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -366,6 +544,7 @@ function ProviderFormModal({
             <label htmlFor="prov-enabled" className="text-sm text-muted-foreground">Enable this provider</label>
           </div>
 
+          {/* Advanced */}
           <button
             onClick={() => setShowAdvanced((s) => !s)}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -382,7 +561,7 @@ function ProviderFormModal({
                   onChange={(e) => set("headers", e.target.value)}
                   placeholder='{"X-Custom-Header": "value"}'
                   rows={2}
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none font-mono text-xs"
+                  className={cn(inputClass, "resize-none font-mono text-xs")}
                 />
               </Field>
               <Field label="Body Template ({{model}}, {{messages}}, {{maxTokens}})">
@@ -391,15 +570,22 @@ function ProviderFormModal({
                   onChange={(e) => set("bodyTemplate", e.target.value)}
                   placeholder='{"model": "{{model}}", "prompt": "{{lastMessage}}"}'
                   rows={3}
-                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none font-mono text-xs"
+                  className={cn(inputClass, "resize-none font-mono text-xs")}
                 />
               </Field>
               <Field label="Response Path (dot notation)">
-                <Input field="responsePath" placeholder="choices.0.message.content" />
+                <input
+                  type="text"
+                  value={form.responsePath}
+                  onChange={(e) => set("responsePath", e.target.value)}
+                  placeholder="choices.0.message.content"
+                  className={inputClass}
+                />
               </Field>
             </div>
           )}
 
+          {/* Test result */}
           {testStatus && (
             <div className={cn(
               "flex items-start gap-2 p-3 rounded-lg text-xs",
@@ -407,7 +593,7 @@ function ProviderFormModal({
             )}>
               {testStatus.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
               <div>
-                <div className="font-semibold">{testStatus.success ? "Connected" : "Failed"}</div>
+                <div className="font-semibold">{testStatus.success ? "Connected successfully" : "Connection failed"}</div>
                 <div className="opacity-80">{testStatus.message}{testStatus.latencyMs > 0 && ` · ${testStatus.latencyMs}ms`}</div>
               </div>
             </div>
