@@ -7,6 +7,7 @@ import {
   type Folder, folders,
   type UserMemory, userMemories,
   type Broadcast, type InsertBroadcast, broadcasts,
+  type AiProvider, type InsertAiProvider, aiProviders,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -61,6 +62,15 @@ export interface IStorage {
   getActiveBroadcast(): Promise<Broadcast | undefined>;
   createBroadcast(data: InsertBroadcast): Promise<Broadcast>;
   getAllBroadcasts(): Promise<Broadcast[]>;
+
+  getProviders(): Promise<AiProvider[]>;
+  getActiveProviders(): Promise<AiProvider[]>;
+  getProvider(id: string): Promise<AiProvider | undefined>;
+  createProvider(data: InsertAiProvider): Promise<AiProvider>;
+  updateProvider(id: string, data: Partial<InsertAiProvider>): Promise<AiProvider | undefined>;
+  deleteProvider(id: string): Promise<void>;
+  setActiveProvider(id: string): Promise<void>;
+  reorderProviders(ids: string[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -396,6 +406,46 @@ export class DatabaseStorage implements IStorage {
 
   async getAllBroadcasts(): Promise<Broadcast[]> {
     return db.select().from(broadcasts).orderBy(desc(broadcasts.createdAt));
+  }
+
+  async getProviders(): Promise<AiProvider[]> {
+    return db.select().from(aiProviders).orderBy(asc(aiProviders.priority), asc(aiProviders.createdAt));
+  }
+
+  async getActiveProviders(): Promise<AiProvider[]> {
+    return db.select().from(aiProviders)
+      .where(eq(aiProviders.isEnabled, true))
+      .orderBy(asc(aiProviders.priority), asc(aiProviders.createdAt));
+  }
+
+  async getProvider(id: string): Promise<AiProvider | undefined> {
+    const [p] = await db.select().from(aiProviders).where(eq(aiProviders.id, id));
+    return p;
+  }
+
+  async createProvider(data: InsertAiProvider): Promise<AiProvider> {
+    const [p] = await db.insert(aiProviders).values(data).returning();
+    return p;
+  }
+
+  async updateProvider(id: string, data: Partial<InsertAiProvider>): Promise<AiProvider | undefined> {
+    const [p] = await db.update(aiProviders).set(data).where(eq(aiProviders.id, id)).returning();
+    return p;
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    await db.delete(aiProviders).where(eq(aiProviders.id, id));
+  }
+
+  async setActiveProvider(id: string): Promise<void> {
+    await db.update(aiProviders).set({ isActive: false });
+    await db.update(aiProviders).set({ isActive: true }).where(eq(aiProviders.id, id));
+  }
+
+  async reorderProviders(ids: string[]): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      await db.update(aiProviders).set({ priority: i }).where(eq(aiProviders.id, ids[i]));
+    }
   }
 }
 

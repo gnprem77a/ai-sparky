@@ -3,10 +3,11 @@ import { createServer, type Server } from "http";
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
-import { insertUserSchema, insertBroadcastSchema } from "../shared/schema";
+import { insertUserSchema, insertBroadcastSchema, insertAiProviderSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
 import { createRequire } from "module";
+import { streamWithFallback, testProvider, type ProviderConfig } from "./lib/providers/index";
 const _require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = _require("pdf-parse");
 
@@ -791,26 +792,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const { inputTokens, outputTokens } = await streamModelWithTools(selected, recentMessages, maxTokens, res, systemPrompt, webSearch);
+      const dbProviders = await storage.getActiveProviders();
+      const providerConfigs: ProviderConfig[] = dbProviders.map((p) => ({
+        id: p.id,
+        name: p.name,
+        providerType: p.providerType,
+        apiUrl: p.apiUrl ?? null,
+        apiKey: p.apiKey ?? null,
+        modelName: p.modelName,
+        headers: p.headers ?? null,
+        bodyTemplate: p.bodyTemplate ?? null,
+        responsePath: p.responsePath ?? null,
+        isActive: p.isActive,
+        isEnabled: p.isEnabled,
+        priority: p.priority,
+      }));
+
+      const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+        messages: recentMessages,
+        systemPrompt: systemPrompt ?? undefined,
+        maxTokens,
+        useTools: webSearch,
+        res,
+      });
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
-      console.error(`[bluesminds] ${selected.exactName} failed:`, err.message);
-
-      if (selected.apiModelId !== FALLBACK_MODEL.apiModelId) {
-        console.log(`[bluesminds] Falling back to ${FALLBACK_MODEL.exactName}…`);
-        try {
-          const { inputTokens, outputTokens } = await streamModelWithTools(FALLBACK_MODEL, recentMessages, maxTokens, res, systemPrompt, webSearch);
-          res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
-          res.end();
-          return;
-        } catch (fallbackErr: unknown) {
-          console.error("[bluesminds] Fallback also failed:", (fallbackErr as Error).message);
-        }
-      }
-
-      res.write(`data: ${JSON.stringify({ error: err.message || "Bedrock API error" })}\n\n`);
+      console.error(`[providers] stream failed:`, err.message);
+      res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
       res.end();
     }
   });
@@ -936,7 +946,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  /* ── PDF text extraction ── */
+  /* ── Admin: AI Providers CRUD ── */
+  app.get("/api/admin/providers", requireAdmin as any, async (_req: Request, res: Response) => {
+    return res.json(await storage.getProviders());
+  });
+
+  app.get("/api/admin/providers/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const p = await storage.getProvider(req.params.id as string);
+    if (!p) return res.status(404).json({ error: "Not found" });
+    return res.json(p);
+  });
+
+  app.post("/api/admin/providers", requireAdmin as any, async (req: Request, res: Response) => {
+    const parsed = insertAiProviderSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues });
+    const p = await storage.createProvider(parsed.data);
+    return res.status(201).json(p);
+  });
+
+  app.patch("/api/admin/providers/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const p = await storage.updateProvider(req.params.id as string, req.body);
+    if (!p) return res.status(404).json({ error: "Not found" });
+    return res.json(p);
+  });
+
+  app.delete("/api/admin/providers/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    await storage.deleteProvider(req.params.id as string);
+    return res.status(204).send();
+  });
+
+  app.post("/api/admin/providers/:id/activate", requireAdmin as any, async (req: Request, res: Response) => {
+    await storage.setActiveProvider(req.params.id as string);
+    return res.json({ success: true });
+  });
+
+  app.post("/api/admin/providers/reorder", requireAdmin as any, async (req: Request, res: Response) => {
+    const { ids } = req.body as { ids?: string[] };
+    if (!Array.isArray(ids)) return res.status(400).json({ error: "ids must be an array" });
+    await storage.reorderProviders(ids);
+    return res.json({ success: true });
+  });
+
+  app.post("/api/admin/providers/:id/test", requireAdmin as any, async (req: Request, res: Response) => {
+    const p = await storage.getProvider(req.params.id as string);
+    if (!p) return res.status(404).json({ error: "Not found" });
+    const config: ProviderConfig = {
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    };
+    const result = await testProvider(config);
+    return res.json(result);
+  });
+
+  app.post("/api/admin/providers/test-config", requireAdmin as any, async (req: Request, res: Response) => {
+    const config: ProviderConfig = {
+      id: "temp", name: "temp", ...req.body,
+      isActive: false, isEnabled: true, priority: 0,
+    };
+    const result = await testProvider(config);
+    return res.json(result);
+  });
+
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
   app.post("/api/extract-pdf", requireAuth as any, upload.single("file") as any, async (req: Request, res: Response) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });

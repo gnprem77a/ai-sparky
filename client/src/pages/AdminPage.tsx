@@ -1,3 +1,4 @@
+import type React from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -7,9 +8,11 @@ import {
   Shield, Trash2, UserCheck, UserX, ArrowLeft,
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
+  Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
+  ArrowUp, ArrowDown, Key, Globe, Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type Broadcast } from "@shared/schema";
+import { type Broadcast, type AiProvider } from "@shared/schema";
 
 interface TokenStats {
   totalInputTokens: number;
@@ -199,6 +202,465 @@ function PlanManager({ user, currentUserId, onClose }: { user: AdminUser; curren
   );
 }
 
+/* ─── Provider Types ─── */
+const PROVIDER_TYPE_META: Record<string, { label: string; color: string }> = {
+  bluesminds: { label: "Bluesminds", color: "text-violet-400" },
+  openai:     { label: "OpenAI",     color: "text-emerald-400" },
+  anthropic:  { label: "Anthropic",  color: "text-orange-400" },
+  azure:      { label: "Azure",      color: "text-blue-400" },
+  gemini:     { label: "Gemini",     color: "text-amber-400" },
+  bedrock:    { label: "AWS Bedrock",color: "text-cyan-400" },
+  custom:     { label: "Custom",     color: "text-pink-400" },
+};
+
+const PROVIDER_TYPE_OPTIONS = [
+  { value: "bluesminds", label: "Bluesminds (default)" },
+  { value: "openai",     label: "OpenAI" },
+  { value: "anthropic",  label: "Anthropic" },
+  { value: "azure",      label: "Azure OpenAI" },
+  { value: "gemini",     label: "Google Gemini" },
+  { value: "bedrock",    label: "AWS Bedrock" },
+  { value: "custom",     label: "Custom Provider" },
+];
+
+type TestStatus = { success: boolean; latencyMs: number; message: string } | null;
+
+interface ProviderFormData {
+  name: string;
+  providerType: string;
+  apiUrl: string;
+  apiKey: string;
+  modelName: string;
+  headers: string;
+  bodyTemplate: string;
+  responsePath: string;
+  isEnabled: boolean;
+}
+
+const EMPTY_FORM: ProviderFormData = {
+  name: "", providerType: "openai", apiUrl: "", apiKey: "", modelName: "",
+  headers: "", bodyTemplate: "", responsePath: "", isEnabled: true,
+};
+
+function ProviderFormModal({
+  editing,
+  onClose,
+  onSave,
+}: {
+  editing: AiProvider | null;
+  onClose: () => void;
+  onSave: (data: ProviderFormData, id?: string) => void;
+}) {
+  const [form, setForm] = useState<ProviderFormData>(
+    editing
+      ? {
+          name: editing.name,
+          providerType: editing.providerType,
+          apiUrl: editing.apiUrl ?? "",
+          apiKey: editing.apiKey ?? "",
+          modelName: editing.modelName,
+          headers: editing.headers ?? "",
+          bodyTemplate: editing.bodyTemplate ?? "",
+          responsePath: editing.responsePath ?? "",
+          isEnabled: editing.isEnabled,
+        }
+      : EMPTY_FORM
+  );
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [testStatus, setTestStatus] = useState<TestStatus>(null);
+  const [testing, setTesting] = useState(false);
+
+  const set = (k: keyof ProviderFormData, v: string | boolean) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestStatus(null);
+    try {
+      const res = await apiRequest("POST", "/api/admin/providers/test-config", {
+        providerType: form.providerType,
+        apiUrl: form.apiUrl || null,
+        apiKey: form.apiKey || null,
+        modelName: form.modelName,
+        headers: form.headers || null,
+      });
+      const data = await res.json();
+      setTestStatus(data);
+    } catch {
+      setTestStatus({ success: false, latencyMs: 0, message: "Request failed" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="space-y-1">
+      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
+      {children}
+    </div>
+  );
+  const Input = ({ field, placeholder, type = "text" }: { field: keyof ProviderFormData; placeholder?: string; type?: string }) => (
+    <input
+      type={type}
+      value={form[field] as string}
+      onChange={(e) => set(field, e.target.value)}
+      placeholder={placeholder}
+      className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+    />
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg bg-card rounded-2xl border border-border shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Server className="w-4 h-4 text-primary" />
+            <span className="font-semibold text-foreground text-sm">
+              {editing ? "Edit Provider" : "Add AI Provider"}
+            </span>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Display Name">
+              <Input field="name" placeholder="My OpenAI Provider" />
+            </Field>
+            <Field label="Provider Type">
+              <select
+                value={form.providerType}
+                onChange={(e) => set("providerType", e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+              >
+                {PROVIDER_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Model Name">
+              <Input field="modelName" placeholder="gpt-4o" />
+            </Field>
+            <Field label="API Key">
+              <Input field="apiKey" placeholder="sk-..." type="password" />
+            </Field>
+          </div>
+
+          <Field label="API Base URL (optional)">
+            <Input field="apiUrl" placeholder="https://api.openai.com/v1" />
+          </Field>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="prov-enabled"
+              checked={form.isEnabled}
+              onChange={(e) => set("isEnabled", e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="prov-enabled" className="text-sm text-muted-foreground">Enable this provider</label>
+          </div>
+
+          <button
+            onClick={() => setShowAdvanced((s) => !s)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showAdvanced && "rotate-180")} />
+            Advanced (custom headers, body template, response path)
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-3 pt-2 border-t border-border/60">
+              <Field label="Extra Headers (JSON)">
+                <textarea
+                  value={form.headers}
+                  onChange={(e) => set("headers", e.target.value)}
+                  placeholder='{"X-Custom-Header": "value"}'
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none font-mono text-xs"
+                />
+              </Field>
+              <Field label="Body Template ({{model}}, {{messages}}, {{maxTokens}})">
+                <textarea
+                  value={form.bodyTemplate}
+                  onChange={(e) => set("bodyTemplate", e.target.value)}
+                  placeholder='{"model": "{{model}}", "prompt": "{{lastMessage}}"}'
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none font-mono text-xs"
+                />
+              </Field>
+              <Field label="Response Path (dot notation)">
+                <Input field="responsePath" placeholder="choices.0.message.content" />
+              </Field>
+            </div>
+          )}
+
+          {testStatus && (
+            <div className={cn(
+              "flex items-start gap-2 p-3 rounded-lg text-xs",
+              testStatus.success ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border border-red-500/20 text-red-400"
+            )}>
+              {testStatus.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
+              <div>
+                <div className="font-semibold">{testStatus.success ? "Connected" : "Failed"}</div>
+                <div className="opacity-80">{testStatus.message}{testStatus.latencyMs > 0 && ` · ${testStatus.latencyMs}ms`}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex items-center gap-2 justify-between">
+          <button
+            onClick={handleTest}
+            disabled={testing || !form.modelName}
+            data-testid="button-test-provider"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-40"
+          >
+            {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
+            Test Connection
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSave(form, editing?.id)}
+              disabled={!form.name || !form.modelName}
+              data-testid="button-save-provider"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-all disabled:opacity-40"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {editing ? "Update" : "Add Provider"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProvidersSection() {
+  const [showForm, setShowForm] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, TestStatus>>({});
+
+  const { data: providers = [], isLoading } = useQuery<AiProvider[]>({
+    queryKey: ["/api/admin/providers"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: ProviderFormData) => apiRequest("POST", "/api/admin/providers", {
+      name: data.name, providerType: data.providerType,
+      apiUrl: data.apiUrl || null, apiKey: data.apiKey || null, modelName: data.modelName,
+      headers: data.headers || null, bodyTemplate: data.bodyTemplate || null,
+      responsePath: data.responsePath || null, isEnabled: data.isEnabled, priority: 100,
+    }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setShowForm(false); },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<ProviderFormData> }) =>
+      apiRequest("PATCH", `/api/admin/providers/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setEditingProvider(null); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/providers/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isEnabled }: { id: string; isEnabled: boolean }) =>
+      apiRequest("PATCH", `/api/admin/providers/${id}`, { isEnabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }),
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (ids: string[]) => apiRequest("POST", "/api/admin/providers/reorder", { ids }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }),
+  });
+
+  const handleSave = (form: ProviderFormData, id?: string) => {
+    if (id) updateMutation.mutate({ id, data: form });
+    else createMutation.mutate(form);
+  };
+
+  const handleMove = (id: string, dir: "up" | "down") => {
+    const sorted = [...providers].sort((a, b) => a.priority - b.priority);
+    const idx = sorted.findIndex((p) => p.id === id);
+    if ((dir === "up" && idx === 0) || (dir === "down" && idx === sorted.length - 1)) return;
+    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
+    [sorted[idx], sorted[swapIdx]] = [sorted[swapIdx], sorted[idx]];
+    reorderMutation.mutate(sorted.map((p) => p.id));
+  };
+
+  const handleTest = async (id: string) => {
+    setTestingId(id);
+    try {
+      const res = await apiRequest("POST", `/api/admin/providers/${id}/test`);
+      const data = await res.json();
+      setTestResults((r) => ({ ...r, [id]: data }));
+    } catch {
+      setTestResults((r) => ({ ...r, [id]: { success: false, latencyMs: 0, message: "Request failed" } }));
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  const sorted = [...providers].sort((a, b) => a.priority - b.priority);
+
+  return (
+    <>
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Server className="w-4 h-4 text-primary" />
+            <h2 className="font-semibold text-foreground">AI Providers</h2>
+            <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{providers.length}</span>
+          </div>
+          <button
+            onClick={() => { setEditingProvider(null); setShowForm(true); }}
+            data-testid="button-add-provider"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Provider
+          </button>
+        </div>
+
+        <div className="p-4">
+          {isLoading ? (
+            <div className="py-8 flex items-center justify-center text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading providers…
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="py-10 flex flex-col items-center gap-3 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center">
+                <Server className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">No providers configured</p>
+                <p className="text-xs text-muted-foreground mt-0.5">The system will fall back to the built-in Bluesminds connection.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sorted.map((p, idx) => {
+                const meta = PROVIDER_TYPE_META[p.providerType] ?? { label: p.providerType, color: "text-foreground" };
+                const tr = testResults[p.id];
+                return (
+                  <div
+                    key={p.id}
+                    data-testid={`card-provider-${p.id}`}
+                    className={cn(
+                      "rounded-xl border p-4 transition-all",
+                      p.isEnabled ? "border-border bg-background/50" : "border-border/40 bg-background/20 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-0.5">
+                        <button onClick={() => handleMove(p.id, "up")} disabled={idx === 0} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors">
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => handleMove(p.id, "down")} disabled={idx === sorted.length - 1} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors">
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                        <Cpu className={cn("w-4 h-4", meta.color)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-foreground truncate">{p.name}</span>
+                          <span className={cn("text-[10px] font-semibold uppercase tracking-wider", meta.color)}>{meta.label}</span>
+                          {!p.isEnabled && <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Disabled</span>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
+                          <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />{p.modelName || "—"}</span>
+                          {p.apiUrl && <span className="flex items-center gap-1 truncate max-w-[160px]"><Globe className="w-3 h-3" />{p.apiUrl}</span>}
+                          {p.apiKey && <span className="flex items-center gap-1"><Key className="w-3 h-3" />••••••</span>}
+                          <span className="text-muted-foreground/50">Priority {p.priority}</span>
+                        </div>
+                        {tr && (
+                          <div className={cn(
+                            "mt-1.5 inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md",
+                            tr.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                          )}>
+                            {tr.success ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                            {tr.success ? `OK · ${tr.latencyMs}ms` : tr.message}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => handleTest(p.id)}
+                          disabled={testingId === p.id}
+                          data-testid={`button-test-provider-${p.id}`}
+                          title="Test connection"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-40"
+                        >
+                          {testingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => toggleMutation.mutate({ id: p.id, isEnabled: !p.isEnabled })}
+                          data-testid={`button-toggle-provider-${p.id}`}
+                          title={p.isEnabled ? "Disable" : "Enable"}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                        >
+                          {p.isEnabled ? <Power className="w-3.5 h-3.5" /> : <PowerOff className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => { setEditingProvider(p); setShowForm(true); }}
+                          data-testid={`button-edit-provider-${p.id}`}
+                          title="Edit"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm(`Delete provider "${p.name}"?`)) deleteMutation.mutate(p.id); }}
+                          data-testid={`button-delete-provider-${p.id}`}
+                          title="Delete"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-border/60 flex items-start gap-2 text-[11px] text-muted-foreground">
+            <Server className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 opacity-60" />
+            <div>
+              Providers are tried in <strong className="text-foreground">priority order</strong>. If all configured providers fail, the system falls back to the built-in Bluesminds connection automatically.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showForm && (
+        <ProviderFormModal
+          editing={editingProvider}
+          onClose={() => { setShowForm(false); setEditingProvider(null); }}
+          onSave={handleSave}
+        />
+      )}
+    </>
+  );
+}
+
 export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const [, navigate] = useLocation();
@@ -355,6 +817,9 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+
+        {/* AI Providers Section */}
+        <ProvidersSection />
 
         {/* Token Usage Section */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">

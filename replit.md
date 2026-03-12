@@ -1,13 +1,13 @@
-# AI Chat
+# AI Sparky (aisparky.dev)
 
-A modern, personal AI chat application powered by Claude via Amazon Bedrock.
+A premium personal AI chat application.
 
 ## Tech Stack
 
 - **Frontend**: React + TypeScript + Tailwind CSS + shadcn/ui
 - **Backend**: Express.js (Node.js)
 - **Bundler**: Vite (dev) / esbuild (prod)
-- **AI**: AWS Bedrock (Anthropic Claude + Meta Llama models)
+- **AI**: Universal provider system — default Bluesminds (api.bluesminds.com), supports OpenAI, Anthropic, Azure, Gemini, AWS Bedrock, Custom
 - **Database**: PostgreSQL (Replit) via Drizzle ORM
 - **Auth**: Session-based (express-session + connect-pg-simple + bcrypt)
 - **Chat Storage**: PostgreSQL (cloud, persists across devices)
@@ -41,9 +41,17 @@ shared/
   schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts, userMemories)
 server/
   db.ts                 - Drizzle + pg pool
-  storage.ts            - DatabaseStorage (CRUD for all entities + searchMessages)
-  routes.ts             - Auth + conversation + settings + admin routes + /api/chat (SSE)
+  storage.ts            - DatabaseStorage (CRUD for all entities + searchMessages + provider CRUD)
+  routes.ts             - Auth + conversation + settings + admin routes + /api/chat (SSE) + /api/admin/providers
   index.ts              - Express setup with session middleware
+  lib/
+    providers/
+      types.ts          - Interfaces: ProviderAdapter, ProviderConfig, StreamOptions, TOOL_DEFINITIONS_OPENAI
+      openai-compat.ts  - OpenAI-compatible adapter (OpenAI, Azure, Gemini, Bluesminds)
+      anthropic.ts      - Anthropic native Messages API adapter
+      bedrock.ts        - AWS Bedrock Converse API adapter (SigV4 signing)
+      custom.ts         - Custom HTTP provider adapter (body template + response path)
+      index.ts          - Registry: buildAdapter(), testProvider(), streamWithFallback()
 ```
 
 ## Features

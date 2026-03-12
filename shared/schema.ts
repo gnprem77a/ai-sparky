@@ -82,6 +82,22 @@ export const userMemories = pgTable("user_memories", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const aiProviders = pgTable("ai_providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  providerType: text("provider_type").notNull().default("openai"),
+  apiUrl: text("api_url"),
+  apiKey: text("api_key"),
+  modelName: text("model_name").notNull().default(""),
+  headers: text("headers"),
+  isActive: boolean("is_active").notNull().default(false),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  priority: integer("priority").notNull().default(100),
+  bodyTemplate: text("body_template"),
+  responsePath: text("response_path"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const broadcasts = pgTable("broadcasts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   message: text("message").notNull(),
@@ -99,6 +115,10 @@ export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
   id: true,
   createdAt: true,
 });
+
+export const insertAiProviderSchema = createInsertSchema(aiProviders).omit({ id: true, createdAt: true });
+export type InsertAiProvider = z.infer<typeof insertAiProviderSchema>;
+export type AiProvider = typeof aiProviders.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
