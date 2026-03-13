@@ -49,12 +49,14 @@ export class AnthropicAdapter implements ProviderAdapter {
           messages: [{ role: "user", content: "Say OK" }],
         }),
       });
-      const data = await res.json() as Record<string, unknown>;
+      const rawText = await res.text();
+      let data: Record<string, unknown> = {};
+      try { data = JSON.parse(rawText); } catch { /* not JSON */ }
       if (!res.ok) {
         const isAuthError = res.status === 401 || res.status === 403;
         const errMsg = isAuthError
           ? "Invalid API key or unauthorized"
-          : ((data as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`);
+          : ((data as { error?: { message?: string } }).error?.message ?? (rawText.slice(0, 120) || `HTTP ${res.status}`));
         return { success: false, latencyMs: Date.now() - start, statusCode: res.status, message: errMsg };
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };

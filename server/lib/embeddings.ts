@@ -37,17 +37,22 @@ export interface RerankProviderConfig {
   modelName: string;
 }
 
-function authHeaders(providerType: string, apiKey: string): Record<string, string> {
+function authHeaders(providerType: string, apiKey: string, _url?: string): Record<string, string> {
   const t = providerType.toLowerCase();
+  // Azure always uses api-key header (both legacy and AI Foundry endpoints)
   if (t === "azure") return { "api-key": apiKey };
   return { "Authorization": `Bearer ${apiKey}` };
 }
 
 function buildEmbedUrl(baseUrl: string, modelName: string): string {
-  if (baseUrl.endsWith("/embed")) return baseUrl;
-  if (baseUrl.endsWith("/embeddings")) return baseUrl;
-  if (baseUrl.endsWith("/models")) return `${baseUrl}/${modelName}/embed`;
-  return `${baseUrl}/embed`;
+  const url = baseUrl.replace(/\/$/, "");
+  if (url.endsWith("/embed")) return url;
+  if (url.endsWith("/embeddings")) return url;
+  // Azure AI Foundry / OpenAI-compat endpoint: /openai/v1 → /openai/v1/embeddings
+  if (url.endsWith("/v1") || url.includes("/openai/v1")) return `${url}/embeddings`;
+  // Azure AI Inference (Cohere-style): /models → /models/{model}/embed
+  if (url.endsWith("/models")) return `${url}/${modelName}/embed`;
+  return `${url}/embeddings`;
 }
 
 function parseEmbeddingResponse(json: unknown): number[] {
@@ -79,32 +84,50 @@ export async function generateEmbedding(text: string, config?: EmbedProviderConf
   let headers: Record<string, string>;
   let body: Record<string, unknown>;
 
+  // Try configured embed provider first, then fall back to Bluesminds
   if (config) {
     url = buildEmbedUrl(config.url, config.modelName);
-    headers = authHeaders(config.providerType, config.apiKey);
-    // Cohere format (works on Azure AI and Bluesminds)
-    body = { texts: [text], input_type: "search_document" };
+    headers = authHeaders(config.providerType, config.apiKey, url);
+    // Use OpenAI format for /embeddings endpoints, Cohere format for /embed endpoints
+    if (url.endsWith("/embeddings")) {
+      body = { input: [text], model: config.modelName };
+    } else {
+      body = { texts: [text], input_type: "search_document" };
+    }
     console.log(`[embed] Using provider "${config.modelName}" at ${url}`);
-  } else {
-    const apiKey = process.env.BLUESMINDS_API_KEY;
-    if (!apiKey) throw new Error("No embed provider configured and BLUESMINDS_API_KEY not set");
-    url = `${BLUESMINDS_API_URL}/embeddings`;
-    headers = { "Authorization": `Bearer ${apiKey}` };
-    body = { model: "embed-v-4-0", input: text };
-    console.log(`[embed] Using Bluesminds fallback`);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Embedding API error ${res.status}: ${err}`);
+      }
+      const json = await res.json();
+      return parseEmbeddingResponse(json);
+    } catch (err) {
+      console.warn(`[embed] configured provider failed: ${(err as Error).message} — falling back to Bluesminds`);
+    }
   }
 
+  // Bluesminds fallback — try multiple model names
+  const apiKey = process.env.BLUESMINDS_API_KEY;
+  if (!apiKey) throw new Error("No embed provider configured and BLUESMINDS_API_KEY not set");
+  url = `${BLUESMINDS_API_URL}/embeddings`;
+  headers = { "Authorization": `Bearer ${apiKey}` };
+  body = { model: "text-embedding-3-small", input: text };
+  console.log(`[embed] Using Bluesminds fallback (text-embedding-3-small)`);
   const res = await fetch(url, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Embedding API error ${res.status}: ${err}`);
   }
-
   const json = await res.json();
   return parseEmbeddingResponse(json);
 }

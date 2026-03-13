@@ -1073,20 +1073,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "Content too long (max 60,000 characters)" });
     }
 
-    const providers = (await storage.getActiveProviders()).map((p) => ({
-      id: p.id, name: p.name, providerType: p.providerType,
-      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
-      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
-      bodyTemplate: p.bodyTemplate ?? null,
-      responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
-    }));
+    // Exclude embed/rerank models — they can't generate text
+    const providers = (await storage.getActiveProviders())
+      .filter(p => {
+        const m = (p.modelName ?? "").toLowerCase();
+        return !m.includes("embed") && !m.includes("rerank");
+      })
+      .map((p) => ({
+        id: p.id, name: p.name, providerType: p.providerType,
+        apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+        headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+        bodyTemplate: p.bodyTemplate ?? null,
+        responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+      }));
 
     try {
       let result: { title: string; data: unknown };
 
+      async function studyGenerate(sys: string, user: string, maxTok: number): Promise<string> {
+        // Try configured chat providers first, fall back to direct Bluesminds callAPI
+        if (providers.length > 0) {
+          try { return await generateText(providers, sys, user, maxTok); } catch { /* fall through */ }
+        }
+        return callAPI(FALLBACK_MODEL.apiModelId, sys, user, maxTok);
+      }
+
       if (type === "summary") {
-        const text = await generateText(
-          providers,
+        const text = await studyGenerate(
           "You are an expert study assistant. Generate clear, concise, well-structured summaries from student notes.",
           `Summarize the following notes into a clear, well-organized markdown summary with key headings, bullet points, and highlights. Make it student-friendly and comprehensive.\n\nNOTES:\n${content}`,
           1500,
@@ -1094,8 +1107,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         result = { title: "Summary", data: { content: text } };
 
       } else if (type === "quiz") {
-        const raw = await generateText(
-          providers,
+        const raw = await studyGenerate(
           "You are a quiz generator. Always return ONLY valid JSON with no markdown, no extra text.",
           `Generate exactly 10 multiple-choice quiz questions from these notes. Return ONLY this JSON (no extra text):\n{"title":"Quiz","questions":[{"q":"question text","options":["Option A","Option B","Option C","Option D"],"answer":0,"explanation":"brief explanation"}]}\n\nThe "answer" field is the 0-based index of the correct option.\n\nNOTES:\n${content}`,
           2000,
@@ -1106,8 +1118,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         result = { title: parsed.title ?? "Quiz", data: { questions: parsed.questions ?? [] } };
 
       } else if (type === "flashcards") {
-        const raw = await generateText(
-          providers,
+        const raw = await studyGenerate(
           "You are a flashcard generator. Always return ONLY valid JSON with no markdown, no extra text.",
           `Generate exactly 15 flashcard pairs from these notes. Return ONLY this JSON (no extra text):\n{"title":"Flashcards","cards":[{"front":"term or question","back":"definition or answer"}]}\n\nNOTES:\n${content}`,
           2000,
@@ -1290,21 +1301,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const sources = reranked.map(c => ({ docName: c.docName, docId: c.docId, snippet: c.content.slice(0, 150) }));
 
-    const providers = (await storage.getActiveProviders()).map((p) => ({
-      id: p.id, name: p.name, providerType: p.providerType,
-      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
-      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
-      bodyTemplate: p.bodyTemplate ?? null,
-      responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
-    }));
+    // Only pass chat-capable providers — exclude embed/rerank-only models
+    const chatProviders = (await storage.getActiveProviders())
+      .filter(p => {
+        const m = (p.modelName ?? "").toLowerCase();
+        return !m.includes("embed") && !m.includes("rerank");
+      })
+      .map((p) => ({
+        id: p.id, name: p.name, providerType: p.providerType,
+        apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+        headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+        bodyTemplate: p.bodyTemplate ?? null,
+        responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+      }));
+
+    const kbSystemPrompt = `You are a helpful assistant that answers questions strictly based on the provided document context. If the answer is not in the context, say "I couldn't find that in the provided documents." Always cite which source you used.`;
+    const kbUserPrompt = `CONTEXT FROM DOCUMENTS:\n\n${context}\n\n---\n\nQUESTION: ${question.trim()}\n\nAnswer based only on the context above:`;
 
     try {
-      const answer = await generateText(
-        providers,
-        `You are a helpful assistant that answers questions strictly based on the provided document context. If the answer is not in the context, say "I couldn't find that in the provided documents." Always cite which source you used.`,
-        `CONTEXT FROM DOCUMENTS:\n\n${context}\n\n---\n\nQUESTION: ${question.trim()}\n\nAnswer based only on the context above:`,
-        1000,
-      );
+      let answer: string | null = null;
+
+      // Try user-configured chat providers first
+      if (chatProviders.length > 0) {
+        try {
+          answer = await generateText(chatProviders, kbSystemPrompt, kbUserPrompt, 1000);
+        } catch {
+          console.warn("[kb/chat] configured providers failed, falling back to built-in");
+        }
+      }
+
+      // Fall back to direct Bluesminds call (proven to work)
+      if (!answer) {
+        answer = await callAPI(FALLBACK_MODEL.apiModelId, kbSystemPrompt, kbUserPrompt, 1000);
+      }
+
+      if (!answer) throw new Error("Empty response from AI");
       res.json({ answer, sources });
     } catch (err) {
       console.error("[kb/chat] error:", err);
