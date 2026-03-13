@@ -23,11 +23,19 @@ export interface TestResult {
   success: boolean;
   latencyMs: number;
   message: string;
+  statusCode?: number;
+}
+
+export interface GenerateOptions {
+  systemPrompt?: string;
+  userPrompt: string;
+  maxTokens?: number;
 }
 
 export interface ProviderAdapter {
   testConnection(): Promise<TestResult>;
   stream(opts: StreamOptions): Promise<UsageResult>;
+  generate(opts: GenerateOptions): Promise<string>;
 }
 
 export interface ProviderConfig {
@@ -38,6 +46,7 @@ export interface ProviderConfig {
   apiKey: string | null;
   modelName: string;
   headers: string | null;
+  httpMethod: string;
   bodyTemplate: string | null;
   responsePath: string | null;
   isActive: boolean;

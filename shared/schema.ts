@@ -90,6 +90,7 @@ export const aiProviders = pgTable("ai_providers", {
   apiKey: text("api_key"),
   modelName: text("model_name").notNull().default(""),
   headers: text("headers"),
+  httpMethod: text("http_method").notNull().default("POST"),
   isActive: boolean("is_active").notNull().default(false),
   isEnabled: boolean("is_enabled").notNull().default(true),
   priority: integer("priority").notNull().default(100),

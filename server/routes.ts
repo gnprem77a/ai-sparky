@@ -802,6 +802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         apiKey: p.apiKey ?? null,
         modelName: p.modelName,
         headers: p.headers ?? null,
+        httpMethod: p.httpMethod ?? "POST",
         bodyTemplate: p.bodyTemplate ?? null,
         responsePath: p.responsePath ?? null,
         isActive: p.isActive,
@@ -994,7 +995,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const config: ProviderConfig = {
       id: p.id, name: p.name, providerType: p.providerType,
       apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
-      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      bodyTemplate: p.bodyTemplate ?? null,
       responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
     };
     const result = await testProvider(config);
@@ -1003,7 +1005,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/admin/providers/test-config", requireAdmin as any, async (req: Request, res: Response) => {
     const config: ProviderConfig = {
-      id: "temp", name: "temp", ...req.body,
+      id: "temp", name: "temp", httpMethod: "POST",
+      ...req.body,
       isActive: false, isEnabled: true, priority: 0,
     };
     const result = await testProvider(config);
@@ -1073,7 +1076,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const providers = (await storage.getActiveProviders()).map((p) => ({
       id: p.id, name: p.name, providerType: p.providerType,
       apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
-      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      bodyTemplate: p.bodyTemplate ?? null,
       responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
     }));
 
@@ -1289,7 +1293,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const providers = (await storage.getActiveProviders()).map((p) => ({
       id: p.id, name: p.name, providerType: p.providerType,
       apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
-      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      bodyTemplate: p.bodyTemplate ?? null,
       responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
     }));
 

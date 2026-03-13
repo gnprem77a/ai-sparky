@@ -223,7 +223,7 @@ const PROVIDER_TYPE_OPTIONS = [
   { value: "custom",     label: "Custom Provider" },
 ];
 
-type TestStatus = { success: boolean; latencyMs: number; message: string } | null;
+type TestStatus = { success: boolean; latencyMs: number; message: string; statusCode?: number } | null;
 
 interface ProviderFormData {
   name: string;
@@ -232,15 +232,19 @@ interface ProviderFormData {
   apiKey: string;
   modelName: string;
   headers: string;
+  httpMethod: string;
   bodyTemplate: string;
   responsePath: string;
   isEnabled: boolean;
+  priority: number;
 }
 
 const EMPTY_FORM: ProviderFormData = {
   name: "", providerType: "openai", apiUrl: "", apiKey: "", modelName: "",
-  headers: "", bodyTemplate: "", responsePath: "", isEnabled: true,
+  headers: "", httpMethod: "POST", bodyTemplate: "", responsePath: "", isEnabled: true, priority: 100,
 };
+
+const HTTP_METHODS = ["POST", "GET", "PUT", "PATCH", "DELETE"];
 
 /* Per-provider defaults applied when the type changes */
 const PROVIDER_DEFAULTS: Record<string, {
@@ -371,19 +375,23 @@ function ProviderFormModal({
           apiKey: editing.apiKey ?? "",
           modelName: editing.modelName,
           headers: editing.headers ?? "",
+          httpMethod: (editing as AiProvider & { httpMethod?: string }).httpMethod ?? "POST",
           bodyTemplate: editing.bodyTemplate ?? "",
           responsePath: editing.responsePath ?? "",
           isEnabled: editing.isEnabled,
+          priority: editing.priority,
         }
       : EMPTY_FORM
   );
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(
+    editing?.providerType === "custom" || !!editing?.bodyTemplate || !!editing?.responsePath
+  );
   const [testStatus, setTestStatus] = useState<TestStatus>(null);
   const [testing, setTesting] = useState(false);
 
   const def = PROVIDER_DEFAULTS[form.providerType] ?? PROVIDER_DEFAULTS.openai;
 
-  const set = (k: keyof ProviderFormData, v: string | boolean) =>
+  const set = (k: keyof ProviderFormData, v: string | boolean | number) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const handleTypeChange = (newType: string) => {
@@ -395,6 +403,7 @@ function ProviderFormModal({
       modelName: "",
       apiKey: newType === "bedrock" ? "" : f.apiKey,
     }));
+    if (newType === "custom") setShowAdvanced(true);
     setTestStatus(null);
   };
 
@@ -408,6 +417,9 @@ function ProviderFormModal({
         apiKey: form.apiKey || null,
         modelName: form.modelName,
         headers: form.headers || null,
+        httpMethod: form.httpMethod || "POST",
+        bodyTemplate: form.bodyTemplate || null,
+        responsePath: form.responsePath || null,
       });
       const data = await res.json();
       setTestStatus(data);
@@ -454,6 +466,7 @@ function ProviderFormModal({
                 onChange={(e) => set("name", e.target.value)}
                 placeholder={`My ${PROVIDER_TYPE_META[form.providerType]?.label ?? "AI"} Provider`}
                 className={inputClass}
+                data-testid="input-provider-name"
               />
             </Field>
             <Field label="Provider Type">
@@ -461,6 +474,7 @@ function ProviderFormModal({
                 value={form.providerType}
                 onChange={(e) => handleTypeChange(e.target.value)}
                 className={inputClass}
+                data-testid="select-provider-type"
               >
                 {PROVIDER_TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -485,6 +499,7 @@ function ProviderFormModal({
                   onChange={(e) => set("modelName", e.target.value)}
                   placeholder={def.modelPlaceholder}
                   className={inputClass}
+                  data-testid="input-provider-model"
                 />
                 {def.modelSuggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-0.5">
@@ -516,6 +531,7 @@ function ProviderFormModal({
                   onChange={(e) => set("apiKey", e.target.value)}
                   placeholder={def.keyPlaceholder}
                   className={inputClass}
+                  data-testid="input-provider-key"
                 />
               </Field>
             )}
@@ -536,28 +552,58 @@ function ProviderFormModal({
               onChange={(e) => set("apiUrl", e.target.value)}
               placeholder={def.apiUrl || "https://your-api-endpoint.com/v1"}
               className={cn(inputClass, "font-mono text-xs")}
+              data-testid="input-provider-url"
             />
           </Field>
 
-          {/* Enable toggle */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="prov-enabled"
-              checked={form.isEnabled}
-              onChange={(e) => set("isEnabled", e.target.checked)}
-              className="rounded"
-            />
-            <label htmlFor="prov-enabled" className="text-sm text-muted-foreground">Enable this provider</label>
+          {/* HTTP Method + Priority + Enable */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="HTTP Method">
+              <select
+                value={form.httpMethod}
+                onChange={(e) => set("httpMethod", e.target.value)}
+                className={inputClass}
+                data-testid="select-provider-method"
+              >
+                {HTTP_METHODS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Priority">
+              <input
+                type="number"
+                value={form.priority}
+                onChange={(e) => set("priority", e.target.value)}
+                min={0}
+                max={999}
+                className={inputClass}
+                data-testid="input-provider-priority"
+              />
+            </Field>
+            <div className="flex items-end pb-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="prov-enabled"
+                  checked={form.isEnabled}
+                  onChange={(e) => set("isEnabled", e.target.checked)}
+                  className="rounded"
+                  data-testid="checkbox-provider-enabled"
+                />
+                <span className="text-sm text-muted-foreground">Enabled</span>
+              </label>
+            </div>
           </div>
 
           {/* Advanced */}
           <button
             onClick={() => setShowAdvanced((s) => !s)}
+            data-testid="button-toggle-advanced"
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showAdvanced && "rotate-180")} />
-            Advanced (custom headers, body template, response path)
+            Advanced (headers, body template, response path)
           </button>
 
           {showAdvanced && (
@@ -566,27 +612,30 @@ function ProviderFormModal({
                 <textarea
                   value={form.headers}
                   onChange={(e) => set("headers", e.target.value)}
-                  placeholder='{"X-Custom-Header": "value"}'
+                  placeholder='{"X-Custom-Header": "value", "api-key": "your-key"}'
                   rows={2}
                   className={cn(inputClass, "resize-none font-mono text-xs")}
+                  data-testid="textarea-provider-headers"
                 />
               </Field>
-              <Field label="Body Template ({{model}}, {{messages}}, {{maxTokens}})">
+              <Field label="Body Template — variables: {{prompt}}, {{messages}}, {{model}}, {{systemPrompt}}, {{maxTokens}}">
                 <textarea
                   value={form.bodyTemplate}
                   onChange={(e) => set("bodyTemplate", e.target.value)}
-                  placeholder='{"model": "{{model}}", "prompt": "{{lastMessage}}"}'
-                  rows={3}
+                  placeholder='{"model": "{{model}}", "prompt": "{{prompt}}", "messages": {{messages}}}'
+                  rows={4}
                   className={cn(inputClass, "resize-none font-mono text-xs")}
+                  data-testid="textarea-provider-body"
                 />
               </Field>
-              <Field label="Response Path (dot notation)">
+              <Field label="Response Path (dot notation, e.g. choices.0.message.content)">
                 <input
                   type="text"
                   value={form.responsePath}
                   onChange={(e) => set("responsePath", e.target.value)}
                   placeholder="choices.0.message.content"
                   className={inputClass}
+                  data-testid="input-provider-response-path"
                 />
               </Field>
             </div>
@@ -600,8 +649,18 @@ function ProviderFormModal({
             )}>
               {testStatus.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
               <div>
-                <div className="font-semibold">{testStatus.success ? "Connected successfully" : "Connection failed"}</div>
-                <div className="opacity-80">{testStatus.message}{testStatus.latencyMs > 0 && ` · ${testStatus.latencyMs}ms`}</div>
+                <div className="font-semibold">
+                  {testStatus.success
+                    ? "Connected"
+                    : (testStatus.statusCode === 401 || testStatus.statusCode === 403)
+                      ? "Invalid Key"
+                      : "Connection Failed"}
+                </div>
+                <div className="opacity-80">
+                  {testStatus.success
+                    ? `Response in ${testStatus.latencyMs}ms`
+                    : testStatus.message}
+                </div>
               </div>
             </div>
           )}
@@ -654,16 +713,24 @@ function ProvidersSection() {
     mutationFn: (data: ProviderFormData) => apiRequest("POST", "/api/admin/providers", {
       name: data.name, providerType: data.providerType,
       apiUrl: data.apiUrl || null, apiKey: data.apiKey || null, modelName: data.modelName,
-      headers: data.headers || null, bodyTemplate: data.bodyTemplate || null,
-      responsePath: data.responsePath || null, isEnabled: data.isEnabled, priority: 100,
+      headers: data.headers || null, httpMethod: data.httpMethod || "POST",
+      bodyTemplate: data.bodyTemplate || null,
+      responsePath: data.responsePath || null, isEnabled: data.isEnabled,
+      priority: typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100,
     }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setShowForm(false); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setShowForm(false); setEditingProvider(null); },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<ProviderFormData> }) =>
-      apiRequest("PATCH", `/api/admin/providers/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setEditingProvider(null); },
+      apiRequest("PATCH", `/api/admin/providers/${id}`, {
+        ...data,
+        httpMethod: data.httpMethod || "POST",
+        priority: data.priority !== undefined
+          ? (typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100)
+          : undefined,
+      }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setEditingProvider(null); setShowForm(false); },
   });
 
   const deleteMutation = useMutation({
@@ -776,6 +843,9 @@ function ProvidersSection() {
                           <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />{p.modelName || "—"}</span>
                           {p.apiUrl && <span className="flex items-center gap-1 truncate max-w-[200px]"><Globe className="w-3 h-3" />{p.apiUrl}</span>}
                           {p.apiKey && <span className="flex items-center gap-1"><Key className="w-3 h-3" />••••••</span>}
+                          {p.httpMethod && p.httpMethod !== "POST" && (
+                            <span className="font-mono text-[10px] bg-muted px-1.5 py-0.5 rounded">{p.httpMethod}</span>
+                          )}
                           <span className="text-muted-foreground/40">Priority {p.priority}</span>
                         </div>
                         {tr && (
@@ -784,7 +854,11 @@ function ProvidersSection() {
                             tr.success ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
                           )}>
                             {tr.success ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                            {tr.success ? `OK · ${tr.latencyMs}ms` : tr.message}
+                            {tr.success
+                              ? `Connected · ${tr.latencyMs}ms`
+                              : (tr.statusCode === 401 || tr.statusCode === 403)
+                                ? "Invalid Key"
+                                : tr.message}
                           </div>
                         )}
                       </div>

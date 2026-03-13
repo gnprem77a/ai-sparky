@@ -67,6 +67,26 @@ export class BedrockAdapter implements ProviderAdapter {
     }
   }
 
+  async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
+    const url = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(this.modelId)}/converse`;
+    const msgs: Array<{ role: string; content: Array<{ text: string }> }> = [
+      { role: "user", content: [{ text: userPrompt }] },
+    ];
+    const payload: Record<string, unknown> = { messages: msgs, inferenceConfig: { maxTokens } };
+    if (systemPrompt) payload.system = [{ text: systemPrompt }];
+    const body = JSON.stringify(payload);
+    const headers = signRequest("POST", url, {
+      "content-type": "application/json",
+      host: `bedrock-runtime.${this.region}.amazonaws.com`,
+    }, body);
+    const res = await fetch(url, { method: "POST", headers, body });
+    if (!res.ok) throw new Error(`Bedrock error ${res.status}`);
+    const data = await res.json() as { output?: { message?: { content?: Array<{ text?: string }> } } };
+    const text = data.output?.message?.content?.[0]?.text ?? "";
+    if (!text) throw new Error("Empty response from Bedrock");
+    return text;
+  }
+
   async stream({ messages, systemPrompt, maxTokens, res }: StreamOptions): Promise<UsageResult> {
     const url = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(this.modelId)}/converse-stream`;
 

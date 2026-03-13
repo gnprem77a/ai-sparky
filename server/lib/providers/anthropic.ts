@@ -51,13 +51,35 @@ export class AnthropicAdapter implements ProviderAdapter {
       });
       const data = await res.json() as Record<string, unknown>;
       if (!res.ok) {
-        const errMsg = ((data as { error?: { message?: string } }).error?.message) ?? res.statusText;
-        return { success: false, latencyMs: Date.now() - start, message: errMsg };
+        const isAuthError = res.status === 401 || res.status === 403;
+        const errMsg = isAuthError
+          ? "Invalid API key or unauthorized"
+          : ((data as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`);
+        return { success: false, latencyMs: Date.now() - start, statusCode: res.status, message: errMsg };
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
     } catch (e: unknown) {
       return { success: false, latencyMs: Date.now() - start, message: (e as Error).message };
     }
+  }
+
+  async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
+    const body: Record<string, unknown> = {
+      model: this.config.modelName,
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: userPrompt }],
+    };
+    if (systemPrompt) body.system = systemPrompt;
+    const res = await fetch(`${this.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Anthropic error ${res.status}`);
+    const data = await res.json() as { content?: Array<{ type?: string; text?: string }> };
+    const text = data.content?.find((b) => b.type === "text")?.text ?? "";
+    if (!text) throw new Error("Empty response from Anthropic");
+    return text;
   }
 
   async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {

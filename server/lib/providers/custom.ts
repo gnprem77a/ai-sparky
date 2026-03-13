@@ -1,12 +1,12 @@
 /**
  * Custom provider adapter.
- * Supports any HTTP API with configurable body template and response path.
- * Makes a standard POST request (non-streaming) and returns the result.
+ * Supports any HTTP API with configurable body template, response path, and HTTP method.
+ * Template variables: {{prompt}}, {{lastMessage}}, {{messages}}, {{model}}, {{systemPrompt}}, {{maxTokens}}
  */
-import type { ProviderAdapter, ProviderConfig, StreamOptions, TestResult, UsageResult, RawMessage } from "./types";
+import type { ProviderAdapter, ProviderConfig, StreamOptions, TestResult, UsageResult, RawMessage, GenerateOptions } from "./types";
 
-function resolvePath(obj: unknown, path: string): string {
-  if (!path) return JSON.stringify(obj);
+export function resolvePath(obj: unknown, path: string): string {
+  if (!path) return typeof obj === "string" ? obj : JSON.stringify(obj);
   try {
     const parts = path.split(/[\.\[\]]+/).filter(Boolean);
     let current: unknown = obj;
@@ -57,12 +57,17 @@ export class CustomAdapter implements ProviderAdapter {
     return h;
   }
 
+  private get method(): string {
+    return (this.config.httpMethod ?? "POST").toUpperCase();
+  }
+
   private buildBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string): string {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
     if (this.config.bodyTemplate) {
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
       const vars: Record<string, unknown> = {
         model: this.config.modelName,
         messages: JSON.stringify(messages.map((m) => ({ role: m.role, content: m.content }))),
+        prompt: lastUserMsg,
         lastMessage: lastUserMsg,
         systemPrompt: systemPrompt ?? "",
         maxTokens,
@@ -72,16 +77,46 @@ export class CustomAdapter implements ProviderAdapter {
     return JSON.stringify(buildDefaultBody(messages, this.config.modelName, maxTokens, systemPrompt));
   }
 
+  private buildGenerateBody(systemPrompt: string | undefined, userPrompt: string, maxTokens: number): string {
+    if (this.config.bodyTemplate) {
+      const vars: Record<string, unknown> = {
+        model: this.config.modelName,
+        messages: JSON.stringify([
+          ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+          { role: "user", content: userPrompt },
+        ]),
+        prompt: userPrompt,
+        lastMessage: userPrompt,
+        systemPrompt: systemPrompt ?? "",
+        maxTokens,
+      };
+      return renderTemplate(this.config.bodyTemplate, vars);
+    }
+    const msgs: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) msgs.push({ role: "system", content: systemPrompt });
+    msgs.push({ role: "user", content: userPrompt });
+    return JSON.stringify({ model: this.config.modelName, messages: msgs, max_tokens: maxTokens });
+  }
+
   async testConnection(): Promise<TestResult> {
     const start = Date.now();
     const url = this.config.apiUrl;
     if (!url) return { success: false, latencyMs: 0, message: "API URL is required for custom providers" };
     try {
-      const body = JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 5 });
-      const res = await fetch(url, { method: "POST", headers: this.buildHeaders(), body });
+      const hasBody = this.method !== "GET" && this.method !== "HEAD";
+      const body = hasBody
+        ? JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 5 })
+        : undefined;
+      const res = await fetch(url, { method: this.method, headers: this.buildHeaders(), body });
       if (!res.ok) {
         const text = await res.text();
-        return { success: false, latencyMs: Date.now() - start, message: `HTTP ${res.status}: ${text.slice(0, 150)}` };
+        const isAuthError = res.status === 401 || res.status === 403;
+        return {
+          success: false,
+          latencyMs: Date.now() - start,
+          statusCode: res.status,
+          message: isAuthError ? "Invalid API key or unauthorized" : `HTTP ${res.status}: ${text.slice(0, 150)}`,
+        };
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
     } catch (e: unknown) {
@@ -89,14 +124,34 @@ export class CustomAdapter implements ProviderAdapter {
     }
   }
 
+  async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: GenerateOptions): Promise<string> {
+    const url = this.config.apiUrl;
+    if (!url) throw new Error("Custom provider: API URL not configured");
+    const hasBody = this.method !== "GET" && this.method !== "HEAD";
+    const response = await fetch(url, {
+      method: this.method,
+      headers: this.buildHeaders(),
+      body: hasBody ? this.buildGenerateBody(systemPrompt, userPrompt, maxTokens) : undefined,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Custom provider error ${response.status}: ${text.slice(0, 200)}`);
+    }
+    const data: unknown = await response.json();
+    const text = resolvePath(data, this.config.responsePath ?? "choices.0.message.content");
+    if (!text) throw new Error("Empty response from custom provider");
+    return text;
+  }
+
   async stream({ messages, systemPrompt, maxTokens, res }: StreamOptions): Promise<UsageResult> {
     const url = this.config.apiUrl;
     if (!url) throw new Error("Custom provider: API URL not configured");
 
+    const hasBody = this.method !== "GET" && this.method !== "HEAD";
     const response = await fetch(url, {
-      method: "POST",
+      method: this.method,
       headers: this.buildHeaders(),
-      body: this.buildBody(messages, maxTokens, systemPrompt),
+      body: hasBody ? this.buildBody(messages, maxTokens, systemPrompt) : undefined,
     });
 
     if (!response.ok) {
@@ -107,7 +162,7 @@ export class CustomAdapter implements ProviderAdapter {
     const data: unknown = await response.json();
     const text = resolvePath(data, this.config.responsePath ?? "choices.0.message.content");
 
-    res.write(`data: ${JSON.stringify({ text: text })}\n\n`);
+    res.write(`data: ${JSON.stringify({ text })}\n\n`);
     return { inputTokens: 0, outputTokens: 0 };
   }
 }

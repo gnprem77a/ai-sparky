@@ -115,6 +115,14 @@ server/
 ### Admin
 - **User management**: list users, change plans (Free/Pro with duration)
 - **Token usage**: per-user input/output token totals + estimated cost breakdown
+- **AI Provider Engine**: fully dynamic universal provider management
+  - Add/edit/delete/toggle unlimited providers
+  - Per-provider: Name, Type, Base URL, API Key, Model Name, HTTP Method (POST/GET/PUT/PATCH/DELETE), Headers JSON, Body Template, Response Path, Priority, Enable toggle
+  - Provider types: OpenAI, Anthropic, Azure OpenAI, Google Gemini, AWS Bedrock, Custom, Bluesminds
+  - Custom providers: body template supports `{{prompt}}`, `{{messages}}`, `{{model}}`, `{{systemPrompt}}`, `{{maxTokens}}`; response path uses dot notation
+  - Test Connection button: shows "Connected" / "Invalid Key" (401/403) / "Connection Failed"
+  - Fallback chain: providers tried in priority order; built-in Bluesminds is always last resort
+  - `generateText` and streaming both route through proper adapters (respects custom body/response path)
 
 ## Database Tables
 
@@ -125,6 +133,10 @@ server/
 - `saved_prompts` — id, userId, name, content, createdAt
 - `folders` — id, userId, name, color, createdAt
 - `session` — managed by connect-pg-simple
+- `ai_providers` — id, name, providerType, apiUrl, apiKey, modelName, headers, httpMethod, isActive, isEnabled, priority, bodyTemplate, responsePath, createdAt
+- `knowledge_bases` — id, userId, name, description, createdAt
+- `kb_documents` — id, kbId, name, content, createdAt
+- `kb_chunks` — id, docId, kbId, content, embedding (real[]), createdAt
 
 **Note**: Do NOT run `npm run db:push` directly. Use direct SQL for schema changes.
 

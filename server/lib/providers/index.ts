@@ -12,6 +12,8 @@ import type { ProviderConfig, ProviderAdapter, StreamOptions, UsageResult, TestR
 
 export * from "./types";
 
+export { resolvePath } from "./custom";
+
 export function buildAdapter(config: ProviderConfig): ProviderAdapter {
   switch (config.providerType) {
     case "openai":
@@ -70,6 +72,7 @@ export async function streamWithFallback(
     apiKey: process.env.BLUESMINDS_API_KEY ?? "",
     modelName: "claude-sonnet-4-6",
     headers: null,
+    httpMethod: "POST",
     bodyTemplate: null,
     responsePath: null,
     isActive: true,
@@ -82,6 +85,7 @@ export async function streamWithFallback(
 
 /**
  * Generate a single text response (non-streaming) from the best available provider.
+ * Routes through the proper adapter for each provider type (respects custom body templates, response paths, etc.)
  * Used for study features: summaries, quizzes, flashcards.
  */
 export async function generateText(
@@ -100,6 +104,7 @@ export async function generateText(
     apiKey: process.env.BLUESMINDS_API_KEY ?? "",
     modelName: "claude-sonnet-4-6",
     headers: null,
+    httpMethod: "POST",
     bodyTemplate: null,
     responsePath: null,
     isActive: true,
@@ -111,31 +116,8 @@ export async function generateText(
 
   for (const prov of candidates) {
     try {
-      const endpoint = `${(prov.apiUrl ?? "https://api.bluesminds.com/v1").replace(/\/$/, "")}/chat/completions`;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${prov.apiKey ?? ""}`,
-      };
-      if (prov.headers) {
-        try { Object.assign(headers, JSON.parse(prov.headers)); } catch {}
-      }
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: prov.modelName,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          max_tokens: maxTokens,
-          stream: false,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-      const text = json.choices?.[0]?.message?.content ?? "";
-      if (!text) throw new Error("Empty response");
+      const adapter = buildAdapter(prov);
+      const text = await adapter.generate({ systemPrompt, userPrompt, maxTokens });
       return text;
     } catch (err) {
       console.error(`[generateText] provider "${prov.name}" failed:`, err);

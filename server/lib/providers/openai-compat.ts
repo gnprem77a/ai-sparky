@@ -89,13 +89,35 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       });
       const data = await res.json() as Record<string, unknown>;
       if (!res.ok) {
-        const errMsg = (data as { error?: { message?: string } }).error?.message ?? res.statusText;
-        return { success: false, latencyMs: Date.now() - start, message: errMsg };
+        const isAuthError = res.status === 401 || res.status === 403;
+        const errMsg = isAuthError
+          ? "Invalid API key or unauthorized"
+          : ((data as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`);
+        return { success: false, latencyMs: Date.now() - start, statusCode: res.status, message: errMsg };
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
     } catch (e: unknown) {
       return { success: false, latencyMs: Date.now() - start, message: (e as Error).message };
     }
+  }
+
+  async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
+    const endpoint = this.config.providerType === "azure"
+      ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
+      : `${this.baseUrl}/chat/completions`;
+    const msgs: Array<{ role: string; content: string }> = [];
+    if (systemPrompt) msgs.push({ role: "system", content: systemPrompt });
+    msgs.push({ role: "user", content: userPrompt });
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify({ model: this.config.modelName, messages: msgs, max_tokens: maxTokens, stream: false }),
+    });
+    if (!res.ok) throw new Error(`Provider error ${res.status}`);
+    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+    const text = data.choices?.[0]?.message?.content ?? "";
+    if (!text) throw new Error("Empty response from provider");
+    return text;
   }
 
   async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
