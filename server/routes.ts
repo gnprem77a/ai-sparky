@@ -1173,12 +1173,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!name?.trim() || !content?.trim()) return res.status(400).json({ error: "Name and content required" });
 
     const chunks = chunkText(content.trim());
+
+    // Find embed provider from admin config
+    const allProviders = await storage.getActiveProviders();
+    const embedProvider = allProviders.find(p =>
+      p.modelName?.toLowerCase().includes("embed") && p.apiUrl && p.apiKey
+    );
+    const embedConfig = embedProvider ? {
+      url: embedProvider.apiUrl!,
+      apiKey: embedProvider.apiKey!,
+      providerType: embedProvider.providerType,
+      modelName: embedProvider.modelName,
+    } : undefined;
+
     let embeddings: number[][];
     try {
-      embeddings = await generateEmbeddings(chunks);
+      embeddings = await generateEmbeddings(chunks, embedConfig);
     } catch (err) {
       console.error("[kb/embed] failed:", err);
-      return res.status(502).json({ error: "Embedding failed — check your API credits" });
+      return res.status(502).json({ error: `Embedding failed: ${(err as Error).message}` });
     }
 
     const doc = await storage.createKbDocument({
@@ -1219,11 +1232,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { question } = req.body as { question: string };
     if (!question?.trim()) return res.status(400).json({ error: "Question required" });
 
+    // Look up embed + rerank providers from admin config
+    const allProviders = await storage.getActiveProviders();
+    const embedProvider = allProviders.find(p =>
+      p.modelName?.toLowerCase().includes("embed") && p.apiUrl && p.apiKey
+    );
+    const rerankProvider = allProviders.find(p =>
+      p.modelName?.toLowerCase().includes("rerank") && p.apiUrl && p.apiKey
+    );
+    const embedConfig = embedProvider ? {
+      url: embedProvider.apiUrl!,
+      apiKey: embedProvider.apiKey!,
+      providerType: embedProvider.providerType,
+      modelName: embedProvider.modelName,
+    } : undefined;
+    const rerankConfig = rerankProvider ? {
+      url: rerankProvider.apiUrl!,
+      apiKey: rerankProvider.apiKey!,
+      providerType: rerankProvider.providerType,
+      modelName: rerankProvider.modelName,
+    } : undefined;
+
     let queryEmbedding: number[];
     try {
-      queryEmbedding = await generateEmbedding(question.trim());
+      queryEmbedding = await generateEmbedding(question.trim(), embedConfig);
     } catch (err) {
-      return res.status(502).json({ error: "Embedding failed — check your API credits" });
+      return res.status(502).json({ error: `Embedding failed: ${(err as Error).message}` });
     }
 
     const allChunks = await storage.getKbChunks(req.params.id);
@@ -1244,7 +1278,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, 10);
 
-    const reranked = await rerankChunks(question.trim(), scored, 5);
+    const reranked = await rerankChunks(question.trim(), scored, 5, rerankConfig);
 
     const context = reranked
       .map((c, i) => `[Source ${i + 1}: ${c.docName}]\n${c.content}`)
