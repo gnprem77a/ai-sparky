@@ -357,124 +357,222 @@ export default function StudyPage() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="border-b border-border/60 px-6 py-3 flex items-center justify-between flex-shrink-0">
-          <div>
-            <input
-              value={noteTitle}
-              onChange={(e) => { setNoteTitle(e.target.value); setIsDirty(true); }}
-              placeholder="Note title…"
-              data-testid="input-note-title"
-              className="bg-transparent text-base font-semibold text-foreground placeholder:text-muted-foreground/40 outline-none border-none w-full max-w-md"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            {isDirty && selectedNoteId && (
-              <button
-                onClick={() => saveNote.mutate({ id: selectedNoteId, title: noteTitle, content: noteContent })}
-                disabled={saveNote.isPending}
-                data-testid="button-save-note"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted hover:bg-muted/80 text-foreground transition-all"
-              >
-                {saveNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Content area */}
-        <div className="flex-1 overflow-hidden flex gap-0">
-          {/* Notes editor panel */}
-          <div className="flex-1 flex flex-col overflow-hidden border-r border-border/40">
-            <div className="flex-1 overflow-hidden p-4">
-              <textarea
-                value={noteContent}
-                onChange={(e) => { setNoteContent(e.target.value); setIsDirty(true); }}
-                placeholder="Paste your notes, lecture material, or any text here…"
-                data-testid="textarea-note-content"
-                className="w-full h-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none border-none leading-relaxed"
-              />
-            </div>
-
-            {/* Action buttons */}
-            <div className="border-t border-border/40 px-4 py-3 flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-muted-foreground mr-1 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Generate:</span>
-              {(["summary", "quiz", "flashcards"] as const).map((type) => {
-                const icons = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" /> };
-                const labels = { summary: "Summary", quiz: "Quiz", flashcards: "Flashcards" };
-                const isGen = generating === type;
-                return (
-                  <button
-                    key={type}
-                    onClick={() => handleGenerate(type)}
-                    disabled={!!generating}
-                    data-testid={`button-generate-${type}`}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                      "border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20",
-                      "disabled:opacity-40"
-                    )}
-                  >
-                    {isGen ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icons[type]}
-                    {labels[type]}
-                  </button>
-                );
-              })}
-              {noteContent.trim() && (
-                <span className="ml-auto text-[10px] text-muted-foreground/50">{noteContent.length.toLocaleString()} chars</span>
-              )}
-            </div>
-          </div>
-
-          {/* Output panel */}
-          <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-5">
-              {generating ? (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-violet-500/15 flex items-center justify-center">
-                    <Brain className="w-6 h-6 text-violet-400 animate-pulse" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Generating {generating}…</p>
-                    <p className="text-xs text-muted-foreground mt-1">This takes a few seconds</p>
-                  </div>
+        {/* ── Welcome screen — shown when nothing is open ── */}
+        {!selectedNoteId && !noteContent.trim() ? (
+          <div className="flex-1 overflow-y-auto">
+            {/* Hero */}
+            <div className="px-10 pt-12 pb-8 border-b border-border/40">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-2xl bg-violet-500/20 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5 text-violet-400" />
                 </div>
-              ) : activeOutput ? (
                 <div>
-                  {activeOutput.type === "summary" && <SummaryView data={activeOutput.data as OutputData} />}
-                  {activeOutput.type === "quiz" && <QuizView data={activeOutput.data as OutputData} />}
-                  {activeOutput.type === "flashcards" && <FlashcardsView data={activeOutput.data as OutputData} />}
+                  <h1 className="text-xl font-bold text-foreground">AI Study Tools</h1>
+                  <p className="text-xs text-muted-foreground">Powered by AI Sparky</p>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
-                  <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
-                    <Brain className="w-7 h-7 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">
+                Paste any study material — lecture notes, textbook passages, articles — and the AI will instantly transform it into structured study resources. Stop re-reading; start actively learning.
+              </p>
+            </div>
+
+            {/* Feature cards */}
+            <div className="px-10 py-8 grid grid-cols-3 gap-4 border-b border-border/40">
+              {[
+                {
+                  icon: <FileText className="w-5 h-5 text-blue-400" />,
+                  bg: "bg-blue-500/10",
+                  border: "border-blue-500/20",
+                  label: "Smart Summary",
+                  desc: "Get a clean, structured overview of your notes with key headings and bullet points — perfect for fast review before an exam.",
+                  badge: "text-blue-400",
+                },
+                {
+                  icon: <HelpCircle className="w-5 h-5 text-amber-400" />,
+                  bg: "bg-amber-500/10",
+                  border: "border-amber-500/20",
+                  label: "Practice Quiz",
+                  desc: "10 multiple-choice questions generated from your notes. Answer one by one, get instant feedback, and see your score at the end.",
+                  badge: "text-amber-400",
+                },
+                {
+                  icon: <Layers className="w-5 h-5 text-emerald-400" />,
+                  bg: "bg-emerald-500/10",
+                  border: "border-emerald-500/20",
+                  label: "Flashcard Deck",
+                  desc: "15 flip cards for active memorization. Mark cards as \"Know it\" or \"Review later\" and track your progress through the deck.",
+                  badge: "text-emerald-400",
+                },
+              ].map(({ icon, bg, border, label, desc }) => (
+                <div key={label} className={cn("rounded-xl border p-4 space-y-3", bg, border)}>
+                  <div className="flex items-center gap-2">
+                    {icon}
+                    <span className="text-sm font-semibold text-foreground">{label}</span>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">AI Study Tools</p>
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Paste your notes on the left, then click <strong className="text-foreground">Summary</strong>, <strong className="text-foreground">Quiz</strong>, or <strong className="text-foreground">Flashcards</strong> to generate study materials.</p>
-                  </div>
-                  <div className="space-y-2 w-full text-left">
-                    {[
-                      { icon: <FileText className="w-3.5 h-3.5 text-blue-400" />, label: "Summary", desc: "Structured overview with key points" },
-                      { icon: <HelpCircle className="w-3.5 h-3.5 text-amber-400" />, label: "Quiz", desc: "10 multiple-choice questions" },
-                      { icon: <Layers className="w-3.5 h-3.5 text-emerald-400" />, label: "Flashcards", desc: "15 flip cards for memorization" },
-                    ].map(({ icon, label, desc }) => (
-                      <div key={label} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border/60">
-                        {icon}
-                        <div>
-                          <p className="text-xs font-semibold text-foreground">{label}</p>
-                          <p className="text-[10px] text-muted-foreground">{desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
                 </div>
-              )}
+              ))}
+            </div>
+
+            {/* How it works */}
+            <div className="px-10 py-8 border-b border-border/40">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">How it works</h2>
+              <div className="flex items-start gap-8">
+                {[
+                  { step: "1", title: "Add your notes", desc: "Paste or type any study material into the editor — lectures, readings, or any text." },
+                  { step: "2", title: "Choose a tool", desc: "Click Summary, Quiz, or Flashcards to generate that study format from your notes." },
+                  { step: "3", title: "Study actively", desc: "Review your summary, take the quiz, or work through the flashcards to retain information." },
+                ].map(({ step, title, desc }) => (
+                  <div key={step} className="flex-1 flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-violet-400">{step}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick start */}
+            <div className="px-10 py-8">
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Quick start</h2>
+              <div className="rounded-xl border border-dashed border-violet-500/30 bg-violet-500/5 p-4 space-y-3">
+                <textarea
+                  value={noteContent}
+                  onChange={(e) => { setNoteContent(e.target.value); setIsDirty(true); }}
+                  placeholder="Paste your notes here to get started…"
+                  data-testid="textarea-note-content"
+                  rows={5}
+                  className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none border-none leading-relaxed"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => createNote.mutate()}
+                    disabled={createNote.isPending}
+                    data-testid="button-new-note"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-xs font-semibold hover:bg-violet-500 transition-all"
+                  >
+                    {createNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    New note
+                  </button>
+                  <span className="text-[11px] text-muted-foreground">or select an existing note from the left sidebar</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+
+        ) : (
+          /* ── Editor + output view — shown when a note is open ── */
+          <>
+            {/* Header */}
+            <div className="border-b border-border/60 px-6 py-3 flex items-center justify-between flex-shrink-0">
+              <input
+                value={noteTitle}
+                onChange={(e) => { setNoteTitle(e.target.value); setIsDirty(true); }}
+                placeholder="Note title…"
+                data-testid="input-note-title"
+                className="bg-transparent text-base font-semibold text-foreground placeholder:text-muted-foreground/40 outline-none border-none w-full max-w-md"
+              />
+              <div className="flex items-center gap-2">
+                {isDirty && noteContent.trim() && (
+                  <button
+                    onClick={async () => {
+                      if (selectedNoteId) {
+                        saveNote.mutate({ id: selectedNoteId, title: noteTitle, content: noteContent });
+                      } else {
+                        const res = await apiRequest("POST", "/api/study/notes", { title: noteTitle || "Untitled Note", content: noteContent });
+                        const note = await res.json() as StudyNote;
+                        setSelectedNoteId(note.id);
+                        setIsDirty(false);
+                        qc.invalidateQueries({ queryKey: ["/api/study/notes"] });
+                        toast({ description: "Note saved" });
+                      }
+                    }}
+                    disabled={saveNote.isPending}
+                    data-testid="button-save-note"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted hover:bg-muted/80 text-foreground transition-all"
+                  >
+                    {saveNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {selectedNoteId ? "Save" : "Save as note"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Split: editor left, output right */}
+            <div className="flex-1 overflow-hidden flex gap-0">
+              <div className="flex-1 flex flex-col overflow-hidden border-r border-border/40">
+                <div className="flex-1 overflow-hidden p-4">
+                  <textarea
+                    value={noteContent}
+                    onChange={(e) => { setNoteContent(e.target.value); setIsDirty(true); }}
+                    placeholder="Paste your notes, lecture material, or any text here…"
+                    data-testid="textarea-note-content"
+                    className="w-full h-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none border-none leading-relaxed"
+                  />
+                </div>
+                <div className="border-t border-border/40 px-4 py-3 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] text-muted-foreground mr-1 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Generate:</span>
+                  {(["summary", "quiz", "flashcards"] as const).map((type) => {
+                    const icons = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" /> };
+                    const labels = { summary: "Summary", quiz: "Quiz", flashcards: "Flashcards" };
+                    const isGen = generating === type;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => handleGenerate(type)}
+                        disabled={!!generating}
+                        data-testid={`button-generate-${type}`}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                          "border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20",
+                          "disabled:opacity-40"
+                        )}
+                      >
+                        {isGen ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : icons[type]}
+                        {labels[type]}
+                      </button>
+                    );
+                  })}
+                  {noteContent.trim() && (
+                    <span className="ml-auto text-[10px] text-muted-foreground/50">{noteContent.length.toLocaleString()} chars</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-5">
+                  {generating ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-violet-500/15 flex items-center justify-center">
+                        <Brain className="w-6 h-6 text-violet-400 animate-pulse" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Generating {generating}…</p>
+                        <p className="text-xs text-muted-foreground mt-1">This takes a few seconds</p>
+                      </div>
+                    </div>
+                  ) : activeOutput ? (
+                    <div>
+                      {activeOutput.type === "summary" && <SummaryView data={activeOutput.data as OutputData} />}
+                      {activeOutput.type === "quiz" && <QuizView data={activeOutput.data as OutputData} />}
+                      {activeOutput.type === "flashcards" && <FlashcardsView data={activeOutput.data as OutputData} />}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+                      <Brain className="w-8 h-8 text-muted-foreground/30" />
+                      <p className="text-xs text-muted-foreground leading-relaxed">Click <strong className="text-foreground">Summary</strong>, <strong className="text-foreground">Quiz</strong>, or <strong className="text-foreground">Flashcards</strong> below to generate from your notes.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
