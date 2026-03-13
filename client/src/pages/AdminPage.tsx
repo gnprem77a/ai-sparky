@@ -270,7 +270,7 @@ const PROVIDER_DEFAULTS: Record<string, {
   openai: {
     apiUrl: "https://api.openai.com/v1",
     modelPlaceholder: "gpt-4o",
-    modelSuggestions: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    modelSuggestions: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-5.3-chat"],
     keyPlaceholder: "sk-...",
     keyLabel: "API Key",
     keyRequired: true,
@@ -342,7 +342,7 @@ const PROVIDER_DEFAULTS: Record<string, {
   custom: {
     apiUrl: "",
     modelPlaceholder: "model-name",
-    modelSuggestions: [],
+    modelSuggestions: ["gpt-5.3-chat", "Mistral-Large-3", "Cohere-rerank-v4.0-pro", "embed-v-4-0"],
     keyPlaceholder: "Bearer token (optional)",
     keyLabel: "API Key (optional)",
     keyRequired: false,
