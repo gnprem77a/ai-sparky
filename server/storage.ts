@@ -8,6 +8,7 @@ import {
   type UserMemory, userMemories,
   type Broadcast, type InsertBroadcast, broadcasts,
   type AiProvider, type InsertAiProvider, aiProviders,
+  type StudyNote, type StudyOutput, studyNotes, studyOutputs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -71,6 +72,15 @@ export interface IStorage {
   deleteProvider(id: string): Promise<void>;
   setActiveProvider(id: string): Promise<void>;
   reorderProviders(ids: string[]): Promise<void>;
+
+  getStudyNotes(userId: string): Promise<StudyNote[]>;
+  getStudyNote(id: string): Promise<StudyNote | undefined>;
+  createStudyNote(userId: string, title: string, content: string): Promise<StudyNote>;
+  updateStudyNote(id: string, data: Partial<Pick<StudyNote, "title" | "content">>): Promise<StudyNote | undefined>;
+  deleteStudyNote(id: string): Promise<void>;
+  getStudyOutputs(userId: string, type?: string): Promise<StudyOutput[]>;
+  createStudyOutput(data: { noteId?: string; userId: string; type: string; title: string; data: unknown }): Promise<StudyOutput>;
+  deleteStudyOutput(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -446,6 +456,51 @@ export class DatabaseStorage implements IStorage {
     for (let i = 0; i < ids.length; i++) {
       await db.update(aiProviders).set({ priority: i }).where(eq(aiProviders.id, ids[i]));
     }
+  }
+
+  async getStudyNotes(userId: string): Promise<StudyNote[]> {
+    return db.select().from(studyNotes).where(eq(studyNotes.userId, userId)).orderBy(desc(studyNotes.updatedAt));
+  }
+
+  async getStudyNote(id: string): Promise<StudyNote | undefined> {
+    const [note] = await db.select().from(studyNotes).where(eq(studyNotes.id, id));
+    return note;
+  }
+
+  async createStudyNote(userId: string, title: string, content: string): Promise<StudyNote> {
+    const [note] = await db.insert(studyNotes).values({ userId, title, content }).returning();
+    return note;
+  }
+
+  async updateStudyNote(id: string, data: Partial<Pick<StudyNote, "title" | "content">>): Promise<StudyNote | undefined> {
+    const [note] = await db.update(studyNotes).set({ ...data, updatedAt: new Date() }).where(eq(studyNotes.id, id)).returning();
+    return note;
+  }
+
+  async deleteStudyNote(id: string): Promise<void> {
+    await db.delete(studyNotes).where(eq(studyNotes.id, id));
+  }
+
+  async getStudyOutputs(userId: string, type?: string): Promise<StudyOutput[]> {
+    const conditions = type
+      ? and(eq(studyOutputs.userId, userId), eq(studyOutputs.type, type))
+      : eq(studyOutputs.userId, userId);
+    return db.select().from(studyOutputs).where(conditions).orderBy(desc(studyOutputs.createdAt));
+  }
+
+  async createStudyOutput(data: { noteId?: string; userId: string; type: string; title: string; data: unknown }): Promise<StudyOutput> {
+    const [output] = await db.insert(studyOutputs).values({
+      noteId: data.noteId ?? null,
+      userId: data.userId,
+      type: data.type,
+      title: data.title,
+      data: data.data as Record<string, unknown>,
+    }).returning();
+    return output;
+  }
+
+  async deleteStudyOutput(id: string): Promise<void> {
+    await db.delete(studyOutputs).where(eq(studyOutputs.id, id));
   }
 }
 

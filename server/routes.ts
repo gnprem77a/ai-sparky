@@ -7,7 +7,7 @@ import { insertUserSchema, insertBroadcastSchema, insertAiProviderSchema } from 
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
 import { createRequire } from "module";
-import { streamWithFallback, testProvider, type ProviderConfig } from "./lib/providers/index";
+import { streamWithFallback, testProvider, generateText, type ProviderConfig } from "./lib/providers/index";
 const _require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = _require("pdf-parse");
 
@@ -1017,6 +1017,117 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json({ text: result.text.slice(0, 50000), pageCount: result.numpages });
     } catch (e) {
       return res.status(422).json({ error: `Could not parse PDF: ${(e as Error).message}` });
+    }
+  });
+
+  /* ── Study: Notes CRUD ── */
+  app.get("/api/study/notes", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId as string;
+    return res.json(await storage.getStudyNotes(userId));
+  });
+
+  app.post("/api/study/notes", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId as string;
+    const { title = "Untitled Note", content = "" } = req.body as { title?: string; content?: string };
+    const note = await storage.createStudyNote(userId, title, content);
+    return res.status(201).json(note);
+  });
+
+  app.patch("/api/study/notes/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const { title, content } = req.body as { title?: string; content?: string };
+    const note = await storage.updateStudyNote(req.params.id as string, { title, content });
+    if (!note) return res.status(404).json({ error: "Not found" });
+    return res.json(note);
+  });
+
+  app.delete("/api/study/notes/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteStudyNote(req.params.id as string);
+    return res.status(204).send();
+  });
+
+  /* ── Study: Saved Outputs ── */
+  app.get("/api/study/outputs", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId as string;
+    const type = req.query.type as string | undefined;
+    return res.json(await storage.getStudyOutputs(userId, type));
+  });
+
+  app.delete("/api/study/outputs/:id", requireAuth as any, async (req: Request, res: Response) => {
+    await storage.deleteStudyOutput(req.params.id as string);
+    return res.status(204).send();
+  });
+
+  /* ── Study: AI Generation ── */
+  app.post("/api/study/generate", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId as string;
+    const { type, content, noteId } = req.body as { type: string; content: string; noteId?: string };
+
+    if (!type || !content?.trim()) {
+      return res.status(400).json({ error: "type and content are required" });
+    }
+    if (content.length > 60000) {
+      return res.status(400).json({ error: "Content too long (max 60,000 characters)" });
+    }
+
+    const providers = (await storage.getActiveProviders()).map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    }));
+
+    try {
+      let result: { title: string; data: unknown };
+
+      if (type === "summary") {
+        const text = await generateText(
+          providers,
+          "You are an expert study assistant. Generate clear, concise, well-structured summaries from student notes.",
+          `Summarize the following notes into a clear, well-organized markdown summary with key headings, bullet points, and highlights. Make it student-friendly and comprehensive.\n\nNOTES:\n${content}`,
+          1500,
+        );
+        result = { title: "Summary", data: { content: text } };
+
+      } else if (type === "quiz") {
+        const raw = await generateText(
+          providers,
+          "You are a quiz generator. Always return ONLY valid JSON with no markdown, no extra text.",
+          `Generate exactly 10 multiple-choice quiz questions from these notes. Return ONLY this JSON (no extra text):\n{"title":"Quiz","questions":[{"q":"question text","options":["Option A","Option B","Option C","Option D"],"answer":0,"explanation":"brief explanation"}]}\n\nThe "answer" field is the 0-based index of the correct option.\n\nNOTES:\n${content}`,
+          2000,
+        );
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Invalid JSON from AI");
+        const parsed = JSON.parse(jsonMatch[0]) as { title?: string; questions?: unknown[] };
+        result = { title: parsed.title ?? "Quiz", data: { questions: parsed.questions ?? [] } };
+
+      } else if (type === "flashcards") {
+        const raw = await generateText(
+          providers,
+          "You are a flashcard generator. Always return ONLY valid JSON with no markdown, no extra text.",
+          `Generate exactly 15 flashcard pairs from these notes. Return ONLY this JSON (no extra text):\n{"title":"Flashcards","cards":[{"front":"term or question","back":"definition or answer"}]}\n\nNOTES:\n${content}`,
+          2000,
+        );
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Invalid JSON from AI");
+        const parsed = JSON.parse(jsonMatch[0]) as { title?: string; cards?: unknown[] };
+        result = { title: parsed.title ?? "Flashcards", data: { cards: parsed.cards ?? [] } };
+
+      } else {
+        return res.status(400).json({ error: `Unknown type: ${type}` });
+      }
+
+      const saved = await storage.createStudyOutput({
+        noteId: noteId ?? undefined,
+        userId,
+        type,
+        title: result.title,
+        data: result.data,
+      });
+
+      return res.json(saved);
+    } catch (err) {
+      console.error("[study/generate] error:", err);
+      return res.status(500).json({ error: (err as Error).message });
     }
   });
 

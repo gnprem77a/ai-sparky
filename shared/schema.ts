@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -98,6 +98,25 @@ export const aiProviders = pgTable("ai_providers", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const studyNotes = pgTable("study_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("Untitled Note"),
+  content: text("content").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const studyOutputs = pgTable("study_outputs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: varchar("note_id"),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(), // "summary" | "quiz" | "flashcards"
+  title: text("title").notNull(),
+  data: jsonb("data").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const broadcasts = pgTable("broadcasts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   message: text("message").notNull(),
@@ -120,6 +139,9 @@ export const insertAiProviderSchema = createInsertSchema(aiProviders).omit({ id:
 export type InsertAiProvider = z.infer<typeof insertAiProviderSchema>;
 export type AiProvider = typeof aiProviders.$inferSelect;
 
+export const insertStudyNoteSchema = createInsertSchema(studyNotes).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertStudyOutputSchema = createInsertSchema(studyOutputs).omit({ id: true, createdAt: true });
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
@@ -130,3 +152,7 @@ export type Folder = typeof folders.$inferSelect;
 export type UserMemory = typeof userMemories.$inferSelect;
 export type Broadcast = typeof broadcasts.$inferSelect;
 export type InsertBroadcast = z.infer<typeof insertBroadcastSchema>;
+export type StudyNote = typeof studyNotes.$inferSelect;
+export type StudyOutput = typeof studyOutputs.$inferSelect;
+export type InsertStudyNote = z.infer<typeof insertStudyNoteSchema>;
+export type InsertStudyOutput = z.infer<typeof insertStudyOutputSchema>;

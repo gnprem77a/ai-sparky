@@ -16,6 +16,7 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
+const StudyPage = lazy(() => import("@/pages/StudyPage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -94,6 +95,9 @@ function AppInner() {
         </Route>
         <Route path="/gallery">
           <GalleryPage />
+        </Route>
+        <Route path="/study">
+          <StudyPage />
         </Route>
         <Route>
           <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>

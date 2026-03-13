@@ -79,3 +79,68 @@ export async function streamWithFallback(
 
   return buildAdapter(fallbackConfig).stream(opts);
 }
+
+/**
+ * Generate a single text response (non-streaming) from the best available provider.
+ * Used for study features: summaries, quizzes, flashcards.
+ */
+export async function generateText(
+  providers: ProviderConfig[],
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens = 2048,
+): Promise<string> {
+  const candidates = [...providers.filter((p) => p.isEnabled).sort((a, b) => a.priority - b.priority)];
+
+  const fallback: ProviderConfig = {
+    id: "builtin",
+    name: "Bluesminds (built-in)",
+    providerType: "bluesminds",
+    apiUrl: "https://api.bluesminds.com/v1",
+    apiKey: process.env.BLUESMINDS_API_KEY ?? "",
+    modelName: "claude-sonnet-4-6",
+    headers: null,
+    bodyTemplate: null,
+    responsePath: null,
+    isActive: true,
+    isEnabled: true,
+    priority: 999,
+  };
+
+  candidates.push(fallback);
+
+  for (const prov of candidates) {
+    try {
+      const endpoint = `${(prov.apiUrl ?? "https://api.bluesminds.com/v1").replace(/\/$/, "")}/chat/completions`;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${prov.apiKey ?? ""}`,
+      };
+      if (prov.headers) {
+        try { Object.assign(headers, JSON.parse(prov.headers)); } catch {}
+      }
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: prov.modelName,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          max_tokens: maxTokens,
+          stream: false,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const text = json.choices?.[0]?.message?.content ?? "";
+      if (!text) throw new Error("Empty response");
+      return text;
+    } catch (err) {
+      console.error(`[generateText] provider "${prov.name}" failed:`, err);
+    }
+  }
+
+  throw new Error("All providers failed for generateText");
+}
