@@ -70,6 +70,13 @@ function AppInner() {
         </Suspense>
       );
     }
+    if (location === "/study" || location.startsWith("/study")) {
+      return (
+        <Suspense fallback={null}>
+          <StudyPage />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={null}>
         <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
