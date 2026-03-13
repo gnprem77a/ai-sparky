@@ -8,6 +8,7 @@ import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./too
 import multer from "multer";
 import { createRequire } from "module";
 import { streamWithFallback, testProvider, generateText, type ProviderConfig } from "./lib/providers/index";
+import { chunkText, generateEmbedding, generateEmbeddings, cosineSimilarity, rerankChunks, type RankedChunk } from "./lib/embeddings";
 const _require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = _require("pdf-parse");
 
@@ -1128,6 +1129,147 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err) {
       console.error("[study/generate] error:", err);
       return res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  /* ─── Knowledge Base ─────────────────────────────────────────── */
+
+  app.get("/api/kb", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kbs = await storage.getKnowledgeBases(userId);
+    res.json(kbs);
+  });
+
+  app.post("/api/kb", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const { name, description = "" } = req.body as { name: string; description?: string };
+    if (!name?.trim()) return res.status(400).json({ error: "Name required" });
+    const kb = await storage.createKnowledgeBase(userId, name.trim(), description.trim());
+    res.status(201).json(kb);
+  });
+
+  app.delete("/api/kb/:id", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+    await storage.deleteKnowledgeBase(req.params.id);
+    res.status(204).end();
+  });
+
+  app.get("/api/kb/:id/documents", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+    const docs = await storage.getKbDocuments(req.params.id);
+    res.json(docs);
+  });
+
+  app.post("/api/kb/:id/documents", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+
+    const { name, content } = req.body as { name: string; content: string };
+    if (!name?.trim() || !content?.trim()) return res.status(400).json({ error: "Name and content required" });
+
+    const chunks = chunkText(content.trim());
+    let embeddings: number[][];
+    try {
+      embeddings = await generateEmbeddings(chunks);
+    } catch (err) {
+      console.error("[kb/embed] failed:", err);
+      return res.status(502).json({ error: "Embedding failed — check your API credits" });
+    }
+
+    const doc = await storage.createKbDocument({
+      kbId: req.params.id,
+      userId,
+      name: name.trim(),
+      content: content.trim(),
+      chunkCount: chunks.length,
+    });
+
+    await storage.createKbChunks(
+      chunks.map((text, i) => ({
+        docId: doc.id,
+        kbId: req.params.id,
+        content: text,
+        embedding: embeddings[i],
+        chunkIndex: i,
+      }))
+    );
+
+    res.status(201).json(doc);
+  });
+
+  app.delete("/api/kb/:id/documents/:docId", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+    await storage.deleteKbChunksByDoc(req.params.docId);
+    await storage.deleteKbDocument(req.params.docId);
+    res.status(204).end();
+  });
+
+  app.post("/api/kb/:id/chat", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+
+    const { question } = req.body as { question: string };
+    if (!question?.trim()) return res.status(400).json({ error: "Question required" });
+
+    let queryEmbedding: number[];
+    try {
+      queryEmbedding = await generateEmbedding(question.trim());
+    } catch (err) {
+      return res.status(502).json({ error: "Embedding failed — check your API credits" });
+    }
+
+    const allChunks = await storage.getKbChunks(req.params.id);
+    if (allChunks.length === 0) return res.status(400).json({ error: "No documents in this knowledge base" });
+
+    const docMap = new Map<string, string>();
+    const kbDocs = await storage.getKbDocuments(req.params.id);
+    for (const d of kbDocs) docMap.set(d.id, d.name);
+
+    const scored: RankedChunk[] = allChunks
+      .filter(c => c.embedding && c.embedding.length > 0)
+      .map(c => ({
+        content: c.content,
+        docName: docMap.get(c.docId) ?? "Unknown",
+        docId: c.docId,
+        similarity: cosineSimilarity(queryEmbedding, c.embedding as number[]),
+      }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 10);
+
+    const reranked = await rerankChunks(question.trim(), scored, 5);
+
+    const context = reranked
+      .map((c, i) => `[Source ${i + 1}: ${c.docName}]\n${c.content}`)
+      .join("\n\n---\n\n");
+
+    const sources = reranked.map(c => ({ docName: c.docName, docId: c.docId, snippet: c.content.slice(0, 150) }));
+
+    const providers = (await storage.getActiveProviders()).map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, bodyTemplate: p.bodyTemplate ?? null,
+      responsePath: p.responsePath ?? null, isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    }));
+
+    try {
+      const answer = await generateText(
+        providers,
+        `You are a helpful assistant that answers questions strictly based on the provided document context. If the answer is not in the context, say "I couldn't find that in the provided documents." Always cite which source you used.`,
+        `CONTEXT FROM DOCUMENTS:\n\n${context}\n\n---\n\nQUESTION: ${question.trim()}\n\nAnswer based only on the context above:`,
+        1000,
+      );
+      res.json({ answer, sources });
+    } catch (err) {
+      console.error("[kb/chat] error:", err);
+      res.status(500).json({ error: (err as Error).message });
     }
   });
 

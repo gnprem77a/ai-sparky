@@ -9,6 +9,8 @@ import {
   type Broadcast, type InsertBroadcast, broadcasts,
   type AiProvider, type InsertAiProvider, aiProviders,
   type StudyNote, type StudyOutput, studyNotes, studyOutputs,
+  type KnowledgeBase, type KbDocument, type KbChunk,
+  knowledgeBases, kbDocuments, kbChunks,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -81,6 +83,18 @@ export interface IStorage {
   getStudyOutputs(userId: string, type?: string): Promise<StudyOutput[]>;
   createStudyOutput(data: { noteId?: string; userId: string; type: string; title: string; data: unknown }): Promise<StudyOutput>;
   deleteStudyOutput(id: string): Promise<void>;
+
+  getKnowledgeBases(userId: string): Promise<KnowledgeBase[]>;
+  getKnowledgeBase(id: string): Promise<KnowledgeBase | undefined>;
+  createKnowledgeBase(userId: string, name: string, description: string): Promise<KnowledgeBase>;
+  deleteKnowledgeBase(id: string): Promise<void>;
+  getKbDocuments(kbId: string): Promise<KbDocument[]>;
+  getKbDocument(id: string): Promise<KbDocument | undefined>;
+  createKbDocument(data: { kbId: string; userId: string; name: string; content: string; chunkCount: number }): Promise<KbDocument>;
+  deleteKbDocument(id: string): Promise<void>;
+  createKbChunks(chunks: { docId: string; kbId: string; content: string; embedding: number[]; chunkIndex: number }[]): Promise<void>;
+  getKbChunks(kbId: string): Promise<KbChunk[]>;
+  deleteKbChunksByDoc(docId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -501,6 +515,55 @@ export class DatabaseStorage implements IStorage {
 
   async deleteStudyOutput(id: string): Promise<void> {
     await db.delete(studyOutputs).where(eq(studyOutputs.id, id));
+  }
+
+  async getKnowledgeBases(userId: string): Promise<KnowledgeBase[]> {
+    return db.select().from(knowledgeBases).where(eq(knowledgeBases.userId, userId)).orderBy(desc(knowledgeBases.createdAt));
+  }
+
+  async getKnowledgeBase(id: string): Promise<KnowledgeBase | undefined> {
+    const [kb] = await db.select().from(knowledgeBases).where(eq(knowledgeBases.id, id));
+    return kb;
+  }
+
+  async createKnowledgeBase(userId: string, name: string, description: string): Promise<KnowledgeBase> {
+    const [kb] = await db.insert(knowledgeBases).values({ userId, name, description }).returning();
+    return kb;
+  }
+
+  async deleteKnowledgeBase(id: string): Promise<void> {
+    await db.delete(knowledgeBases).where(eq(knowledgeBases.id, id));
+  }
+
+  async getKbDocuments(kbId: string): Promise<KbDocument[]> {
+    return db.select().from(kbDocuments).where(eq(kbDocuments.kbId, kbId)).orderBy(desc(kbDocuments.createdAt));
+  }
+
+  async getKbDocument(id: string): Promise<KbDocument | undefined> {
+    const [doc] = await db.select().from(kbDocuments).where(eq(kbDocuments.id, id));
+    return doc;
+  }
+
+  async createKbDocument(data: { kbId: string; userId: string; name: string; content: string; chunkCount: number }): Promise<KbDocument> {
+    const [doc] = await db.insert(kbDocuments).values(data).returning();
+    return doc;
+  }
+
+  async deleteKbDocument(id: string): Promise<void> {
+    await db.delete(kbDocuments).where(eq(kbDocuments.id, id));
+  }
+
+  async createKbChunks(chunks: { docId: string; kbId: string; content: string; embedding: number[]; chunkIndex: number }[]): Promise<void> {
+    if (chunks.length === 0) return;
+    await db.insert(kbChunks).values(chunks);
+  }
+
+  async getKbChunks(kbId: string): Promise<KbChunk[]> {
+    return db.select().from(kbChunks).where(eq(kbChunks.kbId, kbId));
+  }
+
+  async deleteKbChunksByDoc(docId: string): Promise<void> {
+    await db.delete(kbChunks).where(eq(kbChunks.docId, docId));
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, GraduationCap } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, GraduationCap, Database } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -733,6 +733,14 @@ export function AppSidebar({
               <a href="/study" data-testid="link-study">
                 <GraduationCap className="w-4 h-4 text-violet-400" />
                 <span>Studies</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="/kb" data-testid="link-knowledge-base">
+                <Database className="w-4 h-4 text-blue-400" />
+                <span>Knowledge Base</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

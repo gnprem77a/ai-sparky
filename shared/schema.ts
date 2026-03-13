@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, integer, jsonb, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -117,6 +117,33 @@ export const studyOutputs = pgTable("study_outputs", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const knowledgeBases = pgTable("knowledge_bases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const kbDocuments = pgTable("kb_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kbId: varchar("kb_id").notNull().references(() => knowledgeBases.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  chunkCount: integer("chunk_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const kbChunks = pgTable("kb_chunks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  docId: varchar("doc_id").notNull().references(() => kbDocuments.id, { onDelete: "cascade" }),
+  kbId: varchar("kb_id").notNull(),
+  content: text("content").notNull(),
+  embedding: real("embedding").array(),
+  chunkIndex: integer("chunk_index").notNull(),
+});
+
 export const broadcasts = pgTable("broadcasts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   message: text("message").notNull(),
@@ -156,3 +183,11 @@ export type StudyNote = typeof studyNotes.$inferSelect;
 export type StudyOutput = typeof studyOutputs.$inferSelect;
 export type InsertStudyNote = z.infer<typeof insertStudyNoteSchema>;
 export type InsertStudyOutput = z.infer<typeof insertStudyOutputSchema>;
+
+export const insertKnowledgeBaseSchema = createInsertSchema(knowledgeBases).omit({ id: true, createdAt: true });
+export const insertKbDocumentSchema = createInsertSchema(kbDocuments).omit({ id: true, createdAt: true });
+export type KnowledgeBase = typeof knowledgeBases.$inferSelect;
+export type KbDocument = typeof kbDocuments.$inferSelect;
+export type KbChunk = typeof kbChunks.$inferSelect;
+export type InsertKnowledgeBase = z.infer<typeof insertKnowledgeBaseSchema>;
+export type InsertKbDocument = z.infer<typeof insertKbDocumentSchema>;

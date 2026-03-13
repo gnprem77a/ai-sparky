@@ -17,6 +17,7 @@ const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 const StudyPage = lazy(() => import("@/pages/StudyPage"));
+const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -77,6 +78,13 @@ function AppInner() {
         </Suspense>
       );
     }
+    if (location === "/kb" || location.startsWith("/kb")) {
+      return (
+        <Suspense fallback={null}>
+          <KnowledgeBasePage />
+        </Suspense>
+      );
+    }
     return (
       <Suspense fallback={null}>
         <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
@@ -105,6 +113,9 @@ function AppInner() {
         </Route>
         <Route path="/study">
           <StudyPage />
+        </Route>
+        <Route path="/kb">
+          <KnowledgeBasePage />
         </Route>
         <Route>
           <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
