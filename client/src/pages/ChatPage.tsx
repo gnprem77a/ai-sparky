@@ -548,6 +548,7 @@ export default function ChatPage() {
     convId: string,
     msgs: Message[],
     assistantMsgId: string,
+    modelOverride?: string,
   ) => {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -579,7 +580,7 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: historyForApi, model: isPro ? model : "fast", maxTokens: 4096, webSearch: webSearchMode }),
+        body: JSON.stringify({ messages: historyForApi, model: isPro ? (modelOverride ?? model) : "fast", maxTokens: 4096, webSearch: webSearchMode }),
         signal: controller.signal,
       });
 
@@ -851,6 +852,31 @@ export default function ChatPage() {
     setMessages(updatedMsgs);
 
     await streamAssistantReply(activeId, updatedMsgs, assistantMsgId);
+  }, [activeId, messages, isStreaming]);
+
+  const handleRetryWith = useCallback(async (modelKey: string) => {
+    if (!activeId || isStreaming || messages.length === 0) return;
+
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) return;
+
+    const assistantMsgId = crypto.randomUUID();
+    const newAssistantMsg: Message = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+      isPinned: false,
+    };
+
+    const updatedMsgs = messages.filter((m) => m.id !== lastAssistant.id);
+    updatedMsgs.push(newAssistantMsg);
+
+    isSubmittingRef.current = true;
+    setError(null);
+    setMessages(updatedMsgs);
+
+    await streamAssistantReply(activeId, updatedMsgs, assistantMsgId, modelKey);
   }, [activeId, messages, isStreaming]);
 
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
@@ -1142,6 +1168,12 @@ export default function ChatPage() {
                           ? handleRegenerate
                           : undefined
                       }
+                      onRetryWith={
+                        msg.role === "assistant" && msg.id === lastAssistantMsg?.id && !isStreaming
+                          ? handleRetryWith
+                          : undefined
+                      }
+                      isPro={isPro}
                       onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
                       onFork={msg.role === "user" && !isStreaming ? handleForkMessage : undefined}
                       onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
@@ -1279,93 +1311,131 @@ export default function ChatPage() {
   );
 }
 
-const SUGGESTIONS = [
+const QUICK_SUGGESTIONS = [
+  { icon: Code2,       label: "Write code",       prompt: "Write a TypeScript function that debounces any async function and returns a promise.", color: "text-blue-400",   bg: "bg-blue-500/8"   },
+  { icon: PenLine,     label: "Draft writing",     prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.", color: "text-violet-400", bg: "bg-violet-500/8" },
+  { icon: BarChart2,   label: "Analyze data",      prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.", color: "text-emerald-400", bg: "bg-emerald-500/8" },
+  { icon: Lightbulb,   label: "Brainstorm ideas",  prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.", color: "text-amber-400",  bg: "bg-amber-500/8"  },
+  { icon: Globe,       label: "Explain concepts",  prompt: "Explain how large language models work in plain English, step by step.", color: "text-cyan-400",   bg: "bg-cyan-500/8"   },
+  { icon: FlaskConical,label: "Debug & review",    prompt: "What are the most common React performance pitfalls and how do I fix them?", color: "text-rose-400",   bg: "bg-rose-500/8"   },
+];
+
+const STARTER_TEMPLATES = [
   {
     icon: Code2,
-    label: "Write code",
-    prompt: "Write a TypeScript function that debounces any async function and returns a promise.",
+    label: "Code Review",
+    category: "Technical",
+    desc: "Paste your code for a detailed review",
+    prompt: "Please review the following code for bugs, performance issues, and best practices. Provide specific, actionable feedback:\n\n```\n// Paste your code here\n```",
     color: "text-blue-400",
-    bg: "bg-blue-500/8 hover:bg-blue-500/14 border-blue-500/15",
+    bgGradient: "from-blue-500/10 to-blue-500/5",
+    border: "border-blue-500/20",
   },
   {
     icon: PenLine,
-    label: "Draft writing",
-    prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.",
+    label: "Email Draft",
+    category: "Writing",
+    desc: "Write a professional email in seconds",
+    prompt: "Help me write a professional email. Here are the details:\n- To: [recipient]\n- Purpose: [what you want to achieve]\n- Tone: [formal/friendly/urgent]\n- Key points to include: [list your points]",
     color: "text-violet-400",
-    bg: "bg-violet-500/8 hover:bg-violet-500/14 border-violet-500/15",
+    bgGradient: "from-violet-500/10 to-violet-500/5",
+    border: "border-violet-500/20",
   },
   {
     icon: BarChart2,
-    label: "Analyze data",
-    prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.",
+    label: "Resume Help",
+    category: "Career",
+    desc: "Improve a bullet point or section",
+    prompt: "Help me improve this resume bullet point to be more impactful and results-oriented:\n\n[Paste your bullet point here]\n\nJob I'm applying for: [Job title]",
     color: "text-emerald-400",
-    bg: "bg-emerald-500/8 hover:bg-emerald-500/14 border-emerald-500/15",
+    bgGradient: "from-emerald-500/10 to-emerald-500/5",
+    border: "border-emerald-500/20",
   },
   {
     icon: Lightbulb,
-    label: "Brainstorm ideas",
-    prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.",
+    label: "Study Plan",
+    category: "Learning",
+    desc: "Build a structured learning roadmap",
+    prompt: "Create a detailed 4-week study plan to learn [topic]. I'm a [beginner/intermediate/advanced] learner with [X hours/week] available. Include resources, milestones, and daily exercises.",
     color: "text-amber-400",
-    bg: "bg-amber-500/8 hover:bg-amber-500/14 border-amber-500/15",
-  },
-  {
-    icon: Globe,
-    label: "Explain concepts",
-    prompt: "Explain how large language models work in plain English, step by step.",
-    color: "text-cyan-400",
-    bg: "bg-cyan-500/8 hover:bg-cyan-500/14 border-cyan-500/15",
-  },
-  {
-    icon: FlaskConical,
-    label: "Debug & review",
-    prompt: "What are the most common React performance pitfalls and how do I fix them?",
-    color: "text-rose-400",
-    bg: "bg-rose-500/8 hover:bg-rose-500/14 border-rose-500/15",
+    bgGradient: "from-amber-500/10 to-amber-500/5",
+    border: "border-amber-500/20",
   },
 ];
 
 function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   const { t } = useLanguage();
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-full py-12 px-6 overflow-hidden">
+    <div className="relative flex flex-col items-center justify-center min-h-full py-10 px-6 overflow-hidden">
       {/* Ambient glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-      <div className="relative mb-6">
-        <img src="/logo.png" alt="AI Sparky" className="w-18 h-18 w-[72px] h-[72px] rounded-2xl object-cover shadow-2xl shadow-primary/40 ring-1 ring-white/10" />
+      <div className="relative mb-5">
+        <img src="/logo.png" alt="AI Sparky" className="w-[72px] h-[72px] rounded-2xl object-cover shadow-2xl shadow-primary/40 ring-1 ring-white/10" />
         <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-3xl scale-[2] -z-10" />
       </div>
 
-      <h1 className="text-[2rem] font-black tracking-tight text-foreground mb-2.5 text-center">
+      <h1 className="text-[2rem] font-black tracking-tight text-foreground mb-2 text-center">
         {t("chat.empty.title")}
       </h1>
-      <p className="text-muted-foreground/70 text-sm mb-10 text-center max-w-[340px] leading-relaxed">
+      <p className="text-muted-foreground/70 text-sm mb-7 text-center max-w-[340px] leading-relaxed">
         {t("chat.empty.subtitle")}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl">
-        {SUGGESTIONS.map((s) => {
+      {/* Starter Templates */}
+      <div className="w-full max-w-2xl mb-6">
+        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-3">Starter Templates</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {STARTER_TEMPLATES.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.label}
+                onClick={() => onSuggest(t.prompt)}
+                data-testid={`template-${t.label.toLowerCase().replace(/\s+/g, "-")}`}
+                className={cn(
+                  "group flex items-start gap-3 px-4 py-3.5 rounded-xl border text-left transition-all hover:shadow-md hover:scale-[1.01]",
+                  `bg-gradient-to-br ${t.bgGradient}`,
+                  t.border,
+                )}
+              >
+                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5", t.bgGradient.split(" ")[0].replace("from-", "bg-").replace("/10", "/20"))}>
+                  <Icon className={cn("w-4 h-4", t.color)} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[13px] font-semibold text-foreground">{t.label}</span>
+                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full", t.bgGradient.split(" ")[0].replace("from-", "bg-").replace("/10", "/20"), t.color)}>{t.category}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{t.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Quick prompts */}
+      <div className="w-full max-w-2xl">
+        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-3">Quick Prompts</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        {QUICK_SUGGESTIONS.map((s) => {
           const Icon = s.icon;
           return (
             <button
               key={s.label}
               onClick={() => onSuggest(s.prompt)}
               data-testid={`suggestion-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
-              className="group relative flex flex-col items-start gap-2.5 px-5 py-4 rounded-2xl border border-border/50 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/8 text-left transition-all duration-200 shadow-sm overflow-hidden"
+              className="group relative flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border/50 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-md text-left transition-all duration-200"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/0 via-transparent to-primary/0 group-hover:from-primary/5 group-hover:to-violet-500/3 transition-all duration-300 rounded-2xl" />
-              <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 relative", s.bg.split(" ")[0])}>
-                <Icon className={cn("w-4 h-4", s.color)} />
+              <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", s.bg)}>
+                <Icon className={cn("w-3.5 h-3.5", s.color)} />
               </div>
-              <span className="text-[13px] font-semibold text-foreground group-hover:text-foreground leading-tight relative">
-                {s.label}
-              </span>
-              <span className="text-[11px] text-muted-foreground/60 leading-snug line-clamp-2 relative">
-                {s.prompt}
-              </span>
+                      <span className="text-[12px] font-semibold text-foreground leading-tight">{s.label}</span>
             </button>
           );
         })}
+        </div>
       </div>
     </div>
   );

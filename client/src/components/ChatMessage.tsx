@@ -130,6 +130,7 @@ interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
   onRegenerate?: () => void;
+  onRetryWith?: (model: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
   onFork?: (messageId: string) => void;
   onQuoteReply?: (messageId: string, snippet: string) => void;
@@ -137,6 +138,7 @@ interface ChatMessageProps {
   conversationId?: string;
   assistantName?: string;
   fontSize?: string;
+  isPro?: boolean;
   searchQuery?: string;
   showTokenUsage?: boolean;
 }
@@ -376,7 +378,14 @@ function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; i
   );
 }
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false }: ChatMessageProps) {
+const RETRY_MODELS = [
+  { key: "fast",     label: "Fast",     desc: "Quick & efficient",   color: "text-green-400",  proOnly: false },
+  { key: "balanced", label: "Balanced", desc: "Smart everyday",      color: "text-blue-400",   proOnly: true  },
+  { key: "powerful", label: "Powerful", desc: "Most capable",        color: "text-violet-400", proOnly: true  },
+  { key: "creative", label: "Creative", desc: "Imaginative output",  color: "text-rose-400",   proOnly: true  },
+];
+
+function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -385,7 +394,20 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
   const [localReaction, setLocalReaction] = useState<string | null>(message.reaction ?? null);
   const [localIsPinned, setLocalIsPinned] = useState(message.isPinned ?? false);
   const [isForkLoading, setIsForkLoading] = useState(false);
+  const [retryMenuOpen, setRetryMenuOpen] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const retryMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!retryMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (retryMenuRef.current && !retryMenuRef.current.contains(e.target as Node)) {
+        setRetryMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [retryMenuOpen]);
 
   const fontClass = fontSize === "compact" ? "text-xs" : fontSize === "large" ? "text-base" : "text-sm";
 
@@ -1036,6 +1058,53 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onEdit, onFork, 
               </button>
             )}
 
+            {/* Retry with model dropdown */}
+            {onRetryWith && isLast && (
+              <div className="relative" ref={retryMenuRef}>
+                <button
+                  onClick={() => setRetryMenuOpen((v) => !v)}
+                  data-testid="button-retry-with"
+                  title="Retry with a different model"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 text-xs transition-all"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Retry with</span>
+                  <ChevronDown className={cn("w-3 h-3 transition-transform", retryMenuOpen && "rotate-180")} />
+                </button>
+
+                {retryMenuOpen && (
+                  <div className="absolute bottom-full left-0 mb-1.5 w-52 rounded-xl border border-border bg-card shadow-xl shadow-black/20 overflow-hidden z-50 animate-fade-up">
+                    <div className="px-3 py-2 border-b border-border/60">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Choose model</p>
+                    </div>
+                    {RETRY_MODELS.map((m) => {
+                      const locked = m.proOnly && !isPro;
+                      return (
+                        <button
+                          key={m.key}
+                          onClick={() => { if (!locked) { onRetryWith(m.key); setRetryMenuOpen(false); } }}
+                          data-testid={`button-retry-model-${m.key}`}
+                          disabled={locked}
+                          className={cn(
+                            "w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors",
+                            locked ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/50"
+                          )}
+                        >
+                          <div>
+                            <p className={cn("text-xs font-semibold", m.color)}>{m.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{m.desc}</p>
+                          </div>
+                          {locked && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500">PRO</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Model badge */}
             {message.modelUsed && (() => {
               const style = BADGE_STYLE[message.modelUsed];
@@ -1081,7 +1150,9 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.fontSize === next.fontSize &&
   prev.searchQuery === next.searchQuery &&
   prev.showTokenUsage === next.showTokenUsage &&
+  prev.isPro === next.isPro &&
   prev.onRegenerate === next.onRegenerate &&
+  prev.onRetryWith === next.onRetryWith &&
   prev.onEdit === next.onEdit &&
   prev.onFork === next.onFork &&
   prev.onQuoteReply === next.onQuoteReply

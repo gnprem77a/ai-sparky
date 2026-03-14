@@ -19,31 +19,105 @@ interface ChatMessage {
 
 function WelcomeScreen() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-8 py-16 text-center overflow-y-auto">
-      <div className="w-16 h-16 rounded-2xl bg-blue-500/15 flex items-center justify-center mb-6">
-        <Database className="w-8 h-8 text-blue-400" />
-      </div>
-      <h1 className="text-2xl font-bold text-foreground mb-3">Knowledge Base</h1>
-      <p className="text-sm text-muted-foreground max-w-md leading-relaxed mb-10">
-        Upload your documents and ask questions about them. Powered by semantic search with embed-v-4-0 and Cohere reranking.
-      </p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-8 py-12 space-y-10">
 
-      <div className="grid grid-cols-3 gap-4 max-w-2xl w-full mb-10">
-        {[
-          { icon: <FileText className="w-5 h-5 text-blue-400" />, bg: "bg-blue-500/10", title: "Upload Documents", desc: "Paste text, articles, manuals, or any reference material" },
-          { icon: <Search className="w-5 h-5 text-violet-400" />, bg: "bg-violet-500/10", title: "Semantic Search", desc: "Finds relevant content by meaning — not just keywords" },
-          { icon: <Zap className="w-5 h-5 text-amber-400" />, bg: "bg-amber-500/10", title: "AI Q&A", desc: "Ask anything — get cited answers from your own docs" },
-        ].map(({ icon, bg, title, desc }) => (
-          <div key={title} className="rounded-xl border border-border/60 bg-card/40 p-4 text-left">
-            <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center mb-3`}>{icon}</div>
-            <p className="text-sm font-semibold text-foreground mb-1">{title}</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+        {/* Hero */}
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-violet-500/10 flex items-center justify-center mx-auto border border-blue-500/20 shadow-lg shadow-blue-500/10">
+            <Database className="w-8 h-8 text-blue-400" />
           </div>
-        ))}
-      </div>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground mb-2">Knowledge Base</h1>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
+              Your own private AI that knows <strong className="text-foreground">your documents</strong>. Upload anything — then ask questions and get instant answers from your own content.
+            </p>
+          </div>
+        </div>
 
-      <div className="text-xs text-muted-foreground/60 space-y-1">
-        <p>← Create a knowledge base from the sidebar to get started</p>
+        {/* What is it in plain English */}
+        <div className="rounded-2xl border border-blue-500/15 bg-blue-500/5 p-6 space-y-3">
+          <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">What does this do?</p>
+          <p className="text-sm text-foreground leading-relaxed">
+            Imagine you have a 100-page manual, a research paper, or your company's entire documentation. Instead of searching through it manually, you just <strong>ask a question</strong> and the AI instantly finds and reads the right parts to give you an accurate answer — with citations showing exactly where it found the information.
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            The AI only uses <strong className="text-foreground">your documents</strong> — it won't make things up or pull information from the internet. Every answer is grounded in what you uploaded.
+          </p>
+        </div>
+
+        {/* Real-world use cases */}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Popular use cases</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              {
+                icon: <FileText className="w-4 h-4" />,
+                color: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+                title: "Company Docs & SOPs",
+                desc: "Upload employee handbooks, procedures, or policies. Ask \"How do I submit a reimbursement?\" and get an instant cited answer.",
+              },
+              {
+                icon: <BookOpen className="w-4 h-4" />,
+                color: "text-violet-400 bg-violet-500/10 border-violet-500/20",
+                title: "Research & Study Notes",
+                desc: "Upload papers, textbooks, or lecture notes. Ask questions like \"What does the paper say about inflammation?\"",
+              },
+              {
+                icon: <MessageSquare className="w-4 h-4" />,
+                color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+                title: "Product Manuals & FAQs",
+                desc: "Let customers or your team ask questions about your product and get precise answers pulled directly from the manual.",
+              },
+              {
+                icon: <Zap className="w-4 h-4" />,
+                color: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+                title: "Legal & Contracts",
+                desc: "Upload contracts, agreements, or legal documents. Ask \"What are the termination clauses?\" and find it in seconds.",
+              },
+            ].map(({ icon, color, title, desc }) => (
+              <div key={title} className={`flex gap-3 p-4 rounded-xl border bg-card/40`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
+                  {icon}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-1">{title}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* How it works */}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">How it works — 3 simple steps</p>
+          <div className="space-y-2">
+            {[
+              { step: "1", icon: <Plus className="w-4 h-4" />, title: "Create a Knowledge Base", desc: "Give it a name like \"Product Docs\" or \"Research Papers\". You can have multiple for different topics.", color: "bg-blue-500" },
+              { step: "2", icon: <Upload className="w-4 h-4" />, title: "Add your documents", desc: "Paste text, upload PDFs, or type directly. Add as many documents as you need — each gets indexed automatically.", color: "bg-violet-500" },
+              { step: "3", icon: <MessageSquare className="w-4 h-4" />, title: "Ask questions in Chat", desc: "Switch to the Chat tab and ask anything. The AI searches your documents, finds the relevant parts, and gives you a cited answer.", color: "bg-emerald-500" },
+            ].map(({ step, icon, title, desc, color }) => (
+              <div key={step} className="flex gap-4 p-4 rounded-xl border border-border/50 bg-card/30">
+                <div className={`w-8 h-8 rounded-full ${color} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                  {step}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-0.5">{title}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="text-center pt-2 pb-6">
+          <p className="text-xs text-muted-foreground/60 flex items-center justify-center gap-1.5">
+            <ChevronRight className="w-3.5 h-3.5" />
+            Click <strong className="text-foreground">+ New Knowledge Base</strong> in the sidebar to get started
+          </p>
+        </div>
       </div>
     </div>
   );
