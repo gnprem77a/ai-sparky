@@ -56,6 +56,9 @@ export interface IStorage {
   getAnalyticsOverview(userId: string): Promise<{ totalConversations: number; totalMessages: number; totalTokens: number; avgTokensPerMessage: number }>;
   getAnalyticsDaily(userId: string): Promise<{ date: string; messageCount: number; tokenCount: number }[]>;
   getAnalyticsModels(userId: string): Promise<{ model: string; count: number; percentage: number }[]>;
+  getAnalyticsPeakHours(userId: string): Promise<{ hour: number; count: number }[]>;
+  getAnalyticsCost(userId: string): Promise<{ estimatedCostUsd: number; byModel: { model: string; costUsd: number }[] }>;
+  getAnalyticsTopConversations(userId: string): Promise<{ id: string; title: string; totalTokens: number }[]>;
 
   getMemories(userId: string): Promise<UserMemory[]>;
   createMemory(userId: string, content: string): Promise<UserMemory>;
@@ -86,7 +89,9 @@ export interface IStorage {
 
   getKnowledgeBases(userId: string): Promise<KnowledgeBase[]>;
   getKnowledgeBase(id: string): Promise<KnowledgeBase | undefined>;
+  getKnowledgeBaseByToken(token: string): Promise<KnowledgeBase | undefined>;
   createKnowledgeBase(userId: string, name: string, description: string): Promise<KnowledgeBase>;
+  updateKnowledgeBase(id: string, data: Partial<Pick<KnowledgeBase, "name" | "description" | "isPublic" | "shareToken">>): Promise<KnowledgeBase | undefined>;
   deleteKnowledgeBase(id: string): Promise<void>;
   getKbDocuments(kbId: string): Promise<KbDocument[]>;
   getKbDocument(id: string): Promise<KbDocument | undefined>;
@@ -375,6 +380,81 @@ export class DatabaseStorage implements IStorage {
       .map(([model, count]) => ({ model, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 }));
   }
 
+  async getAnalyticsPeakHours(userId: string): Promise<{ hour: number; count: number }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    const hourMap: Record<number, number> = {};
+    for (let h = 0; h < 24; h++) hourMap[h] = 0;
+    if (convIds.length > 0) {
+      for (const convId of convIds) {
+        const msgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
+        for (const msg of msgs) {
+          if (msg.role === "user") {
+            const hour = new Date(msg.createdAt).getHours();
+            hourMap[hour] = (hourMap[hour] ?? 0) + 1;
+          }
+        }
+      }
+    }
+    return Object.entries(hourMap).map(([hour, count]) => ({ hour: Number(hour), count }));
+  }
+
+  async getAnalyticsCost(userId: string): Promise<{ estimatedCostUsd: number; byModel: { model: string; costUsd: number }[] }> {
+    const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+      "claude-3-5-sonnet": { input: 3, output: 15 },
+      "claude-3-5-haiku": { input: 0.8, output: 4 },
+      "claude-3-haiku": { input: 0.25, output: 1.25 },
+      "claude-3-opus": { input: 15, output: 75 },
+      "claude-opus-4": { input: 15, output: 75 },
+      "claude-sonnet-4": { input: 3, output: 15 },
+      "llama": { input: 0.18, output: 0.18 },
+      "gemini-pro": { input: 1.25, output: 5 },
+      "gpt-4o": { input: 2.5, output: 10 },
+      "gpt-4": { input: 30, output: 60 },
+      "gpt-3.5": { input: 0.5, output: 1.5 },
+      "default": { input: 3, output: 15 },
+    };
+    const getPricing = (model: string) => {
+      const key = Object.keys(MODEL_PRICING).find((k) => model.toLowerCase().includes(k));
+      return key ? MODEL_PRICING[key] : MODEL_PRICING["default"];
+    };
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const convIds = userConvs.map((c) => c.id);
+    const modelCost: Record<string, number> = {};
+    let totalCost = 0;
+    if (convIds.length > 0) {
+      for (const convId of convIds) {
+        const msgs = await db.select().from(messages).where(eq(messages.conversationId, convId));
+        for (const msg of msgs) {
+          if (!msg.modelUsed) continue;
+          const pricing = getPricing(msg.modelUsed);
+          const inputCost = ((msg.inputTokens ?? 0) / 1_000_000) * pricing.input;
+          const outputCost = ((msg.outputTokens ?? 0) / 1_000_000) * pricing.output;
+          const msgCost = inputCost + outputCost;
+          modelCost[msg.modelUsed] = (modelCost[msg.modelUsed] ?? 0) + msgCost;
+          totalCost += msgCost;
+        }
+      }
+    }
+    return {
+      estimatedCostUsd: Math.round(totalCost * 10000) / 10000,
+      byModel: Object.entries(modelCost)
+        .sort(([, a], [, b]) => b - a)
+        .map(([model, costUsd]) => ({ model, costUsd: Math.round(costUsd * 10000) / 10000 })),
+    };
+  }
+
+  async getAnalyticsTopConversations(userId: string): Promise<{ id: string; title: string; totalTokens: number }[]> {
+    const userConvs = await db.select().from(conversations).where(eq(conversations.userId, userId));
+    const results: { id: string; title: string; totalTokens: number }[] = [];
+    for (const conv of userConvs) {
+      const msgs = await db.select().from(messages).where(eq(messages.conversationId, conv.id));
+      const totalTokens = msgs.reduce((s, m) => s + (m.inputTokens ?? 0) + (m.outputTokens ?? 0), 0);
+      results.push({ id: conv.id, title: conv.title, totalTokens });
+    }
+    return results.sort((a, b) => b.totalTokens - a.totalTokens).slice(0, 5);
+  }
+
   async getMemories(userId: string): Promise<UserMemory[]> {
     return db.select().from(userMemories)
       .where(eq(userMemories.userId, userId))
@@ -526,8 +606,18 @@ export class DatabaseStorage implements IStorage {
     return kb;
   }
 
+  async getKnowledgeBaseByToken(token: string): Promise<KnowledgeBase | undefined> {
+    const [kb] = await db.select().from(knowledgeBases).where(eq(knowledgeBases.shareToken, token));
+    return kb;
+  }
+
   async createKnowledgeBase(userId: string, name: string, description: string): Promise<KnowledgeBase> {
     const [kb] = await db.insert(knowledgeBases).values({ userId, name, description }).returning();
+    return kb;
+  }
+
+  async updateKnowledgeBase(id: string, data: Partial<Pick<KnowledgeBase, "name" | "description" | "isPublic" | "shareToken">>): Promise<KnowledgeBase | undefined> {
+    const [kb] = await db.update(knowledgeBases).set(data).where(eq(knowledgeBases.id, id)).returning();
     return kb;
   }
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { MessageSquare, Database, Cpu, TrendingUp, ArrowLeft } from "lucide-react";
+import { MessageSquare, Database, Cpu, TrendingUp, ArrowLeft, DollarSign, Clock, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
@@ -24,7 +24,30 @@ interface ModelData {
   percentage: number;
 }
 
+interface PeakHourData {
+  hour: number;
+  count: number;
+}
+
+interface CostData {
+  estimatedCostUsd: number;
+  byModel: { model: string; costUsd: number }[];
+}
+
+interface TopConversation {
+  id: string;
+  title: string;
+  totalTokens: number;
+}
+
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
+
+function formatHour(hour: number) {
+  if (hour === 0) return "12am";
+  if (hour < 12) return `${hour}am`;
+  if (hour === 12) return "12pm";
+  return `${hour - 12}pm`;
+}
 
 export default function AnalyticsPage() {
   const { data: overview, isLoading: loadingOverview } = useQuery<OverviewData>({
@@ -39,6 +62,18 @@ export default function AnalyticsPage() {
     queryKey: ["/api/analytics/models"],
   });
 
+  const { data: peakHours } = useQuery<PeakHourData[]>({
+    queryKey: ["/api/analytics/peak-hours"],
+  });
+
+  const { data: cost } = useQuery<CostData>({
+    queryKey: ["/api/analytics/cost"],
+  });
+
+  const { data: topConversations } = useQuery<TopConversation[]>({
+    queryKey: ["/api/analytics/top-conversations"],
+  });
+
   if (loadingOverview || loadingDaily || loadingModels) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
@@ -50,6 +85,8 @@ export default function AnalyticsPage() {
       </div>
     );
   }
+
+  const peakHourData = peakHours?.map(h => ({ ...h, label: formatHour(h.hour) })) ?? [];
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-8 overflow-y-auto custom-scrollbar">
@@ -95,11 +132,14 @@ export default function AnalyticsPage() {
         </Card>
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 gap-1">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Avg Response Length</CardTitle>
-            <Cpu className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Estimated Cost</CardTitle>
+            <DollarSign className="w-4 h-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-avg-tokens">{overview?.avgTokensPerMessage ?? 0} <span className="text-xs font-normal text-muted-foreground">tokens</span></div>
+            <div className="text-2xl font-bold" data-testid="text-estimated-cost">
+              ${(cost?.estimatedCostUsd ?? 0).toFixed(4)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">based on token usage</p>
           </CardContent>
         </Card>
       </div>
@@ -114,18 +154,49 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={daily}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis 
-                  dataKey="date" 
-                  fontSize={10} 
-                  tickFormatter={(val) => val.slice(5)} 
+                <XAxis
+                  dataKey="date"
+                  fontSize={10}
+                  tickFormatter={(val) => val.slice(5)}
                   stroke="hsl(var(--muted-foreground))"
                 />
                 <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
                 <Bar dataKey="messageCount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Peak hours chart */}
+        <Card className="p-6">
+          <CardHeader className="px-0 pt-0 pb-6 gap-1">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-lg font-semibold">Peak Activity Hours</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground">Messages sent by hour of day</p>
+          </CardHeader>
+          <div className="h-[300px] w-full" data-testid="chart-peak-hours">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={peakHourData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="label"
+                  fontSize={9}
+                  interval={2}
+                  stroke="hsl(var(--muted-foreground))"
+                />
+                <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
+                  itemStyle={{ fontSize: '12px' }}
+                  formatter={(v: number) => [v, "Messages"]}
+                />
+                <Bar dataKey="count" fill="hsl(var(--chart-2))" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -140,14 +211,14 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={daily}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis 
-                  dataKey="date" 
-                  fontSize={10} 
-                  tickFormatter={(val) => val.slice(5)} 
+                <XAxis
+                  dataKey="date"
+                  fontSize={10}
+                  tickFormatter={(val) => val.slice(5)}
                   stroke="hsl(var(--muted-foreground))"
                 />
                 <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
@@ -179,7 +250,7 @@ export default function AnalyticsPage() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                   itemStyle={{ fontSize: '12px' }}
                 />
@@ -193,6 +264,80 @@ export default function AnalyticsPage() {
                 <span className="text-xs font-medium">{m.model} ({m.percentage}%)</span>
               </div>
             ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Cost breakdown + Top Conversations side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Cost by model table */}
+        <Card className="p-6">
+          <CardHeader className="px-0 pt-0 pb-4 gap-1">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-lg font-semibold">Estimated Cost by Model</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground">Based on approximate token pricing</p>
+          </CardHeader>
+          <div data-testid="table-cost-by-model">
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/40 mb-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Model</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Est. Cost</span>
+            </div>
+            {cost?.byModel && cost.byModel.length > 0 ? (
+              <div className="space-y-1">
+                {cost.byModel.map((item) => (
+                  <div key={item.model} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-muted/30 transition-colors">
+                    <span className="text-sm text-foreground font-medium truncate max-w-[65%]">{item.model}</span>
+                    <span className="text-sm font-mono text-foreground">${item.costUsd.toFixed(4)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-primary/5 border border-primary/20 mt-3">
+                  <span className="text-sm font-semibold text-foreground">Total</span>
+                  <span className="text-sm font-mono font-bold text-foreground">${(cost.estimatedCostUsd).toFixed(4)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No cost data yet</p>
+            )}
+          </div>
+        </Card>
+
+        {/* Top conversations table */}
+        <Card className="p-6">
+          <CardHeader className="px-0 pt-0 pb-4 gap-1">
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-lg font-semibold">Top Conversations</CardTitle>
+            </div>
+            <p className="text-xs text-muted-foreground">By total token usage</p>
+          </CardHeader>
+          <div data-testid="table-top-conversations">
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/40 mb-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Conversation</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tokens</span>
+            </div>
+            {topConversations && topConversations.length > 0 ? (
+              <div className="space-y-1">
+                {topConversations.map((conv, idx) => (
+                  <div key={conv.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-muted/30 transition-colors group">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className={`text-xs font-bold w-5 text-center flex-shrink-0 ${idx === 0 ? "text-yellow-400" : idx === 1 ? "text-slate-400" : idx === 2 ? "text-amber-600" : "text-muted-foreground"}`}>
+                        #{idx + 1}
+                      </span>
+                      <span className="text-sm text-foreground truncate max-w-[180px]" data-testid={`text-top-conv-title-${conv.id}`}>
+                        {conv.title || "Untitled"}
+                      </span>
+                    </div>
+                    <span className="text-sm font-mono text-muted-foreground flex-shrink-0" data-testid={`text-top-conv-tokens-${conv.id}`}>
+                      {conv.totalTokens.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No conversations yet</p>
+            )}
           </div>
         </Card>
       </div>

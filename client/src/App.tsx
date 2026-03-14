@@ -16,6 +16,7 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
+const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
 const StudyPage = lazy(() => import("@/pages/StudyPage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 
@@ -47,6 +48,14 @@ function AppInner() {
     return (
       <Suspense fallback={null}>
         <SharedConversationPage />
+      </Suspense>
+    );
+  }
+
+  if (location.startsWith("/kb/shared/")) {
+    return (
+      <Suspense fallback={null}>
+        <SharedKnowledgeBasePage />
       </Suspense>
     );
   }

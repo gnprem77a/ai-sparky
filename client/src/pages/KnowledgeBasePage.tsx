@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   BookOpen, Plus, Trash2, ArrowLeft, FileText, MessageSquare,
-  Loader2, Send, X, ChevronRight, Database, Search, Zap, AlertCircle, Upload
+  Loader2, Send, X, ChevronRight, Database, Search, Zap, AlertCircle, Upload,
+  Share2, Check, Copy, Globe, Lock
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -138,6 +139,27 @@ export default function KnowledgeBasePage() {
     mutationFn: (docId: string) => apiRequest("DELETE", `/api/kb/${selectedKbId}/documents/${docId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/kb", selectedKbId, "documents"] }),
   });
+
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrlCopied, setShareUrlCopied] = useState(false);
+
+  const shareKb = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/kb/${id}/share`).then(r => r.json()) as Promise<{ shareToken: string; shareUrl: string }>,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/kb"] }),
+    onError: () => toast({ title: "Failed to share", variant: "destructive" }),
+  });
+
+  const unshareKb = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/kb/${id}/share`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/kb"] }); setShowShareModal(false); },
+    onError: () => toast({ title: "Failed to unshare", variant: "destructive" }),
+  });
+
+  const copyShareLink = (url: string) => {
+    navigator.clipboard.writeText(window.location.origin + url);
+    setShareUrlCopied(true);
+    setTimeout(() => setShareUrlCopied(false), 2000);
+  };
 
   async function sendChat() {
     if (!chatInput.trim() || chatLoading || !selectedKbId) return;
@@ -279,24 +301,102 @@ export default function KnowledgeBasePage() {
       {/* Main content */}
       {!selectedKbId ? <WelcomeScreen /> : (
         <div className="flex-1 flex flex-col min-w-0">
+          {/* Share modal */}
+          {showShareModal && selectedKb && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowShareModal(false)}>
+              <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Share2 className="w-4 h-4 text-blue-400" /> Share Knowledge Base
+                  </h3>
+                  <button onClick={() => setShowShareModal(false)} className="p-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                {selectedKb.isPublic && selectedKb.shareToken ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/20">
+                      <Globe className="w-4 h-4 text-green-400 flex-shrink-0" />
+                      <p className="text-xs text-green-300">Anyone with the link can view and clone this knowledge base.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/kb/shared/${selectedKb.shareToken}`}
+                        className="flex-1 px-3 py-2 rounded-lg bg-muted/40 border border-border text-xs text-foreground outline-none font-mono"
+                      />
+                      <button
+                        onClick={() => copyShareLink(`/kb/shared/${selectedKb.shareToken}`)}
+                        data-testid="button-copy-kb-link"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-500 transition-all flex-shrink-0"
+                      >
+                        {shareUrlCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {shareUrlCopied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => unshareKb.mutate(selectedKb.id)}
+                      disabled={unshareKb.isPending}
+                      data-testid="button-unshare-kb"
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10 transition-all"
+                    >
+                      {unshareKb.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+                      Stop sharing
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">Generate a public link so anyone can view and clone your knowledge base.</p>
+                    <button
+                      onClick={() => shareKb.mutate(selectedKb.id)}
+                      disabled={shareKb.isPending}
+                      data-testid="button-enable-share-kb"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 transition-all disabled:opacity-50"
+                    >
+                      {shareKb.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                      Generate share link
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Header + tabs */}
           <div className="border-b border-border px-6 py-3 flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">{selectedKb?.name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-foreground">{selectedKb?.name}</h2>
+                {selectedKb?.isPublic && (
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-medium">
+                    <Globe className="w-2.5 h-2.5" /> Shared
+                  </span>
+                )}
+              </div>
               {selectedKb?.description && <p className="text-xs text-muted-foreground mt-0.5">{selectedKb.description}</p>}
             </div>
-            <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
-              {(["documents", "chat"] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  data-testid={`tab-${tab}`}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all capitalize ${activeTab === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                >
-                  {tab === "documents" ? <FileText className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
-                  {tab}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowShareModal(true)}
+                data-testid="button-share-kb"
+                title="Share knowledge base"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border/60 transition-all"
+              >
+                <Share2 className="w-3.5 h-3.5" /> Share
+              </button>
+              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
+                {(["documents", "chat"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    data-testid={`tab-${tab}`}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all capitalize ${activeTab === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {tab === "documents" ? <FileText className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

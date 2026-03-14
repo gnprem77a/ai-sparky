@@ -1,8 +1,12 @@
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowLeft, User, Lock } from "lucide-react";
+import { ArrowLeft, User, Lock, Copy, Check, LogIn, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface SharedMessage {
   id: string;
@@ -33,6 +37,9 @@ export default function SharedConversationPage() {
   const params = useParams<{ token: string }>();
   const token = params.token ?? (window.location.pathname.split("/share/")[1] ?? "");
   const [, navigate] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [imported, setImported] = useState(false);
 
   const { data, isLoading, isError } = useQuery<SharedConversation>({
     queryKey: ["/api/share", token],
@@ -42,6 +49,17 @@ export default function SharedConversationPage() {
         return r.json();
       }),
     retry: false,
+  });
+
+  const importMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/share/${token}/import`),
+    onSuccess: () => {
+      setImported(true);
+      toast({ title: "Conversation copied!", description: "It's now in your chat history." });
+    },
+    onError: () => {
+      toast({ title: "Failed to copy", description: "Please try again.", variant: "destructive" });
+    },
   });
 
   return (
@@ -63,9 +81,39 @@ export default function SharedConversationPage() {
               {data?.title ?? "Shared Conversation"}
             </span>
           </div>
-          <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="w-3 h-3" />
-            Read-only
+          <div className="ml-auto flex items-center gap-3">
+            {data && (
+              user ? (
+                <button
+                  onClick={() => importMutation.mutate()}
+                  disabled={importMutation.isPending || imported}
+                  data-testid="button-import-conversation"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                >
+                  {importMutation.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : imported ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  {imported ? "Copied!" : "Copy to my chats"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate("/login")}
+                  data-testid="button-login-to-copy"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors border border-primary/20"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  Login to copy
+                </button>
+              )
+            )}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Lock className="w-3 h-3" />
+              Read-only
+            </div>
           </div>
         </div>
       </header>

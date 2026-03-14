@@ -126,6 +126,8 @@ export const knowledgeBases = pgTable("knowledge_bases", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
+  isPublic: boolean("is_public").notNull().default(false),
+  shareToken: varchar("share_token"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 

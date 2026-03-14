@@ -9,11 +9,21 @@ import {
   BookOpen, Plus, Trash2, FileText, Brain, HelpCircle, Layers,
   ChevronLeft, ChevronRight, RotateCcw, Check, X, Loader2,
   Save, Copy, ArrowLeft, Sparkles, GraduationCap, History, Clock, Upload,
+  Lightbulb, Table2,
 } from "lucide-react";
 import type { StudyNote, StudyOutput } from "@shared/schema";
 
 type QuizQuestion = { q: string; options: string[]; answer: number; explanation: string };
-type OutputData = { content?: string; questions?: QuizQuestion[]; cards?: { front: string; back: string }[] };
+type OutputData = {
+  content?: string;
+  questions?: QuizQuestion[];
+  cards?: { front: string; back: string }[];
+  cues?: string[];
+  notes?: string[];
+  summary?: string;
+};
+
+type StudyType = "summary" | "quiz" | "flashcards" | "feynman" | "cornell";
 
 function formatDate(d: string | Date) {
   return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -36,6 +46,69 @@ function SummaryView({ data }: { data: OutputData }) {
       <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-foreground leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
         {text || <span className="text-muted-foreground italic">No content generated.</span>}
       </div>
+    </div>
+  );
+}
+
+function FeynmanView({ data }: { data: OutputData }) {
+  const { toast } = useToast();
+  const text = data.content ?? "";
+  const copy = () => { navigator.clipboard.writeText(text); toast({ description: "Copied!" }); };
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Lightbulb className="w-4 h-4 text-amber-400" /> Feynman Explanation
+        </h3>
+        <button onClick={copy} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/50 transition-all">
+          <Copy className="w-3.5 h-3.5" /> Copy
+        </button>
+      </div>
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5 text-sm text-foreground leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+        {text || <span className="text-muted-foreground italic">No content generated.</span>}
+      </div>
+    </div>
+  );
+}
+
+function CornellView({ data }: { data: OutputData }) {
+  const { toast } = useToast();
+  const cues = data.cues ?? [];
+  const notes = data.notes ?? [];
+  const summary = data.summary ?? "";
+  const copy = () => {
+    const text = cues.map((c, i) => `CUE: ${c}\nNOTE: ${notes[i] ?? ""}`).join("\n\n") + (summary ? `\n\nSUMMARY:\n${summary}` : "");
+    navigator.clipboard.writeText(text);
+    toast({ description: "Copied!" });
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Table2 className="w-4 h-4 text-blue-400" /> Cornell Notes
+        </h3>
+        <button onClick={copy} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-muted/50 transition-all">
+          <Copy className="w-3.5 h-3.5" /> Copy
+        </button>
+      </div>
+      <div className="rounded-xl border border-border overflow-hidden max-h-[52vh] overflow-y-auto">
+        <div className="grid grid-cols-[2fr_3fr] border-b border-border">
+          <div className="px-3 py-2 bg-blue-500/10 text-[11px] font-semibold text-blue-400 uppercase tracking-wider">Cue / Question</div>
+          <div className="px-3 py-2 bg-muted/30 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-l border-border">Notes</div>
+        </div>
+        {cues.map((cue, i) => (
+          <div key={i} className="grid grid-cols-[2fr_3fr] border-b border-border/50 last:border-0">
+            <div className="px-3 py-2.5 text-xs font-medium text-blue-300 bg-blue-500/5 border-r border-border/50">{cue}</div>
+            <div className="px-3 py-2.5 text-xs text-foreground/80 leading-relaxed">{notes[i] ?? ""}</div>
+          </div>
+        ))}
+      </div>
+      {summary && (
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Summary</p>
+          <p className="text-xs text-foreground leading-relaxed">{summary}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -208,7 +281,7 @@ export default function StudyPage() {
   const [noteContent, setNoteContent] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [activeOutput, setActiveOutput] = useState<StudyOutput | null>(null);
-  const [generating, setGenerating] = useState<"summary" | "quiz" | "flashcards" | null>(null);
+  const [generating, setGenerating] = useState<StudyType | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [pdfUploading, setPdfUploading] = useState(false);
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -289,7 +362,7 @@ export default function StudyPage() {
     setShowHistory(false);
   }
 
-  async function handleGenerate(type: "summary" | "quiz" | "flashcards") {
+  async function handleGenerate(type: StudyType) {
     if (!noteContent.trim()) { toast({ description: "Add some notes content first", variant: "destructive" }); return; }
     setGenerating(type);
     setActiveOutput(null);
@@ -577,9 +650,10 @@ export default function StudyPage() {
                 </div>
                 <div className="border-t border-border/40 px-4 py-3 flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] text-muted-foreground mr-1 flex items-center gap-1"><Sparkles className="w-3 h-3" /> Generate:</span>
-                  {(["summary", "quiz", "flashcards"] as const).map((type) => {
-                    const icons = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" /> };
-                    const labels = { summary: "Summary", quiz: "Quiz", flashcards: "Flashcards" };
+                  {(["summary", "quiz", "flashcards", "feynman", "cornell"] as const).map((type) => {
+                    const icons: Record<StudyType, React.ReactNode> = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" />, feynman: <Lightbulb className="w-3.5 h-3.5" />, cornell: <Table2 className="w-3.5 h-3.5" /> };
+                    const labels: Record<StudyType, string> = { summary: "Summary", quiz: "Quiz", flashcards: "Flashcards", feynman: "Feynman", cornell: "Cornell" };
+                    const colors: Record<StudyType, string> = { summary: "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20", quiz: "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20", flashcards: "border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20", feynman: "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20", cornell: "border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20" };
                     const isGen = generating === type;
                     return (
                       <button
@@ -588,8 +662,8 @@ export default function StudyPage() {
                         disabled={!!generating}
                         data-testid={`button-generate-${type}`}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                          "border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20",
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                          colors[type],
                           "disabled:opacity-40"
                         )}
                       >
@@ -649,8 +723,8 @@ export default function StudyPage() {
                     ) : (
                       <div className="space-y-2">
                         {[...noteOutputs].reverse().map((output) => {
-                          const icons = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" /> };
-                          const colors = { summary: "text-blue-400", quiz: "text-amber-400", flashcards: "text-green-400" };
+                          const icons: Record<string, React.ReactNode> = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" />, feynman: <Lightbulb className="w-3.5 h-3.5" />, cornell: <Table2 className="w-3.5 h-3.5" /> };
+                          const colors: Record<string, string> = { summary: "text-blue-400", quiz: "text-amber-400", flashcards: "text-green-400", feynman: "text-amber-300", cornell: "text-blue-300" };
                           return (
                             <div
                               key={output.id}
@@ -698,11 +772,13 @@ export default function StudyPage() {
                       {activeOutput.type === "summary" && <SummaryView data={activeOutput.data as OutputData} />}
                       {activeOutput.type === "quiz" && <QuizView data={activeOutput.data as OutputData} />}
                       {activeOutput.type === "flashcards" && <FlashcardsView data={activeOutput.data as OutputData} />}
+                      {activeOutput.type === "feynman" && <FeynmanView data={activeOutput.data as OutputData} />}
+                      {activeOutput.type === "cornell" && <CornellView data={activeOutput.data as OutputData} />}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
                       <Brain className="w-8 h-8 text-muted-foreground/30" />
-                      <p className="text-xs text-muted-foreground leading-relaxed">Click <strong className="text-foreground">Summary</strong>, <strong className="text-foreground">Quiz</strong>, or <strong className="text-foreground">Flashcards</strong> below to generate from your notes.</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">Click a tool below to generate from your notes: <strong className="text-foreground">Summary</strong>, <strong className="text-foreground">Quiz</strong>, <strong className="text-foreground">Flashcards</strong>, <strong className="text-amber-300">Feynman</strong>, or <strong className="text-blue-300">Cornell</strong>.</p>
                     </div>
                   )}
                 </div>

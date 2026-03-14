@@ -572,6 +572,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ id: conv.id, title: conv.title, model: conv.model, messages: msgs });
   });
 
+  /* ── shared conversation: import to own account ── */
+  app.post("/api/share/:token/import", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    const conv = await storage.getConversationByShareToken(req.params.token as string);
+    if (!conv) return res.status(404).json({ error: "Shared conversation not found" });
+    const msgs = await storage.getMessages(conv.id);
+    const newConv = await storage.createConversation(userId, `Copy of: ${conv.title}`, conv.model);
+    for (const msg of msgs) {
+      await storage.createMessage({
+        conversationId: newConv.id,
+        role: msg.role,
+        content: msg.content,
+        modelUsed: msg.modelUsed ?? undefined,
+      });
+    }
+    return res.status(201).json({ conversationId: newConv.id });
+  });
+
   /* ── prompts: list ── */
   app.get("/api/prompts", requireAuth as any, async (req: Request, res: Response) => {
     const prompts = await storage.getSavedPrompts(req.session.userId!);
@@ -607,6 +625,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── analytics: models ── */
   app.get("/api/analytics/models", requireAuth as any, async (req: Request, res: Response) => {
     const data = await storage.getAnalyticsModels(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: peak hours ── */
+  app.get("/api/analytics/peak-hours", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsPeakHours(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: estimated cost ── */
+  app.get("/api/analytics/cost", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsCost(req.session.userId!);
+    return res.json(data);
+  });
+
+  /* ── analytics: top conversations ── */
+  app.get("/api/analytics/top-conversations", requireAuth as any, async (req: Request, res: Response) => {
+    const data = await storage.getAnalyticsTopConversations(req.session.userId!);
     return res.json(data);
   });
 
@@ -1137,6 +1173,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const parsed = JSON.parse(jsonMatch[0]) as { title?: string; cards?: unknown[] };
         result = { title: parsed.title ?? "Flashcards", data: { cards: parsed.cards ?? [] } };
 
+      } else if (type === "feynman") {
+        const text = await studyGenerate(
+          "You are a Feynman technique tutor. Explain complex topics using simple language, analogies, and examples. Avoid jargon.",
+          `Use the Feynman technique to explain the key concepts from these notes as if teaching a 12-year-old with no prior knowledge. Use simple language, relatable analogies, and concrete examples. Format in markdown with clear sections.\n\nNOTES:\n${content}`,
+          1500,
+        );
+        result = { title: "Feynman Explanation", data: { content: text } };
+
+      } else if (type === "cornell") {
+        const raw = await studyGenerate(
+          "You are a Cornell notes expert. Always return ONLY valid JSON with no markdown, no extra text.",
+          `Convert these notes into Cornell Note format. Return ONLY this JSON (no extra text):\n{"title":"Cornell Notes","cues":["key question or cue phrase"],"notes":["corresponding detailed note"],"summary":"2-3 sentence summary of the entire topic"}\n\nThe cues and notes arrays must be the same length. Create 8-12 cue/note pairs.\n\nNOTES:\n${content}`,
+          2000,
+        );
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Invalid JSON from AI");
+        const parsed = JSON.parse(jsonMatch[0]) as { title?: string; cues?: string[]; notes?: string[]; summary?: string };
+        result = { title: parsed.title ?? "Cornell Notes", data: { cues: parsed.cues ?? [], notes: parsed.notes ?? [], summary: parsed.summary ?? "" } };
+
       } else {
         return res.status(400).json({ error: `Unknown type: ${type}` });
       }
@@ -1178,6 +1233,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
     await storage.deleteKnowledgeBase(req.params.id);
     res.status(204).end();
+  });
+
+  /* ── kb: generate/remove share link ── */
+  app.post("/api/kb/:id/share", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+    const token = kb.shareToken ?? crypto.randomUUID();
+    const updated = await storage.updateKnowledgeBase(kb.id, { isPublic: true, shareToken: token });
+    return res.json({ shareToken: token, shareUrl: `/kb/shared/${token}`, kb: updated });
+  });
+
+  app.delete("/api/kb/:id/share", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const kb = await storage.getKnowledgeBase(req.params.id);
+    if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+    await storage.updateKnowledgeBase(kb.id, { isPublic: false, shareToken: undefined });
+    return res.json({ ok: true });
+  });
+
+  /* ── kb: view public shared kb (no auth required) ── */
+  app.get("/api/kb/shared/:token", async (req, res) => {
+    const kb = await storage.getKnowledgeBaseByToken(req.params.token);
+    if (!kb || !kb.isPublic) return res.status(404).json({ error: "Knowledge base not found or not shared" });
+    const docs = await storage.getKbDocuments(kb.id);
+    return res.json({ kb: { id: kb.id, name: kb.name, description: kb.description }, docs });
+  });
+
+  /* ── kb: clone shared kb into own account ── */
+  app.post("/api/kb/shared/:token/clone", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const sourceKb = await storage.getKnowledgeBaseByToken(req.params.token);
+    if (!sourceKb || !sourceKb.isPublic) return res.status(404).json({ error: "Not found" });
+    const newKb = await storage.createKnowledgeBase(userId, `Copy of: ${sourceKb.name}`, sourceKb.description);
+    const docs = await storage.getKbDocuments(sourceKb.id);
+    for (const doc of docs) {
+      const newDoc = await storage.createKbDocument({ kbId: newKb.id, userId, name: doc.name, content: doc.content, chunkCount: doc.chunkCount });
+      const chunks = await storage.getKbChunks(sourceKb.id);
+      const docChunks = chunks.filter((c) => c.docId === doc.id);
+      if (docChunks.length > 0) {
+        await storage.createKbChunks(docChunks.map((c) => ({ docId: newDoc.id, kbId: newKb.id, content: c.content, embedding: Array.from(c.embedding ?? []), chunkIndex: c.chunkIndex })));
+      }
+    }
+    return res.status(201).json({ kbId: newKb.id });
   });
 
   app.get("/api/kb/:id/documents", requireAuth, async (req, res) => {
