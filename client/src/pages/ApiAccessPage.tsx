@@ -245,6 +245,10 @@ console.log(data.content);`;
             <Globe className="w-4 h-4 text-primary" />
             Endpoint
           </h2>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs">
+            <span className="font-semibold text-violet-400">Claude only:</span>
+            <span className="text-violet-300/80">This API routes exclusively through Anthropic Claude models.</span>
+          </div>
           <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border font-mono text-sm">
             <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-500">POST</span>
             <span className="text-foreground truncate" data-testid="text-endpoint">{baseUrl}/api/v1/chat</span>

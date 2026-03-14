@@ -1386,7 +1386,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const dbProviders = await storage.getActiveProviders();
-    const providerConfigs: ProviderConfig[] = dbProviders.map((p) => ({
+    const claudeProviders = dbProviders.filter((p) => p.providerType === "anthropic");
+    if (claudeProviders.length === 0) {
+      return res.status(503).json({ error: "No Claude (Anthropic) providers are configured and active." });
+    }
+    const providerConfigs: ProviderConfig[] = claudeProviders.map((p) => ({
       id: p.id,
       name: p.name,
       providerType: p.providerType,
