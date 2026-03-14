@@ -564,6 +564,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
+  /* ── public: admin contact info (no auth required) ── */
+  app.get("/api/public/contact", async (_req: Request, res: Response) => {
+    const admins = await storage.getAllUsers();
+    const admin = admins.find((u) => u.isAdmin);
+    if (!admin) return res.json({ contactEmail: null });
+    const settings = await storage.getUserSettings(admin.id);
+    return res.json({ contactEmail: (settings as any).contactEmail || null });
+  });
+
   /* ── public share: view conversation (no auth) ── */
   app.get("/api/share/:token", async (req: Request, res: Response) => {
     const conv = await storage.getConversationByShareToken(req.params.token as string);
@@ -855,6 +864,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         maxTokens,
         useTools: webSearch,
         res,
+      }, (failedProvider, reason) => {
+        res.write(`data: ${JSON.stringify({ providerFallback: true, failedProvider, reason })}\n\n`);
       });
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();

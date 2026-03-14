@@ -45,6 +45,7 @@ export async function testProvider(config: ProviderConfig): Promise<TestResult> 
 export async function streamWithFallback(
   providers: ProviderConfig[],
   opts: Omit<StreamOptions, "res"> & { res: Response },
+  onFallback?: (failedProvider: string, reason: string) => void,
 ): Promise<UsageResult> {
   const enabledProviders = providers.filter((p) => p.isEnabled).sort((a, b) => a.priority - b.priority);
 
@@ -57,7 +58,10 @@ export async function streamWithFallback(
       return result;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.error(`[Provider] "${prov.name}" failed: ${lastError.message} — trying next`);
+      const isRateLimit = lastError.message.includes("429") || lastError.message.toLowerCase().includes("rate limit");
+      const reason = isRateLimit ? "rate_limited" : "error";
+      console.error(`[Provider] "${prov.name}" failed (${reason}): ${lastError.message} — trying next`);
+      onFallback?.(prov.name, reason);
     }
   }
 

@@ -8,7 +8,6 @@ import {
   ClipboardPaste, Plus, File as FileIcon, ChevronDown, Lock, Crown,
   Table as TableIcon, Eye, Sparkles, Mic, MicOff, Globe,
 } from "lucide-react";
-import { SiAnthropic } from "react-icons/si";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 import { type ModelId, MODELS } from "@/components/ModelSelector";

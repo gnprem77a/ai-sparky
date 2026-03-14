@@ -65,6 +65,7 @@ export const userSettings = pgTable("user_settings", {
   customInstructions: text("custom_instructions").notNull().default(""),
   notificationSound: boolean("notification_sound").notNull().default(false),
   responseLanguage: text("response_language").notNull().default(""),
+  contactEmail: text("contact_email").notNull().default(""),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {

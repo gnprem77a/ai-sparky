@@ -122,13 +122,14 @@ server/
   - Test Connection button: shows "Connected" / "Invalid Key" (401/403) / "Connection Failed"
   - Fallback chain: providers tried in priority order; built-in Bluesminds is always last resort
   - `generateText` and streaming both route through proper adapters (respects custom body/response path)
+  - Enhanced fallback: 429 rate-limit detection; `onFallback` callback emits SSE `providerFallback` event; ChatPage shows toast with provider name + reason
 
 ## Database Tables
 
 - `users` — id, username, password, isAdmin, plan, planExpiresAt, createdAt
 - `conversations` — id, userId, title, model, isPinned, shareToken, folderId, createdAt, updatedAt, tags (text[])
 - `messages` — id, conversationId, role, content, modelUsed, attachments (JSON), inputTokens, outputTokens, reaction, stopped, isPinned, createdAt
-- `user_settings` — userId, systemPrompt, dailyMessageCount, lastMessageDate, fontSize, assistantName, activePromptId
+- `user_settings` — userId, systemPrompt, dailyMessageCount, lastMessageDate, fontSize, assistantName, activePromptId, contactEmail (admin-set contact for Pro upgrade inquiries)
 - `saved_prompts` — id, userId, name, content, createdAt
 - `folders` — id, userId, name, color, createdAt
 - `session` — managed by connect-pg-simple

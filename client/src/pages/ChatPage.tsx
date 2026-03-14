@@ -30,6 +30,7 @@ function isProActive(user: { plan: string; planExpiresAt: string | null } | null
 }
 
 import { UpgradeModal } from "@/components/UpgradeModal";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ChatPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export default function ChatPage() {
   const [pinnedOpen, setPinnedOpen] = useState(false);
 
   const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const { setOpenMobile, isMobile, openMobile } = useSidebar();
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -626,6 +628,14 @@ export default function ChatPage() {
                 return;
               }
               throw new Error(parsed.error);
+            }
+            if (parsed.providerFallback) {
+              const reason = parsed.reason === "rate_limited" ? "rate limited" : "unavailable";
+              toast({
+                title: `Provider fallback`,
+                description: `"${parsed.failedProvider}" was ${reason}. Switched to the next available provider.`,
+                duration: 4000,
+              });
             }
             if (parsed.searching) {
               setMessages((prev) =>
@@ -1241,7 +1251,7 @@ export default function ChatPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
-      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} onUpgrade={() => navigate("/admin")} reason={upgradeReason} />
+      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">

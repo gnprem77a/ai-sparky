@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   X, Save, Lock, Bot, Eye, EyeOff, Palette, Zap, Brain, SlidersHorizontal,
   Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command, Globe,
-  Sun, Moon,
+  Sun, Moon, Crown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MODELS, type ModelId } from "@/components/ModelSelector";
@@ -25,6 +25,7 @@ interface Settings {
   customInstructions: string;
   notificationSound: boolean;
   responseLanguage: string;
+  contactEmail: string;
 }
 
 interface SavedPrompt {
@@ -110,6 +111,7 @@ export function SettingsModal({ onClose }: Props) {
   const [showTokenUsage, setShowTokenUsage] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [responseLanguage, setResponseLanguage] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -131,6 +133,12 @@ export function SettingsModal({ onClose }: Props) {
     queryFn: () => fetch("/api/settings", { credentials: "include" }).then((r) => r.json()),
   });
 
+  const { data: me } = useQuery<{ isAdmin?: boolean }>({
+    queryKey: ["/api/auth/me"],
+    queryFn: () => fetch("/api/auth/me", { credentials: "include" }).then((r) => r.json()),
+  });
+  const isAdmin = !!me?.isAdmin;
+
   const { data: prompts = [] } = useQuery<SavedPrompt[]>({
     queryKey: ["/api/prompts"],
     queryFn: () => fetch("/api/prompts", { credentials: "include" }).then((r) => r.json()),
@@ -149,6 +157,7 @@ export function SettingsModal({ onClose }: Props) {
       setCustomInstructions(settings.customInstructions ?? "");
       setNotificationSound(settings.notificationSound ?? false);
       setResponseLanguage(settings.responseLanguage ?? "");
+      setContactEmail(settings.contactEmail ?? "");
     }
   }, [settings]);
 
@@ -492,10 +501,31 @@ export function SettingsModal({ onClose }: Props) {
                 </select>
               </div>
 
+              {isAdmin && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <Crown className="w-3.5 h-3.5 text-amber-500" /> Admin Contact Email
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Users will see this email when they hit their message limit and need to upgrade to Pro.
+                    </p>
+                  </div>
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    placeholder="admin@example.com"
+                    data-testid="input-contact-email"
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/50"
+                  />
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 {saveMutation.isSuccess && <span className="text-xs text-emerald-500 font-medium">Saved!</span>}
                 <button
-                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage, notificationSound, responseLanguage })}
+                  onClick={() => saveMutation.mutate({ defaultModel, autoScroll, autoTitle, showTokenUsage, notificationSound, responseLanguage, contactEmail })}
                   disabled={saveMutation.isPending}
                   data-testid="button-save-behavior"
                   className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50"
