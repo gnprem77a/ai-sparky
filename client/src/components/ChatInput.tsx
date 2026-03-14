@@ -489,11 +489,11 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
                     <div className="w-76 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
 
-                      {/* ── Claude Pro section ── */}
+                      {/* ── Pro section ── */}
                       <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
-                        <SiAnthropic className="w-3 h-3 text-[#D4763B] flex-shrink-0" />
+                        <Sparkles className="w-3 h-3 text-amber-500 flex-shrink-0" />
                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex-1">
-                          Claude Models
+                          Pro Models
                         </span>
                         {!isPro && (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-500">
