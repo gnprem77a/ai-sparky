@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   BookOpen, Plus, Trash2, ArrowLeft, FileText, MessageSquare,
-  Loader2, Send, X, ChevronRight, Database, Search, Zap, AlertCircle
+  Loader2, Send, X, ChevronRight, Database, Search, Zap, AlertCircle, Upload
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -64,6 +64,28 @@ export default function KnowledgeBasePage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePdfUpload = async (file: File) => {
+    if (!file) return;
+    setPdfUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/extract-pdf", { method: "POST", body: form, credentials: "include" });
+      if (!res.ok) throw new Error("Failed to extract PDF");
+      const { text } = await res.json();
+      setDocContent(text);
+      if (!docName) setDocName(file.name.replace(/\.pdf$/i, ""));
+      toast({ description: "PDF text extracted — review and click Add & Index" });
+    } catch {
+      toast({ description: "Could not read PDF. Try copy-pasting the text instead.", variant: "destructive" });
+    } finally {
+      setPdfUploading(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  };
 
   const { data: kbs = [], isLoading: kbsLoading } = useQuery<KnowledgeBase[]>({
     queryKey: ["/api/kb"],
@@ -153,6 +175,16 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
+      {/* Hidden PDF file input */}
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        data-testid="input-pdf-upload-kb"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); }}
+      />
+
       {/* Left sidebar */}
       <div className="w-64 flex-shrink-0 border-r border-border flex flex-col bg-sidebar">
         <div className="flex items-center justify-between px-4 py-4 border-b border-border/60">
@@ -288,16 +320,29 @@ export default function KnowledgeBasePage() {
                       data-testid="input-doc-name"
                       className="w-full px-3 py-2 rounded-lg bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-blue-500/50"
                     />
-                    <textarea
-                      value={docContent}
-                      onChange={e => setDocContent(e.target.value)}
-                      placeholder="Paste your document content here…"
-                      data-testid="textarea-doc-content"
-                      rows={10}
-                      className="w-full px-3 py-2 rounded-lg bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-blue-500/50 resize-none leading-relaxed"
-                    />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">{docContent.length} characters · ~{Math.ceil(docContent.length / 800)} chunks</p>
+                    <div className="relative">
+                      <textarea
+                        value={docContent}
+                        onChange={e => setDocContent(e.target.value)}
+                        placeholder="Paste your document content here, or upload a PDF below…"
+                        data-testid="textarea-doc-content"
+                        rows={10}
+                        className="w-full px-3 py-2 rounded-lg bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-blue-500/50 resize-none leading-relaxed"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => pdfInputRef.current?.click()}
+                        disabled={pdfUploading || addDoc.isPending}
+                        data-testid="button-upload-pdf-kb"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-xs font-semibold text-foreground hover:bg-muted/80 transition-all disabled:opacity-50"
+                      >
+                        {pdfUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                        {pdfUploading ? "Extracting…" : "Upload PDF"}
+                      </button>
+                      <p className="text-xs text-muted-foreground">{docContent.length > 0 ? `${docContent.length.toLocaleString()} characters · ~${Math.ceil(docContent.length / 800)} chunks` : "Supported: PDF, plain text"}</p>
+                    </div>
+                    <div className="flex items-center justify-end">
                       <button
                         onClick={() => addDoc.mutate()}
                         disabled={!docName.trim() || !docContent.trim() || addDoc.isPending}

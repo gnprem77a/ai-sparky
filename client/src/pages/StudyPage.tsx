@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   BookOpen, Plus, Trash2, FileText, Brain, HelpCircle, Layers,
   ChevronLeft, ChevronRight, RotateCcw, Check, X, Loader2,
-  Save, Copy, ArrowLeft, Sparkles, GraduationCap, History, Clock,
+  Save, Copy, ArrowLeft, Sparkles, GraduationCap, History, Clock, Upload,
 } from "lucide-react";
 import type { StudyNote, StudyOutput } from "@shared/schema";
 
@@ -210,6 +210,29 @@ export default function StudyPage() {
   const [activeOutput, setActiveOutput] = useState<StudyOutput | null>(null);
   const [generating, setGenerating] = useState<"summary" | "quiz" | "flashcards" | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePdfUpload = async (file: File) => {
+    if (!file) return;
+    setPdfUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/extract-pdf", { method: "POST", body: form, credentials: "include" });
+      if (!res.ok) throw new Error("Failed to extract PDF");
+      const { text } = await res.json();
+      setNoteContent(prev => prev ? prev + "\n\n" + text : text);
+      if (!noteTitle) setNoteTitle(file.name.replace(/\.pdf$/i, ""));
+      setIsDirty(true);
+      toast({ description: "PDF text extracted successfully" });
+    } catch {
+      toast({ description: "Could not read PDF. Try copy-pasting the text instead.", variant: "destructive" });
+    } finally {
+      setPdfUploading(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  };
 
   const { data: notes = [], isLoading: notesLoading } = useQuery<StudyNote[]>({
     queryKey: ["/api/study/notes"],
@@ -373,6 +396,16 @@ export default function StudyPage() {
         </div>
       </div>
 
+      {/* Hidden PDF file input */}
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        data-testid="input-pdf-upload"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); }}
+      />
+
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
@@ -467,7 +500,7 @@ export default function StudyPage() {
                   rows={5}
                   className="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none border-none leading-relaxed"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => createNote.mutate()}
                     disabled={createNote.isPending}
@@ -476,6 +509,15 @@ export default function StudyPage() {
                   >
                     {createNote.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                     New note
+                  </button>
+                  <button
+                    onClick={() => pdfInputRef.current?.click()}
+                    disabled={pdfUploading}
+                    data-testid="button-upload-pdf-quickstart"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-muted border border-border text-xs font-semibold text-foreground hover:bg-muted/80 transition-all disabled:opacity-50"
+                  >
+                    {pdfUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    Upload PDF
                   </button>
                   <span className="text-[11px] text-muted-foreground">or select an existing note from the left sidebar</span>
                 </div>
@@ -556,6 +598,16 @@ export default function StudyPage() {
                       </button>
                     );
                   })}
+                  <button
+                    onClick={() => pdfInputRef.current?.click()}
+                    disabled={pdfUploading || !!generating}
+                    data-testid="button-upload-pdf-editor"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-all disabled:opacity-40"
+                    title="Upload PDF"
+                  >
+                    {pdfUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    Upload PDF
+                  </button>
                   {noteContent.trim() && (
                     <span className="ml-auto text-[10px] text-muted-foreground/50">{noteContent.length.toLocaleString()} chars</span>
                   )}
