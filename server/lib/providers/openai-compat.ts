@@ -74,18 +74,43 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   async testConnection(): Promise<TestResult> {
     const start = Date.now();
     try {
-      const endpoint = this.config.providerType === "azure"
-        ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
-        : `${this.baseUrl}/chat/completions`;
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: this.buildHeaders(),
-        body: JSON.stringify({
+      const modelLower = (this.config.modelName ?? "").toLowerCase();
+      const urlLower = (this.config.apiUrl ?? "").toLowerCase();
+      const isEmbedModel = modelLower.includes("embed") || urlLower.includes("embed");
+      const isRerankModel = modelLower.includes("rerank") || urlLower.includes("rerank");
+
+      let endpoint: string;
+      let testBody: Record<string, unknown>;
+
+      if (isRerankModel) {
+        // Cohere rerank endpoint — URL is the direct endpoint already
+        endpoint = this.config.apiUrl ?? "";
+        testBody = {
+          model: this.config.modelName,
+          query: "test connection",
+          documents: ["hello world"],
+        };
+      } else if (isEmbedModel) {
+        // Embedding endpoint
+        const base = (this.config.apiUrl ?? "").replace(/\/$/, "");
+        endpoint = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
+        testBody = { model: this.config.modelName, input: ["test"] };
+      } else {
+        endpoint = this.config.providerType === "azure"
+          ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
+          : `${this.baseUrl}/chat/completions`;
+        testBody = {
           model: this.config.modelName,
           messages: [{ role: "user", content: "Say OK" }],
           max_tokens: 5,
           stream: false,
-        }),
+        };
+      }
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: this.buildHeaders(),
+        body: JSON.stringify(testBody),
       });
       // Read as text first — some endpoints return plain-text errors (not JSON)
       const rawText = await res.text();
