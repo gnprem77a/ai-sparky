@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   BookOpen, Plus, Trash2, FileText, Brain, HelpCircle, Layers,
   ChevronLeft, ChevronRight, RotateCcw, Check, X, Loader2,
-  Save, Copy, ArrowLeft, Sparkles, GraduationCap,
+  Save, Copy, ArrowLeft, Sparkles, GraduationCap, History, Clock,
 } from "lucide-react";
 import type { StudyNote, StudyOutput } from "@shared/schema";
 
@@ -209,10 +209,25 @@ export default function StudyPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [activeOutput, setActiveOutput] = useState<StudyOutput | null>(null);
   const [generating, setGenerating] = useState<"summary" | "quiz" | "flashcards" | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data: notes = [], isLoading: notesLoading } = useQuery<StudyNote[]>({
     queryKey: ["/api/study/notes"],
     enabled: !!user,
+  });
+
+  const { data: savedOutputs = [] } = useQuery<StudyOutput[]>({
+    queryKey: ["/api/study/outputs"],
+    enabled: !!user,
+  });
+
+  const noteOutputs = savedOutputs.filter(o => o.noteId === selectedNoteId);
+
+  const deleteOutput = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/study/outputs/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/study/outputs"] });
+    },
   });
 
   const createNote = useMutation({
@@ -248,6 +263,7 @@ export default function StudyPage() {
     setNoteContent(note.content);
     setIsDirty(false);
     setActiveOutput(null);
+    setShowHistory(false);
   }
 
   async function handleGenerate(type: "summary" | "quiz" | "flashcards") {
@@ -266,6 +282,8 @@ export default function StudyPage() {
       const res = await apiRequest("POST", "/api/study/generate", { type, content: noteContent, noteId: id });
       const output = await res.json() as StudyOutput;
       setActiveOutput(output);
+      setShowHistory(false);
+      qc.invalidateQueries({ queryKey: ["/api/study/outputs"] });
     } catch (e) {
       toast({ description: `Failed to generate ${type}: ${(e as Error).message}`, variant: "destructive" });
     } finally {
@@ -545,8 +563,75 @@ export default function StudyPage() {
               </div>
 
               <div className="w-[420px] flex-shrink-0 flex flex-col overflow-hidden">
+                {/* Right panel header */}
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border/40 flex-shrink-0">
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {showHistory ? `History (${noteOutputs.length})` : activeOutput ? activeOutput.type.charAt(0).toUpperCase() + activeOutput.type.slice(1) : "Output"}
+                  </span>
+                  <button
+                    onClick={() => { setShowHistory(h => !h); }}
+                    data-testid="button-toggle-history"
+                    title={showHistory ? "Back to output" : "View history"}
+                    className={cn(
+                      "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all",
+                      showHistory
+                        ? "bg-violet-500/20 text-violet-300"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    {noteOutputs.length > 0 && !showHistory && (
+                      <span className="ml-0.5 bg-violet-500/30 text-violet-300 rounded-full px-1.5 py-0 text-[10px]">{noteOutputs.length}</span>
+                    )}
+                  </button>
+                </div>
+
                 <div className="flex-1 overflow-y-auto p-5">
-                  {generating ? (
+                  {showHistory ? (
+                    /* History list */
+                    noteOutputs.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+                        <Clock className="w-8 h-8 text-muted-foreground/30" />
+                        <p className="text-xs text-muted-foreground">No saved outputs for this note yet.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {[...noteOutputs].reverse().map((output) => {
+                          const icons = { summary: <FileText className="w-3.5 h-3.5" />, quiz: <HelpCircle className="w-3.5 h-3.5" />, flashcards: <Layers className="w-3.5 h-3.5" /> };
+                          const colors = { summary: "text-blue-400", quiz: "text-amber-400", flashcards: "text-green-400" };
+                          return (
+                            <div
+                              key={output.id}
+                              data-testid={`card-output-${output.id}`}
+                              className="group flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/40 px-3 py-2.5 transition-all"
+                            >
+                              <button
+                                className="flex items-center gap-2.5 flex-1 text-left"
+                                onClick={() => { setActiveOutput(output); setShowHistory(false); }}
+                              >
+                                <span className={colors[output.type as keyof typeof colors] ?? "text-muted-foreground"}>
+                                  {icons[output.type as keyof typeof icons]}
+                                </span>
+                                <div>
+                                  <p className="text-xs font-medium text-foreground capitalize">{output.type}</p>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    {new Date(output.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </p>
+                                </div>
+                              </button>
+                              <button
+                                onClick={() => deleteOutput.mutate(output.id)}
+                                className="p-1 rounded text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                data-testid={`button-delete-output-${output.id}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : generating ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
                       <div className="w-12 h-12 rounded-2xl bg-violet-500/15 flex items-center justify-center">
                         <Brain className="w-6 h-6 text-violet-400 animate-pulse" />
