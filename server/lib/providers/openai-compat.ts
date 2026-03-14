@@ -71,6 +71,16 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     return headers;
   }
 
+  private chatEndpoint(): string {
+    // Azure AI Foundry (services.ai.azure.com) does NOT need api-version
+    // Legacy Azure OpenAI (.openai.azure.com) DOES need api-version
+    const isLegacyAzure = this.config.providerType === "azure" &&
+      !(this.config.apiUrl ?? "").includes("services.ai.azure.com");
+    return isLegacyAzure
+      ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
+      : `${this.baseUrl}/chat/completions`;
+  }
+
   async testConnection(): Promise<TestResult> {
     const start = Date.now();
     try {
@@ -96,9 +106,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         endpoint = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
         testBody = { model: this.config.modelName, input: ["test"] };
       } else {
-        endpoint = this.config.providerType === "azure"
-          ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
-          : `${this.baseUrl}/chat/completions`;
+        endpoint = this.chatEndpoint();
         testBody = {
           model: this.config.modelName,
           messages: [{ role: "user", content: "Say OK" }],
@@ -131,9 +139,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   }
 
   async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
-    const endpoint = this.config.providerType === "azure"
-      ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
-      : `${this.baseUrl}/chat/completions`;
+    const endpoint = this.chatEndpoint();
     const msgs: Array<{ role: string; content: string }> = [];
     if (systemPrompt) msgs.push({ role: "system", content: systemPrompt });
     msgs.push({ role: "user", content: userPrompt });
@@ -150,9 +156,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   }
 
   async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
-    const endpoint = this.config.providerType === "azure"
-      ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
-      : `${this.baseUrl}/chat/completions`;
+    const endpoint = this.chatEndpoint();
 
     let inputTokens = 0;
     let outputTokens = 0;
