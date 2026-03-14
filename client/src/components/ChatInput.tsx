@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp, Square, X, FileText, Image as ImageIcon, Camera,
-  ClipboardPaste, Plus, File as FileIcon, ChevronDown, Lock,
+  ClipboardPaste, Plus, File as FileIcon, ChevronDown, Lock, Crown,
   Table as TableIcon, Eye, Sparkles, Mic, MicOff, Globe,
 } from "lucide-react";
+import { SiAnthropic } from "react-icons/si";
 import { cn } from "@/lib/utils";
 import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/chat-storage";
 import { type ModelId, MODELS } from "@/components/ModelSelector";
@@ -81,10 +82,11 @@ interface ChatInputProps {
   onToggleImageMode?: () => void;
   isWebSearch?: boolean;
   onToggleWebSearch?: () => void;
+  onUpgradeClick?: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode, isWebSearch = false, onToggleWebSearch }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode, isWebSearch = false, onToggleWebSearch, onUpgradeClick }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -485,26 +487,41 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                 {/* model dropdown */}
                 {modelOpen && (
                   <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
-                    <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
-                        Model
-                      </p>
-                      {MODELS.map(m => {
-                        const locked = m.proOnly && !isPro;
+                    <div className="w-76 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+
+                      {/* ── Claude Pro section ── */}
+                      <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
+                        <SiAnthropic className="w-3 h-3 text-[#D4763B] flex-shrink-0" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 flex-1">
+                          Claude Models
+                        </span>
+                        {!isPro && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-500">
+                            <Crown className="w-2 h-2" /> Pro
+                          </span>
+                        )}
+                      </div>
+
+                      {MODELS.filter(m => m.proOnly).map(m => {
+                        const locked = !isPro;
+                        const active = m.id === effectiveModel && !locked;
                         return (
                           <button
                             key={m.id}
                             onClick={() => {
-                              if (locked) return;
+                              if (locked) {
+                                onUpgradeClick?.();
+                                setModelOpen(false);
+                                return;
+                              }
                               onModelChange(m.id);
                               setModelOpen(false);
                             }}
-                            disabled={locked}
                             data-testid={`option-model-${m.id}`}
                             className={cn(
                               "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
-                              m.id === effectiveModel ? "bg-primary/8" : "hover:bg-muted/50",
-                              locked && "opacity-45 cursor-not-allowed"
+                              active ? "bg-primary/8" : "hover:bg-muted/50",
+                              locked && "opacity-65"
                             )}
                           >
                             <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg, m.iconColor)}>
@@ -512,7 +529,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-1.5 mb-0.5">
-                                <p className={cn("text-sm font-medium leading-none", m.id === effectiveModel ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
+                                <p className={cn("text-sm font-medium leading-none", active ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
                                   {m.friendlyName}
                                 </p>
                                 {locked && (
@@ -528,19 +545,76 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                               </div>
                               <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
                             </div>
-                            {m.id === effectiveModel && !locked && (
+                            {active && (
                               <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                             )}
                           </button>
                         );
                       })}
+
+                      {/* ── Divider ── */}
+                      <div className="my-1.5 border-t border-border/40 mx-2" />
+
+                      {/* ── Free tier ── */}
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50 px-3 pb-1">
+                        Free Tier
+                      </p>
+
+                      {MODELS.filter(m => !m.proOnly).map(m => {
+                        const active = m.id === effectiveModel;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              onModelChange(m.id);
+                              setModelOpen(false);
+                            }}
+                            data-testid={`option-model-${m.id}`}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors group",
+                              active ? "bg-primary/8" : "hover:bg-muted/50"
+                            )}
+                          >
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg, m.iconColor)}>
+                              {m.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-1.5 mb-0.5">
+                                <p className={cn("text-sm font-medium leading-none", active ? "text-primary" : "text-foreground/90 group-hover:text-foreground")}>
+                                  {m.friendlyName}
+                                </p>
+                                <span className="text-[10px] text-muted-foreground/40 leading-none font-normal">
+                                  {m.exactName}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground/60 leading-none">{m.description}</p>
+                            </div>
+                            {active && (
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {/* ── Upgrade CTA for free users ── */}
                       {!isPro && (
-                        <div className="mx-1 mt-1 mb-0.5 px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15">
-                          <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                            Upgrade to Pro to unlock all models
+                        <button
+                          onClick={() => {
+                            onUpgradeClick?.();
+                            setModelOpen(false);
+                          }}
+                          data-testid="button-upgrade-from-model"
+                          className="w-full mx-0 mt-1.5 mb-0.5 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-amber-500/20 text-left hover:from-orange-500/15 hover:to-amber-500/15 transition-colors"
+                        >
+                          <p className="text-[12px] text-amber-500 font-semibold flex items-center gap-1.5">
+                            <Crown className="w-3.5 h-3.5" /> Upgrade to Pro — Unlock Claude
                           </p>
-                        </div>
+                          <p className="text-[10px] text-amber-600/70 dark:text-amber-400/70 mt-0.5">
+                            All models · Unlimited messages · Priority access
+                          </p>
+                        </button>
                       )}
+
                     </div>
                   </div>
                 )}

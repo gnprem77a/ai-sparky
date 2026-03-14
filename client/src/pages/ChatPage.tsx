@@ -41,6 +41,7 @@ export default function ChatPage() {
   const [model, setModel] = useState<ModelId>("auto");
   const [error, setError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<"limit" | "model">("limit");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
@@ -617,6 +618,7 @@ export default function ChatPage() {
             const parsed = JSON.parse(data);
             if (parsed.error || parsed.limitReached) {
               if (parsed.limitReached || (parsed.error && String(parsed.error).includes("Daily message limit"))) {
+                setUpgradeReason("limit");
                 setShowUpgradeModal(true);
                 setIsStreaming(false);
                 setStreamingMessageId(null);
@@ -1158,7 +1160,7 @@ export default function ChatPage() {
                           size="sm" 
                           variant="outline" 
                           className="flex-shrink-0 h-8 text-xs font-semibold bg-primary/10 border-primary/20 hover:bg-primary/20 text-primary"
-                          onClick={() => setShowUpgradeModal(true)}
+                          onClick={() => { setUpgradeReason("limit"); setShowUpgradeModal(true); }}
                           data-testid="button-error-upgrade"
                         >
                           <Crown className="w-3 h-3 mr-1" /> Upgrade
@@ -1220,6 +1222,10 @@ export default function ChatPage() {
                 onToggleImageMode={() => setIsImageMode((m) => !m)}
                 isWebSearch={webSearchMode}
                 onToggleWebSearch={() => setWebSearchMode((m) => !m)}
+                onUpgradeClick={() => {
+                  setUpgradeReason("model");
+                  setShowUpgradeModal(true);
+                }}
               />
             </div>
           </div>
@@ -1235,7 +1241,7 @@ export default function ChatPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
-      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} onUpgrade={() => navigate("/admin")} />
+      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} onUpgrade={() => navigate("/admin")} reason={upgradeReason} />
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">
