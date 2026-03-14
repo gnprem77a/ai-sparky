@@ -11,6 +11,7 @@ import {
   type StudyNote, type StudyOutput, studyNotes, studyOutputs,
   type KnowledgeBase, type KbDocument, type KbChunk,
   knowledgeBases, kbDocuments, kbChunks,
+  type ApiLog, apiLogs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -27,6 +28,10 @@ export interface IStorage {
   updatePassword(id: string, hashedPassword: string): Promise<void>;
   setApiKey(id: string, apiKey: string | null): Promise<User | undefined>;
   setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
+  setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined>;
+  incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }>;
+  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number }): Promise<ApiLog>;
+  getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
 
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -156,6 +161,55 @@ export class DatabaseStorage implements IStorage {
   async setApiEnabled(id: string, enabled: boolean): Promise<User | undefined> {
     const [user] = await db.update(users).set({ apiEnabled: enabled }).where(eq(users.id, id)).returning();
     return user;
+  }
+
+  async setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined> {
+    const [user] = await db.update(users).set(settings).where(eq(users.id, id)).returning();
+    return user;
+  }
+
+  async incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    if (!user) return { allowed: false, dailyUsed: 0, dailyLimit: null, monthlyUsed: 0, monthlyLimit: null, limitType: null };
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let dailyCount = user.apiDailyCount ?? 0;
+    let monthlyCount = user.apiMonthlyCount ?? 0;
+
+    if (!user.apiDailyResetAt || user.apiDailyResetAt < today) {
+      dailyCount = 0;
+    }
+    if (!user.apiMonthlyResetAt || user.apiMonthlyResetAt < monthStart) {
+      monthlyCount = 0;
+    }
+
+    if (user.apiDailyLimit != null && dailyCount >= user.apiDailyLimit) {
+      return { allowed: false, dailyUsed: dailyCount, dailyLimit: user.apiDailyLimit, monthlyUsed: monthlyCount, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: "daily" };
+    }
+    if (user.apiMonthlyLimit != null && monthlyCount >= user.apiMonthlyLimit) {
+      return { allowed: false, dailyUsed: dailyCount, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount, monthlyLimit: user.apiMonthlyLimit, limitType: "monthly" };
+    }
+
+    await db.update(users).set({
+      apiDailyCount: dailyCount + 1,
+      apiMonthlyCount: monthlyCount + 1,
+      apiDailyResetAt: user.apiDailyResetAt && user.apiDailyResetAt >= today ? user.apiDailyResetAt : today,
+      apiMonthlyResetAt: user.apiMonthlyResetAt && user.apiMonthlyResetAt >= monthStart ? user.apiMonthlyResetAt : monthStart,
+    }).where(eq(users.id, id));
+
+    return { allowed: true, dailyUsed: dailyCount + 1, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount + 1, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: null };
+  }
+
+  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number }): Promise<ApiLog> {
+    const [log] = await db.insert(apiLogs).values(data).returning();
+    return log;
+  }
+
+  async getApiLogs(userId: string, limit = 50): Promise<ApiLog[]> {
+    return db.select().from(apiLogs).where(eq(apiLogs.userId, userId)).orderBy(desc(apiLogs.createdAt)).limit(limit);
   }
 
   async getConversations(userId: string): Promise<Conversation[]> {

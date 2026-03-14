@@ -4,6 +4,36 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
+import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail } from "./lib/email";
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(apiKey: string, limitPerMin: number | null): boolean {
+  if (!limitPerMin) return true;
+  const now = Date.now();
+  const windowMs = 60_000;
+  const entry = rateLimitMap.get(apiKey);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(apiKey, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= limitPerMin) return false;
+  entry.count++;
+  return true;
+}
+
+async function fireWebhook(url: string, event: string, data: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), ...data }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // non-blocking, ignore failures
+  }
+}
 import { insertUserSchema, insertBroadcastSchema, insertAiProviderSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
@@ -698,6 +728,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       id: u.id, username: u.username, isAdmin: u.isAdmin,
       plan: u.plan, planExpiresAt: u.planExpiresAt, createdAt: u.createdAt,
       apiEnabled: u.apiEnabled,
+      email: u.email ?? null,
+      apiDailyLimit: u.apiDailyLimit ?? null,
+      apiMonthlyLimit: u.apiMonthlyLimit ?? null,
+      apiWebhookUrl: u.apiWebhookUrl ?? null,
+      apiRateLimitPerMin: u.apiRateLimitPerMin ?? null,
     })));
   });
 
@@ -735,8 +770,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(id);
     if (!target) return res.status(404).json({ error: "User not found" });
     const newKey = "sk-" + randomBytes(32).toString("hex");
-    const user = await storage.setApiKey(id, newKey);
+    await storage.setApiKey(id, newKey);
     await storage.setApiEnabled(id, true);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    if (target.email) {
+      sendEmail(target.email, "API Access Granted", apiAccessGrantedEmail(target.username, baseUrl));
+    }
+    if (target.apiWebhookUrl) {
+      fireWebhook(target.apiWebhookUrl, "api.access.granted", { username: target.username });
+    }
     return res.json({ apiKey: newKey, apiEnabled: true });
   });
 
@@ -746,7 +788,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!target) return res.status(404).json({ error: "User not found" });
     await storage.setApiKey(id, null);
     await storage.setApiEnabled(id, false);
+    if (target.email) {
+      sendEmail(target.email, "API Access Revoked", apiAccessRevokedEmail(target.username));
+    }
+    if (target.apiWebhookUrl) {
+      fireWebhook(target.apiWebhookUrl, "api.access.revoked", { username: target.username });
+    }
     return res.json({ apiEnabled: false });
+  });
+
+  /* ── admin: update API settings for a user ── */
+  app.patch("/api/admin/users/:id/api-settings", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const target = await storage.getUser(id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    const { apiDailyLimit, apiMonthlyLimit, apiWebhookUrl, apiRateLimitPerMin, email } = req.body;
+    const user = await storage.setApiSettings(id, {
+      apiDailyLimit: apiDailyLimit === "" || apiDailyLimit == null ? null : Number(apiDailyLimit),
+      apiMonthlyLimit: apiMonthlyLimit === "" || apiMonthlyLimit == null ? null : Number(apiMonthlyLimit),
+      apiWebhookUrl: apiWebhookUrl || null,
+      apiRateLimitPerMin: apiRateLimitPerMin === "" || apiRateLimitPerMin == null ? null : Number(apiRateLimitPerMin),
+      email: email || null,
+    });
+    return res.json(user);
   });
 
   /* ── user: get own API key info ── */
@@ -755,7 +819,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
-    return res.json({ apiKey: user.apiKey, apiEnabled: user.apiEnabled });
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const dailyUsed = (!user.apiDailyResetAt || user.apiDailyResetAt < today) ? 0 : (user.apiDailyCount ?? 0);
+    const monthlyUsed = (!user.apiMonthlyResetAt || user.apiMonthlyResetAt < monthStart) ? 0 : (user.apiMonthlyCount ?? 0);
+    return res.json({
+      apiKey: user.apiKey,
+      apiEnabled: user.apiEnabled,
+      dailyUsed,
+      dailyLimit: user.apiDailyLimit ?? null,
+      monthlyUsed,
+      monthlyLimit: user.apiMonthlyLimit ?? null,
+      rateLimitPerMin: user.apiRateLimitPerMin ?? null,
+      webhookUrl: user.apiWebhookUrl ?? null,
+    });
   });
 
   /* ── user: regenerate own API key ── */
@@ -767,6 +845,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const newKey = "sk-" + randomBytes(32).toString("hex");
     await storage.setApiKey(userId, newKey);
     return res.json({ apiKey: newKey, apiEnabled: true });
+  });
+
+  /* ── user: API call history ── */
+  app.get("/api/me/api-history", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user || !user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const limit = Math.min(parseInt(req.query.limit as string ?? "50"), 100);
+    const logs = await storage.getApiLogs(userId, limit);
+    return res.json(logs);
   });
 
   /* ── broadcasts: get active ── */
@@ -1374,6 +1462,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(401).json({ error: "Invalid or disabled API key" });
     }
 
+    // Rate limiting
+    if (!checkRateLimit(apiKey, user.apiRateLimitPerMin ?? null)) {
+      if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.rate_limited", { username: user.username });
+      return res.status(429).json({ error: `Rate limit exceeded. Max ${user.apiRateLimitPerMin} requests per minute.` });
+    }
+
+    // Daily/monthly usage check
+    const usage = await storage.incrementApiUsage(user.id);
+    if (!usage.allowed) {
+      const limitType = usage.limitType!;
+      const limit = limitType === "daily" ? usage.dailyLimit! : usage.monthlyLimit!;
+      if (user.email) sendEmail(user.email, `API ${limitType === "daily" ? "Daily" : "Monthly"} Limit Reached`, apiLimitReachedEmail(user.username, limitType, limit));
+      if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, `api.limit.${limitType}`, { username: user.username, limit, limitType });
+      return res.status(429).json({ error: `${limitType === "daily" ? "Daily" : "Monthly"} request limit of ${limit} reached.` });
+    }
+
     const { messages: rawMessages, message, model, systemPrompt, stream: wantStream, maxTokens } = req.body;
 
     let messages: { role: string; content: string }[] = [];
@@ -1409,6 +1513,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       priority: p.priority,
     }));
 
+    const messagesJson = JSON.stringify(messages);
+
     if (wantStream === true) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -1422,7 +1528,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           useTools: false,
           res,
         });
-        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, stream: true });
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, dailyUsed: usage.dailyUsed, monthlyUsed: usage.monthlyUsed })}\n\n`);
         res.end();
       } catch (err: any) {
         res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
@@ -1435,7 +1543,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
           .join("\n");
         const text = await generateText(providerConfigs, sysPrompt, userPrompt, maxTokens ?? 2048);
-        return res.json({ content: text, model: model ?? "auto" });
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens: 0, outputTokens: 0 });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, stream: false });
+        return res.json({ content: text, model: model ?? "claude", dailyUsed: usage.dailyUsed, monthlyUsed: usage.monthlyUsed });
       } catch (err: any) {
         return res.status(500).json({ error: err.message || "Generation failed" });
       }

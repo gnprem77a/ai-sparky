@@ -9,7 +9,7 @@ import {
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
-  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy,
+  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Broadcast, type AiProvider } from "@shared/schema";
@@ -41,6 +41,11 @@ interface AdminUser {
   planExpiresAt: string | null;
   createdAt: string;
   apiEnabled: boolean;
+  email?: string | null;
+  apiDailyLimit?: number | null;
+  apiMonthlyLimit?: number | null;
+  apiWebhookUrl?: string | null;
+  apiRateLimitPerMin?: number | null;
 }
 
 type Duration = "1w" | "1m" | "1y" | "permanent" | "custom";
@@ -1033,6 +1038,8 @@ export default function AdminPage() {
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [apiSettingsOpenId, setApiSettingsOpenId] = useState<string | null>(null);
+  const [apiSettingsForms, setApiSettingsForms] = useState<Record<string, { email: string; apiDailyLimit: string; apiMonthlyLimit: string; apiWebhookUrl: string; apiRateLimitPerMin: string }>>({});
 
   const broadcastMutation = useMutation({
     mutationFn: (message: string) =>
@@ -1087,6 +1094,15 @@ export default function AdminPage() {
   const revokeApiKeyMutation = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/admin/users/${id}/api-key/revoke`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
+  });
+
+  const updateApiSettingsMutation = useMutation({
+    mutationFn: ({ id, settings }: { id: string; settings: Record<string, string> }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/api-settings`, settings).then((r) => r.json()),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setApiSettingsOpenId(null);
+    },
   });
 
   if (isLoading || !user?.isAdmin) return null;
@@ -1469,6 +1485,16 @@ export default function AdminPage() {
           <div className="divide-y divide-border/50">
             {users.map((u) => {
               const isGenerated = generatedKey?.userId === u.id;
+              const settingsOpen = apiSettingsOpenId === u.id;
+              const settingsForm = apiSettingsForms[u.id] ?? {
+                email: u.email ?? "",
+                apiDailyLimit: u.apiDailyLimit != null ? String(u.apiDailyLimit) : "",
+                apiMonthlyLimit: u.apiMonthlyLimit != null ? String(u.apiMonthlyLimit) : "",
+                apiWebhookUrl: u.apiWebhookUrl ?? "",
+                apiRateLimitPerMin: u.apiRateLimitPerMin != null ? String(u.apiRateLimitPerMin) : "",
+              };
+              const setForm = (field: string, value: string) =>
+                setApiSettingsForms((prev) => ({ ...prev, [u.id]: { ...settingsForm, [field]: value } }));
               return (
                 <div key={u.id} data-testid={`row-api-user-${u.id}`} className="px-6 py-4">
                   <div className="flex items-center gap-4">
@@ -1495,6 +1521,8 @@ export default function AdminPage() {
                             No Access
                           </span>
                         )}
+                        {u.apiDailyLimit && <span className="text-[10px] text-muted-foreground">{u.apiDailyLimit}/day</span>}
+                        {u.apiMonthlyLimit && <span className="text-[10px] text-muted-foreground">{u.apiMonthlyLimit}/mo</span>}
                       </div>
                       {isGenerated && (
                         <div className="mt-2 flex items-center gap-2">
@@ -1527,6 +1555,18 @@ export default function AdminPage() {
                     {u.id !== user.id && (
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
+                          onClick={() => setApiSettingsOpenId(settingsOpen ? null : u.id)}
+                          data-testid={`button-api-settings-${u.id}`}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                            settingsOpen ? "border-blue-500/30 text-blue-500 bg-blue-500/10" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                          title="API Settings"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                          Settings
+                        </button>
+                        <button
                           onClick={() => {
                             if (confirm(`Generate${u.apiEnabled ? "/regenerate" : ""} API key for "${u.username}"?`)) {
                               generateApiKeyMutation.mutate(u.id);
@@ -1558,6 +1598,89 @@ export default function AdminPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Settings Panel */}
+                  {settingsOpen && (
+                    <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">API Settings for {u.username}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Notification Email</label>
+                          <input
+                            type="email"
+                            value={settingsForm.email}
+                            onChange={(e) => setForm("email", e.target.value)}
+                            placeholder="user@example.com"
+                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-api-email-${u.id}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Rate Limit (req/min)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={settingsForm.apiRateLimitPerMin}
+                            onChange={(e) => setForm("apiRateLimitPerMin", e.target.value)}
+                            placeholder="e.g. 10 (blank = unlimited)"
+                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-rate-limit-${u.id}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Daily Call Limit</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={settingsForm.apiDailyLimit}
+                            onChange={(e) => setForm("apiDailyLimit", e.target.value)}
+                            placeholder="e.g. 100 (blank = unlimited)"
+                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-daily-limit-${u.id}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Monthly Call Limit</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={settingsForm.apiMonthlyLimit}
+                            onChange={(e) => setForm("apiMonthlyLimit", e.target.value)}
+                            placeholder="e.g. 1000 (blank = unlimited)"
+                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-monthly-limit-${u.id}`}
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs text-muted-foreground">Webhook URL (receives event notifications)</label>
+                          <input
+                            type="url"
+                            value={settingsForm.apiWebhookUrl}
+                            onChange={(e) => setForm("apiWebhookUrl", e.target.value)}
+                            placeholder="https://your-server.com/webhook"
+                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-webhook-url-${u.id}`}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          onClick={() => setApiSettingsOpenId(null)}
+                          className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-muted/50 transition-all"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => updateApiSettingsMutation.mutate({ id: u.id, settings: settingsForm })}
+                          disabled={updateApiSettingsMutation.isPending}
+                          data-testid={`button-save-api-settings-${u.id}`}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
+                        >
+                          {updateApiSettingsMutation.isPending ? "Saving..." : "Save Settings"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

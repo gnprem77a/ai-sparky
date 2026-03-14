@@ -13,6 +13,15 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   apiKey: text("api_key"),
   apiEnabled: boolean("api_enabled").notNull().default(false),
+  email: text("email"),
+  apiDailyLimit: integer("api_daily_limit"),
+  apiDailyCount: integer("api_daily_count").notNull().default(0),
+  apiDailyResetAt: timestamp("api_daily_reset_at"),
+  apiMonthlyLimit: integer("api_monthly_limit"),
+  apiMonthlyCount: integer("api_monthly_count").notNull().default(0),
+  apiMonthlyResetAt: timestamp("api_monthly_reset_at"),
+  apiWebhookUrl: text("api_webhook_url"),
+  apiRateLimitPerMin: integer("api_rate_limit_per_min"),
 });
 
 export const conversations = pgTable("conversations", {
@@ -152,6 +161,17 @@ export const kbChunks = pgTable("kb_chunks", {
   embedding: real("embedding").array(),
   chunkIndex: integer("chunk_index").notNull(),
 });
+
+export const apiLogs = pgTable("api_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  messages: text("messages").notNull(),
+  response: text("response"),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+export type ApiLog = typeof apiLogs.$inferSelect;
 
 export const broadcasts = pgTable("broadcasts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
