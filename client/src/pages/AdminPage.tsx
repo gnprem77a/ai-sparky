@@ -204,23 +204,25 @@ function PlanManager({ user, currentUserId, onClose }: { user: AdminUser; curren
 
 /* ─── Provider Types ─── */
 const PROVIDER_TYPE_META: Record<string, { label: string; color: string }> = {
-  bluesminds: { label: "Bluesminds", color: "text-violet-400" },
-  openai:     { label: "OpenAI",     color: "text-emerald-400" },
-  anthropic:  { label: "Anthropic",  color: "text-orange-400" },
-  azure:      { label: "Azure",      color: "text-blue-400" },
-  gemini:     { label: "Gemini",     color: "text-amber-400" },
-  bedrock:    { label: "AWS Bedrock",color: "text-cyan-400" },
-  custom:     { label: "Custom",     color: "text-pink-400" },
+  bluesminds:         { label: "Bluesminds",         color: "text-violet-400" },
+  openai:             { label: "OpenAI",              color: "text-emerald-400" },
+  anthropic:          { label: "Anthropic",           color: "text-orange-400" },
+  azure:              { label: "Azure",               color: "text-blue-400" },
+  gemini:             { label: "Gemini",              color: "text-amber-400" },
+  bedrock:            { label: "AWS Bedrock",         color: "text-cyan-400" },
+  "openai-compatible":{ label: "OpenAI-Compatible",  color: "text-teal-400" },
+  custom:             { label: "Custom",              color: "text-pink-400" },
 };
 
 const PROVIDER_TYPE_OPTIONS = [
-  { value: "bluesminds", label: "Bluesminds (default)" },
-  { value: "openai",     label: "OpenAI" },
-  { value: "anthropic",  label: "Anthropic" },
-  { value: "azure",      label: "Azure OpenAI" },
-  { value: "gemini",     label: "Google Gemini" },
-  { value: "bedrock",    label: "AWS Bedrock" },
-  { value: "custom",     label: "Custom Provider" },
+  { value: "bluesminds",         label: "Bluesminds (default)" },
+  { value: "openai",             label: "OpenAI" },
+  { value: "anthropic",          label: "Anthropic" },
+  { value: "azure",              label: "Azure OpenAI" },
+  { value: "gemini",             label: "Google Gemini" },
+  { value: "bedrock",            label: "AWS Bedrock" },
+  { value: "openai-compatible",  label: "OpenAI-Compatible (3rd party)" },
+  { value: "custom",             label: "Custom (fully configurable)" },
 ];
 
 type TestStatus = { success: boolean; latencyMs: number; message: string; statusCode?: number } | null;
@@ -233,6 +235,9 @@ interface ProviderFormData {
   modelName: string;
   headers: string;
   httpMethod: string;
+  authStyle: string;
+  authHeaderName: string;
+  streamMode: string;
   bodyTemplate: string;
   responsePath: string;
   isEnabled: boolean;
@@ -241,7 +246,8 @@ interface ProviderFormData {
 
 const EMPTY_FORM: ProviderFormData = {
   name: "", providerType: "openai", apiUrl: "", apiKey: "", modelName: "",
-  headers: "", httpMethod: "POST", bodyTemplate: "", responsePath: "", isEnabled: true, priority: 100,
+  headers: "", httpMethod: "POST", authStyle: "bearer", authHeaderName: "", streamMode: "none",
+  bodyTemplate: "", responsePath: "", isEnabled: true, priority: 100,
 };
 
 const HTTP_METHODS = ["POST", "GET", "PUT", "PATCH", "DELETE"];
@@ -343,6 +349,18 @@ const PROVIDER_DEFAULTS: Record<string, {
     hint: "Uses AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION env vars. No API key needed here.",
     hintColor: "text-cyan-400",
   },
+  "openai-compatible": {
+    apiUrl: "",
+    modelPlaceholder: "model-id",
+    modelSuggestions: ["mistral-large-latest", "llama-3.3-70b-instruct", "deepseek-chat", "qwen-max"],
+    keyPlaceholder: "API key or Bearer token",
+    keyLabel: "API Key",
+    keyRequired: false,
+    urlLabel: "API Base URL (must include /v1 or similar)",
+    urlRequired: true,
+    hint: "Any provider with an OpenAI-compatible /chat/completions endpoint. Supports real SSE streaming.",
+    hintColor: "text-teal-400",
+  },
   custom: {
     apiUrl: "",
     modelPlaceholder: "model-name",
@@ -352,7 +370,7 @@ const PROVIDER_DEFAULTS: Record<string, {
     keyRequired: false,
     urlLabel: "API Endpoint URL",
     urlRequired: true,
-    hint: "POST request with configurable body. Use Advanced to set body template and response path.",
+    hint: "Fully configurable: custom auth style, body template, response path, and optional OpenAI-SSE streaming.",
     hintColor: "text-pink-400",
   },
 };
@@ -376,6 +394,9 @@ function ProviderFormModal({
           modelName: editing.modelName,
           headers: editing.headers ?? "",
           httpMethod: (editing as AiProvider & { httpMethod?: string }).httpMethod ?? "POST",
+          authStyle: (editing as AiProvider & { authStyle?: string }).authStyle ?? "bearer",
+          authHeaderName: (editing as AiProvider & { authHeaderName?: string }).authHeaderName ?? "",
+          streamMode: (editing as AiProvider & { streamMode?: string }).streamMode ?? "none",
           bodyTemplate: editing.bodyTemplate ?? "",
           responsePath: editing.responsePath ?? "",
           isEnabled: editing.isEnabled,
@@ -384,7 +405,8 @@ function ProviderFormModal({
       : EMPTY_FORM
   );
   const [showAdvanced, setShowAdvanced] = useState(
-    editing?.providerType === "custom" || !!editing?.bodyTemplate || !!editing?.responsePath
+    editing?.providerType === "custom" || editing?.providerType === "openai-compatible" ||
+    !!editing?.bodyTemplate || !!editing?.responsePath
   );
   const [testStatus, setTestStatus] = useState<TestStatus>(null);
   const [testing, setTesting] = useState(false);
@@ -394,6 +416,13 @@ function ProviderFormModal({
   const set = (k: keyof ProviderFormData, v: string | boolean | number) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  const defaultAuthStyle = (type: string): string => {
+    if (type === "anthropic") return "x-api-key";
+    if (type === "azure") return "bearer";
+    if (type === "bedrock" || type === "none") return "none";
+    return "bearer";
+  };
+
   const handleTypeChange = (newType: string) => {
     const d = PROVIDER_DEFAULTS[newType] ?? PROVIDER_DEFAULTS.openai;
     setForm((f) => ({
@@ -402,8 +431,10 @@ function ProviderFormModal({
       apiUrl: d.apiUrl,
       modelName: "",
       apiKey: newType === "bedrock" ? "" : f.apiKey,
+      authStyle: defaultAuthStyle(newType),
+      streamMode: newType === "openai-compatible" ? "openai-sse" : "none",
     }));
-    if (newType === "custom") setShowAdvanced(true);
+    if (newType === "custom" || newType === "openai-compatible") setShowAdvanced(true);
     setTestStatus(null);
   };
 
@@ -418,6 +449,9 @@ function ProviderFormModal({
         modelName: form.modelName,
         headers: form.headers || null,
         httpMethod: form.httpMethod || "POST",
+        authStyle: form.authStyle || "bearer",
+        authHeaderName: form.authHeaderName || null,
+        streamMode: form.streamMode || "none",
         bodyTemplate: form.bodyTemplate || null,
         responsePath: form.responsePath || null,
       });
@@ -603,11 +637,58 @@ function ProviderFormModal({
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showAdvanced && "rotate-180")} />
-            Advanced (headers, body template, response path)
+            Advanced (auth style, streaming, headers, body template)
           </button>
 
           {showAdvanced && (
             <div className="space-y-3 pt-2 border-t border-border/60">
+
+              {/* Auth style — shown for custom & openai-compatible; read-only hint for built-in types */}
+              {(form.providerType === "custom" || form.providerType === "openai-compatible") && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Auth Style">
+                    <select
+                      value={form.authStyle}
+                      onChange={(e) => set("authStyle", e.target.value)}
+                      className={inputClass}
+                      data-testid="select-provider-auth-style"
+                    >
+                      <option value="bearer">Bearer token  (Authorization: Bearer …)</option>
+                      <option value="x-api-key">x-api-key header</option>
+                      <option value="custom-header">Custom header name</option>
+                      <option value="none">None (no auth header)</option>
+                    </select>
+                  </Field>
+                  {form.authStyle === "custom-header" && (
+                    <Field label="Header Name">
+                      <input
+                        type="text"
+                        value={form.authHeaderName}
+                        onChange={(e) => set("authHeaderName", e.target.value)}
+                        placeholder="X-Api-Key"
+                        className={inputClass}
+                        data-testid="input-provider-auth-header-name"
+                      />
+                    </Field>
+                  )}
+                </div>
+              )}
+
+              {/* Stream mode — only for custom */}
+              {form.providerType === "custom" && (
+                <Field label="Streaming Mode">
+                  <select
+                    value={form.streamMode}
+                    onChange={(e) => set("streamMode", e.target.value)}
+                    className={inputClass}
+                    data-testid="select-provider-stream-mode"
+                  >
+                    <option value="none">None — full JSON response (use Response Path)</option>
+                    <option value="openai-sse">OpenAI SSE — server-sent events (delta streaming)</option>
+                  </select>
+                </Field>
+              )}
+
               <Field label="Extra Headers (JSON)">
                 <textarea
                   value={form.headers}
@@ -618,26 +699,34 @@ function ProviderFormModal({
                   data-testid="textarea-provider-headers"
                 />
               </Field>
-              <Field label="Body Template — variables: {{prompt}}, {{messages}}, {{model}}, {{systemPrompt}}, {{maxTokens}}">
-                <textarea
-                  value={form.bodyTemplate}
-                  onChange={(e) => set("bodyTemplate", e.target.value)}
-                  placeholder='{"model": "{{model}}", "prompt": "{{prompt}}", "messages": {{messages}}}'
-                  rows={4}
-                  className={cn(inputClass, "resize-none font-mono text-xs")}
-                  data-testid="textarea-provider-body"
-                />
-              </Field>
-              <Field label="Response Path (dot notation, e.g. choices.0.message.content)">
-                <input
-                  type="text"
-                  value={form.responsePath}
-                  onChange={(e) => set("responsePath", e.target.value)}
-                  placeholder="choices.0.message.content"
-                  className={inputClass}
-                  data-testid="input-provider-response-path"
-                />
-              </Field>
+
+              {/* Body template & response path — only for custom (openai-compatible uses fixed format) */}
+              {form.providerType === "custom" && (
+                <>
+                  <Field label="Body Template — variables: {{prompt}}, {{messages}}, {{model}}, {{systemPrompt}}, {{maxTokens}}, {{stream}}">
+                    <textarea
+                      value={form.bodyTemplate}
+                      onChange={(e) => set("bodyTemplate", e.target.value)}
+                      placeholder='{"model": "{{model}}", "prompt": "{{prompt}}", "messages": {{messages}}}'
+                      rows={4}
+                      className={cn(inputClass, "resize-none font-mono text-xs")}
+                      data-testid="textarea-provider-body"
+                    />
+                  </Field>
+                  {form.streamMode !== "openai-sse" && (
+                    <Field label="Response Path (dot notation, e.g. choices.0.message.content)">
+                      <input
+                        type="text"
+                        value={form.responsePath}
+                        onChange={(e) => set("responsePath", e.target.value)}
+                        placeholder="choices.0.message.content"
+                        className={inputClass}
+                        data-testid="input-provider-response-path"
+                      />
+                    </Field>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -714,6 +803,9 @@ function ProvidersSection() {
       name: data.name, providerType: data.providerType,
       apiUrl: data.apiUrl || null, apiKey: data.apiKey || null, modelName: data.modelName,
       headers: data.headers || null, httpMethod: data.httpMethod || "POST",
+      authStyle: data.authStyle || "bearer",
+      authHeaderName: data.authHeaderName || null,
+      streamMode: data.streamMode || "none",
       bodyTemplate: data.bodyTemplate || null,
       responsePath: data.responsePath || null, isEnabled: data.isEnabled,
       priority: typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100,

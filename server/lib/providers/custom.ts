@@ -1,10 +1,20 @@
 /**
- * Custom provider adapter.
- * Supports any HTTP API with configurable body template, response path, and HTTP method.
+ * Custom / OpenAI-Compatible provider adapter.
+ *
+ * Supports any HTTP API with:
+ *   - Configurable auth style: bearer | x-api-key | custom-header | none
+ *   - Configurable body template with {{variable}} substitution
+ *   - Configurable response path (dot notation) for JSON responses
+ *   - Configurable stream mode: none (full JSON) | openai-sse (SSE delta stream)
+ *
  * Template variables: {{prompt}}, {{lastMessage}}, {{messages}}, {{model}}, {{systemPrompt}}, {{maxTokens}}
  */
-import type { ProviderAdapter, ProviderConfig, StreamOptions, TestResult, UsageResult, RawMessage, GenerateOptions } from "./types";
+import type {
+  ProviderAdapter, ProviderConfig, StreamOptions, TestResult, UsageResult,
+  RawMessage, GenerateOptions, AuthStyle, StreamMode,
+} from "./types";
 
+/* ─── Path resolver ─── */
 export function resolvePath(obj: unknown, path: string): string {
   if (!path) return typeof obj === "string" ? obj : JSON.stringify(obj);
   try {
@@ -25,6 +35,7 @@ export function resolvePath(obj: unknown, path: string): string {
   }
 }
 
+/* ─── Template renderer ─── */
 function renderTemplate(template: string, vars: Record<string, unknown>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
     const val = vars[key];
@@ -34,6 +45,7 @@ function renderTemplate(template: string, vars: Record<string, unknown>): string
   });
 }
 
+/* ─── Default OpenAI-style body ─── */
 function buildDefaultBody(messages: RawMessage[], model: string, maxTokens: number, systemPrompt?: string): unknown {
   const oaiMessages: Array<{ role: string; content: string }> = [];
   if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
@@ -41,6 +53,61 @@ function buildDefaultBody(messages: RawMessage[], model: string, maxTokens: numb
   return { model, messages: oaiMessages, max_tokens: maxTokens };
 }
 
+/* ─── Auth header builder ─── */
+function buildAuthHeaders(apiKey: string | null, authStyle: AuthStyle, authHeaderName: string | null): Record<string, string> {
+  if (!apiKey) return {};
+  switch (authStyle) {
+    case "bearer":        return { "Authorization": `Bearer ${apiKey}` };
+    case "x-api-key":     return { "x-api-key": apiKey };
+    case "custom-header": return { [authHeaderName ?? "X-Api-Key"]: apiKey };
+    case "none":
+    default:              return {};
+  }
+}
+
+/* ─── SSE streaming (OpenAI format) ─── */
+async function streamOpenAISSE(
+  response: globalThis.Response,
+  res: StreamOptions["res"],
+): Promise<UsageResult> {
+  if (!response.body) throw new Error("No response body for SSE streaming");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const raw = line.slice(6).trim();
+      if (raw === "[DONE]") continue;
+      try {
+        const chunk = JSON.parse(raw) as {
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          choices?: Array<{ delta?: { content?: string } }>;
+        };
+        if (chunk.usage) {
+          inputTokens = chunk.usage.prompt_tokens ?? 0;
+          outputTokens = chunk.usage.completion_tokens ?? 0;
+        }
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+      } catch {}
+    }
+  }
+
+  return { inputTokens, outputTokens };
+}
+
+/* ─── Adapter ─── */
 export class CustomAdapter implements ProviderAdapter {
   private config: ProviderConfig;
 
@@ -48,17 +115,25 @@ export class CustomAdapter implements ProviderAdapter {
     this.config = config;
   }
 
-  private buildHeaders(): Record<string, string> {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (this.config.apiKey) h["Authorization"] = `Bearer ${this.config.apiKey}`;
-    if (this.config.headers) {
-      try { Object.assign(h, JSON.parse(this.config.headers)); } catch {}
-    }
-    return h;
+  private get authStyle(): AuthStyle {
+    return (this.config.authStyle ?? "bearer") as AuthStyle;
+  }
+
+  private get streamMode(): StreamMode {
+    return (this.config.streamMode ?? "none") as StreamMode;
   }
 
   private get method(): string {
     return (this.config.httpMethod ?? "POST").toUpperCase();
+  }
+
+  private buildHeaders(): Record<string, string> {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    Object.assign(h, buildAuthHeaders(this.config.apiKey, this.authStyle, this.config.authHeaderName ?? null));
+    if (this.config.headers) {
+      try { Object.assign(h, JSON.parse(this.config.headers)); } catch {}
+    }
+    return h;
   }
 
   private buildBody(messages: RawMessage[], maxTokens: number, systemPrompt?: string): string {
@@ -71,10 +146,13 @@ export class CustomAdapter implements ProviderAdapter {
         lastMessage: lastUserMsg,
         systemPrompt: systemPrompt ?? "",
         maxTokens,
+        stream: this.streamMode === "openai-sse",
       };
       return renderTemplate(this.config.bodyTemplate, vars);
     }
-    return JSON.stringify(buildDefaultBody(messages, this.config.modelName, maxTokens, systemPrompt));
+    const body = buildDefaultBody(messages, this.config.modelName, maxTokens, systemPrompt) as Record<string, unknown>;
+    if (this.streamMode === "openai-sse") body.stream = true;
+    return JSON.stringify(body);
   }
 
   private buildGenerateBody(systemPrompt: string | undefined, userPrompt: string, maxTokens: number): string {
@@ -89,6 +167,7 @@ export class CustomAdapter implements ProviderAdapter {
         lastMessage: userPrompt,
         systemPrompt: systemPrompt ?? "",
         maxTokens,
+        stream: false,
       };
       return renderTemplate(this.config.bodyTemplate, vars);
     }
@@ -105,7 +184,7 @@ export class CustomAdapter implements ProviderAdapter {
     try {
       const hasBody = this.method !== "GET" && this.method !== "HEAD";
       const body = hasBody
-        ? JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 5 })
+        ? JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 5, stream: false })
         : undefined;
       const res = await fetch(url, { method: this.method, headers: this.buildHeaders(), body });
       if (!res.ok) {
@@ -159,9 +238,12 @@ export class CustomAdapter implements ProviderAdapter {
       throw new Error(`Custom provider error ${response.status}: ${text.slice(0, 200)}`);
     }
 
+    if (this.streamMode === "openai-sse") {
+      return streamOpenAISSE(response, res);
+    }
+
     const data: unknown = await response.json();
     const text = resolvePath(data, this.config.responsePath ?? "choices.0.message.content");
-
     res.write(`data: ${JSON.stringify({ text })}\n\n`);
     return { inputTokens: 0, outputTokens: 0 };
   }

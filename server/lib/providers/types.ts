@@ -38,6 +38,22 @@ export interface ProviderAdapter {
   generate(opts: GenerateOptions): Promise<string>;
 }
 
+/**
+ * Auth styles for provider adapters.
+ * - bearer: Authorization: Bearer <key>
+ * - x-api-key: x-api-key: <key>
+ * - custom-header: <authHeaderName>: <key>
+ * - none: no auth header injected
+ */
+export type AuthStyle = "bearer" | "x-api-key" | "custom-header" | "none";
+
+/**
+ * Stream modes for custom/openai-compatible providers.
+ * - none: full JSON response, extract via responsePath
+ * - openai-sse: Server-Sent Events in OpenAI delta format
+ */
+export type StreamMode = "none" | "openai-sse";
+
 export interface ProviderConfig {
   id: string;
   name: string;
@@ -47,6 +63,9 @@ export interface ProviderConfig {
   modelName: string;
   headers: string | null;
   httpMethod: string;
+  authStyle: AuthStyle;
+  authHeaderName: string | null;
+  streamMode: StreamMode;
   bodyTemplate: string | null;
   responsePath: string | null;
   isActive: boolean;
@@ -55,13 +74,14 @@ export interface ProviderConfig {
 }
 
 export const PROVIDER_TYPES = [
-  { value: "bluesminds",  label: "Bluesminds (current)",  requiresKey: true },
-  { value: "openai",      label: "OpenAI",                requiresKey: true },
-  { value: "anthropic",   label: "Anthropic",             requiresKey: true },
-  { value: "azure",       label: "Azure OpenAI",          requiresKey: true },
-  { value: "gemini",      label: "Google Gemini",         requiresKey: true },
-  { value: "bedrock",     label: "AWS Bedrock",           requiresKey: false },
-  { value: "custom",      label: "Custom Provider",       requiresKey: false },
+  { value: "bluesminds",        label: "Bluesminds (default)",      requiresKey: true  },
+  { value: "openai",            label: "OpenAI",                    requiresKey: true  },
+  { value: "anthropic",         label: "Anthropic",                 requiresKey: true  },
+  { value: "azure",             label: "Azure OpenAI",              requiresKey: true  },
+  { value: "gemini",            label: "Google Gemini",             requiresKey: true  },
+  { value: "bedrock",           label: "AWS Bedrock",               requiresKey: false },
+  { value: "openai-compatible", label: "OpenAI-Compatible (3rd party)", requiresKey: false },
+  { value: "custom",            label: "Custom (fully configurable)", requiresKey: false },
 ] as const;
 
 export type ProviderType = typeof PROVIDER_TYPES[number]["value"];

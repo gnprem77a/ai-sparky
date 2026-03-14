@@ -133,7 +133,7 @@ server/
 - `saved_prompts` — id, userId, name, content, createdAt
 - `folders` — id, userId, name, color, createdAt
 - `session` — managed by connect-pg-simple
-- `ai_providers` — id, name, providerType, apiUrl, apiKey, modelName, headers, httpMethod, isActive, isEnabled, priority, bodyTemplate, responsePath, createdAt
+- `ai_providers` — id, name, providerType, apiUrl, apiKey, modelName, headers, httpMethod, authStyle, authHeaderName, streamMode, isActive, isEnabled, priority, bodyTemplate, responsePath, createdAt
 - `knowledge_bases` — id, userId, name, description, createdAt
 - `kb_documents` — id, kbId, name, content, createdAt
 - `kb_chunks` — id, docId, kbId, content, embedding (real[]), createdAt

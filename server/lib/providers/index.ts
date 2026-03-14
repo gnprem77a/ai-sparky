@@ -20,6 +20,7 @@ export function buildAdapter(config: ProviderConfig): ProviderAdapter {
     case "azure":
     case "gemini":
     case "bluesminds":
+    case "openai-compatible":
       return new OpenAICompatAdapter(config);
     case "anthropic":
       return new AnthropicAdapter(config);
@@ -73,6 +74,9 @@ export async function streamWithFallback(
     modelName: "claude-sonnet-4-6",
     headers: null,
     httpMethod: "POST",
+    authStyle: "bearer",
+    authHeaderName: null,
+    streamMode: "none",
     bodyTemplate: null,
     responsePath: null,
     isActive: true,
@@ -105,6 +109,9 @@ export async function generateText(
     modelName: "claude-sonnet-4-6",
     headers: null,
     httpMethod: "POST",
+    authStyle: "bearer",
+    authHeaderName: null,
+    streamMode: "none",
     bodyTemplate: null,
     responsePath: null,
     isActive: true,
