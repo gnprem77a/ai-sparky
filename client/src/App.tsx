@@ -17,7 +17,6 @@ const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
-const StudyPage = lazy(() => import("@/pages/StudyPage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 
 (function initTheme() {
@@ -80,13 +79,6 @@ function AppInner() {
         </Suspense>
       );
     }
-    if (location === "/study" || location.startsWith("/study")) {
-      return (
-        <Suspense fallback={null}>
-          <StudyPage />
-        </Suspense>
-      );
-    }
     if (location === "/kb" || location.startsWith("/kb")) {
       return (
         <Suspense fallback={null}>
@@ -119,9 +111,6 @@ function AppInner() {
         </Route>
         <Route path="/gallery">
           <GalleryPage />
-        </Route>
-        <Route path="/study">
-          <StudyPage />
         </Route>
         <Route path="/kb">
           <KnowledgeBasePage />

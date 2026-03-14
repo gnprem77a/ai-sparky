@@ -27,7 +27,6 @@ client/src/
     SettingsModal.tsx   - 3-tab modal: System Prompt, Appearance (fontSize/name), Account
     PromptLibrary.tsx   - Saved prompt library popover (CRUD + insert into input)
   pages/
-    StudyPage.tsx       - Studies section: notes library, AI summary/quiz/flashcard generation, interactive quiz+flashcard UI
     ChatPage.tsx        - Main chat: streaming, abort+partial save, typing cursor, elapsed timer, suggestions
     AuthPage.tsx        - Login / Sign up page
     AdminPage.tsx       - Admin dashboard: user/plan management + token usage analytics
