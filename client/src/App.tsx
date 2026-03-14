@@ -18,6 +18,7 @@ const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
+const ApiAccessPage = lazy(() => import("@/pages/ApiAccessPage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -114,6 +115,9 @@ function AppInner() {
         </Route>
         <Route path="/kb">
           <KnowledgeBasePage />
+        </Route>
+        <Route path="/api-access">
+          <ApiAccessPage />
         </Route>
         <Route>
           <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>

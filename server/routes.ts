@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
+import { randomBytes } from "crypto";
 import { insertUserSchema, insertBroadcastSchema, insertAiProviderSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
@@ -335,7 +336,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.session.userId) return res.status(401).json({ error: "Not logged in" });
     const user = await storage.getUser(req.session.userId);
     if (!user) { req.session.destroy(() => {}); return res.status(401).json({ error: "User not found" }); }
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt, createdAt: user.createdAt });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt, createdAt: user.createdAt, apiEnabled: user.apiEnabled });
   });
 
   /* ── auth: change password ── */
@@ -696,6 +697,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(allUsers.map((u) => ({
       id: u.id, username: u.username, isAdmin: u.isAdmin,
       plan: u.plan, planExpiresAt: u.planExpiresAt, createdAt: u.createdAt,
+      apiEnabled: u.apiEnabled,
     })));
   });
 
@@ -725,6 +727,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.setPlan(id, plan, expiry);
     if (!user) return res.status(404).json({ error: "User not found" });
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
+  });
+
+  /* ── admin: generate / revoke API key for a user ── */
+  app.post("/api/admin/users/:id/api-key/generate", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const target = await storage.getUser(id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    const newKey = "sk-" + randomBytes(32).toString("hex");
+    const user = await storage.setApiKey(id, newKey);
+    await storage.setApiEnabled(id, true);
+    return res.json({ apiKey: newKey, apiEnabled: true });
+  });
+
+  app.post("/api/admin/users/:id/api-key/revoke", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const target = await storage.getUser(id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    await storage.setApiKey(id, null);
+    await storage.setApiEnabled(id, false);
+    return res.json({ apiEnabled: false });
+  });
+
+  /* ── user: get own API key info ── */
+  app.get("/api/me/api-key", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    return res.json({ apiKey: user.apiKey, apiEnabled: user.apiEnabled });
+  });
+
+  /* ── user: regenerate own API key ── */
+  app.post("/api/me/api-key/regenerate", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const newKey = "sk-" + randomBytes(32).toString("hex");
+    await storage.setApiKey(userId, newKey);
+    return res.json({ apiKey: newKey, apiEnabled: true });
   });
 
   /* ── broadcasts: get active ── */
@@ -1317,6 +1359,82 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err) {
       console.error("[kb/chat] error:", err);
       res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  /* ── External API: /api/v1/chat (API key auth) ── */
+  app.post("/api/v1/chat", async (req: Request, res: Response) => {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>" });
+    }
+    const apiKey = authHeader.slice(7).trim();
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user || !user.apiEnabled) {
+      return res.status(401).json({ error: "Invalid or disabled API key" });
+    }
+
+    const { messages: rawMessages, message, model, systemPrompt, stream: wantStream, maxTokens } = req.body;
+
+    let messages: { role: string; content: string }[] = [];
+    if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+      messages = rawMessages.map((m: any) => ({ role: m.role, content: m.content }));
+    } else if (typeof message === "string" && message.trim()) {
+      messages = [{ role: "user", content: message.trim() }];
+    } else {
+      return res.status(400).json({ error: "Provide 'message' (string) or 'messages' (array)" });
+    }
+
+    const dbProviders = await storage.getActiveProviders();
+    const providerConfigs: ProviderConfig[] = dbProviders.map((p) => ({
+      id: p.id,
+      name: p.name,
+      providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null,
+      apiKey: p.apiKey ?? null,
+      modelName: p.modelName,
+      headers: p.headers ?? null,
+      httpMethod: p.httpMethod ?? "POST",
+      authStyle: (p.authStyle ?? "bearer") as ProviderConfig["authStyle"],
+      authHeaderName: p.authHeaderName ?? null,
+      streamMode: (p.streamMode ?? "none") as ProviderConfig["streamMode"],
+      bodyTemplate: p.bodyTemplate ?? null,
+      responsePath: p.responsePath ?? null,
+      isActive: p.isActive,
+      isEnabled: p.isEnabled,
+      priority: p.priority,
+    }));
+
+    if (wantStream === true) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      try {
+        const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+          messages,
+          systemPrompt: systemPrompt ?? undefined,
+          maxTokens: maxTokens ?? 2048,
+          useTools: false,
+          res,
+        });
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens })}\n\n`);
+        res.end();
+      } catch (err: any) {
+        res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
+        res.end();
+      }
+    } else {
+      try {
+        const sysPrompt = systemPrompt ?? "";
+        const userPrompt = messages
+          .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
+          .join("\n");
+        const text = await generateText(providerConfigs, sysPrompt, userPrompt, maxTokens ?? 2048);
+        return res.json({ content: text, model: model ?? "auto" });
+      } catch (err: any) {
+        return res.status(500).json({ error: err.message || "Generation failed" });
+      }
     }
   });
 

@@ -11,6 +11,8 @@ export const users = pgTable("users", {
   plan: text("plan").notNull().default("free"),
   planExpiresAt: timestamp("plan_expires_at"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  apiKey: text("api_key"),
+  apiEnabled: boolean("api_enabled").notNull().default(false),
 });
 
 export const conversations = pgTable("conversations", {

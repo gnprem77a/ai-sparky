@@ -8,6 +8,7 @@ export interface AuthUser {
   plan: "free" | "pro";
   planExpiresAt: string | null;
   createdAt: string | null;
+  apiEnabled: boolean;
 }
 
 export function useAuth() {

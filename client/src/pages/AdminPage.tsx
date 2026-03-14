@@ -9,7 +9,7 @@ import {
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
-  ArrowUp, ArrowDown, Key, Globe, Cpu,
+  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Broadcast, type AiProvider } from "@shared/schema";
@@ -40,6 +40,7 @@ interface AdminUser {
   plan: "free" | "pro";
   planExpiresAt: string | null;
   createdAt: string;
+  apiEnabled: boolean;
 }
 
 type Duration = "1w" | "1m" | "1y" | "permanent" | "custom";
@@ -1030,6 +1031,8 @@ export default function AdminPage() {
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
 
   const broadcastMutation = useMutation({
     mutationFn: (message: string) =>
@@ -1070,6 +1073,19 @@ export default function AdminPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/users/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
+  });
+
+  const generateApiKeyMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/users/${id}/api-key/generate`).then((r) => r.json()),
+    onSuccess: (data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setGeneratedKey({ userId: id, key: data.apiKey });
+    },
+  });
+
+  const revokeApiKeyMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/users/${id}/api-key/revoke`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
   });
 
@@ -1442,6 +1458,112 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+        {/* API Keys Section */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
+            <Key className="w-4 h-4 text-emerald-500" />
+            <h2 className="font-semibold text-foreground">API Access</h2>
+            <span className="text-xs text-muted-foreground ml-auto">Grant users an API key to call the AI externally</span>
+          </div>
+
+          <div className="divide-y divide-border/50">
+            {users.map((u) => {
+              const isGenerated = generatedKey?.userId === u.id;
+              return (
+                <div key={u.id} data-testid={`row-api-user-${u.id}`} className="px-6 py-4">
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0",
+                      u.isAdmin
+                        ? "bg-violet-500/15 text-violet-500"
+                        : u.apiEnabled
+                          ? "bg-emerald-500/15 text-emerald-500"
+                          : "bg-muted text-muted-foreground"
+                    )}>
+                      {u.username[0].toUpperCase()}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-foreground truncate">{u.username}</span>
+                        {u.apiEnabled ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/20">
+                            <Key className="w-2.5 h-2.5" /> API Enabled
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">
+                            No Access
+                          </span>
+                        )}
+                      </div>
+                      {isGenerated && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <code className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg truncate max-w-xs">
+                            {generatedKey.key}
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(generatedKey.key);
+                              setCopiedKeyId(u.id);
+                              setTimeout(() => setCopiedKeyId(null), 2000);
+                            }}
+                            className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                            data-testid={`button-copy-generated-key-${u.id}`}
+                            title="Copy API key"
+                          >
+                            {copiedKeyId === u.id ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => setGeneratedKey(null)}
+                            className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-[10px] text-amber-500">Save this key — it won't be shown again</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {u.id !== user.id && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            if (confirm(`Generate${u.apiEnabled ? "/regenerate" : ""} API key for "${u.username}"?`)) {
+                              generateApiKeyMutation.mutate(u.id);
+                            }
+                          }}
+                          disabled={generateApiKeyMutation.isPending}
+                          data-testid={`button-generate-key-${u.id}`}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 transition-all"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                          {u.apiEnabled ? "Regenerate" : "Generate Key"}
+                        </button>
+                        {u.apiEnabled && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Revoke API access for "${u.username}"?`)) {
+                                revokeApiKeyMutation.mutate(u.id);
+                                if (generatedKey?.userId === u.id) setGeneratedKey(null);
+                              }
+                            }}
+                            disabled={revokeApiKeyMutation.isPending}
+                            data-testid={`button-revoke-key-${u.id}`}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
       </main>
     </div>
   );

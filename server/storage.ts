@@ -18,12 +18,15 @@ import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByApiKey(apiKey: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<User | undefined>;
   setPlan(id: string, plan: "free" | "pro", expiresAt: Date | null): Promise<User | undefined>;
   updatePassword(id: string, hashedPassword: string): Promise<void>;
+  setApiKey(id: string, apiKey: string | null): Promise<User | undefined>;
+  setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
 
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -113,6 +116,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByApiKey(apiKey: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.apiKey, apiKey));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
@@ -138,6 +146,16 @@ export class DatabaseStorage implements IStorage {
 
   async updatePassword(id: string, hashedPassword: string): Promise<void> {
     await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
+  }
+
+  async setApiKey(id: string, apiKey: string | null): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ apiKey }).where(eq(users.id, id)).returning();
+    return user;
+  }
+
+  async setApiEnabled(id: string, enabled: boolean): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ apiEnabled: enabled }).where(eq(users.id, id)).returning();
+    return user;
   }
 
   async getConversations(userId: string): Promise<Conversation[]> {

@@ -126,7 +126,7 @@ server/
 
 ## Database Tables
 
-- `users` — id, username, password, isAdmin, plan, planExpiresAt, createdAt
+- `users` — id, username, password, isAdmin, plan, planExpiresAt, createdAt, apiKey (text), apiEnabled (boolean) — API access fields
 - `conversations` — id, userId, title, model, isPinned, shareToken, folderId, createdAt, updatedAt, tags (text[])
 - `messages` — id, conversationId, role, content, modelUsed, attachments (JSON), inputTokens, outputTokens, reaction, stopped, isPinned, createdAt
 - `user_settings` — userId, systemPrompt, dailyMessageCount, lastMessageDate, fontSize, assistantName, activePromptId, contactEmail (admin-set contact for Pro upgrade inquiries)
