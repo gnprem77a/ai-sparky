@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, BookMarked, Brain, BarChart2, Globe } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, Globe } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
@@ -827,30 +827,6 @@ export function AppSidebar({
                   <a href="/kb" data-testid="link-knowledge-base" className="group">
                     <Database className="w-4 h-4 text-blue-400 group-hover:text-blue-400" />
                     <span>Knowledge Base</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <a href="/profile#prompts" data-testid="link-saved-prompts" className="group">
-                    <BookMarked className="w-4 h-4 text-violet-400 group-hover:text-violet-400" />
-                    <span>Saved Prompts</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <a href="/profile#memory" data-testid="link-memory" className="group">
-                    <Brain className="w-4 h-4 text-pink-400 group-hover:text-pink-400" />
-                    <span>Memory</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <a href="/analytics" data-testid="link-analytics" className="group">
-                    <BarChart2 className="w-4 h-4 text-emerald-400 group-hover:text-emerald-400" />
-                    <span>Analytics</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>

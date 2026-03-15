@@ -11,7 +11,6 @@ import {
 import { 
   Plus, 
   Settings, 
-  BarChart2, 
   Shield, 
   MessageSquare,
   Clock
@@ -65,16 +64,6 @@ export function CommandPalette({
           >
             <Settings className="mr-2 h-4 w-4" />
             <span>Open Settings</span>
-          </CommandItemUI>
-          <CommandItemUI
-            onSelect={() => {
-              onAction("go-to-analytics");
-              onOpenChange(false);
-            }}
-            data-testid="command-item-analytics"
-          >
-            <BarChart2 className="mr-2 h-4 w-4" />
-            <span>Go to Analytics</span>
           </CommandItemUI>
           <CommandItemUI
             onSelect={() => {
