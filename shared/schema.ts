@@ -42,6 +42,7 @@ export const folders = pgTable("folders", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   color: varchar("color", { length: 20 }).notNull().default("default"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -77,6 +78,11 @@ export const userSettings = pgTable("user_settings", {
   notificationSound: boolean("notification_sound").notNull().default(false),
   responseLanguage: text("response_language").notNull().default(""),
   contactEmail: text("contact_email").notNull().default(""),
+  personaAvatarLetter: text("persona_avatar_letter").notNull().default("A"),
+  personaPersonality: text("persona_personality").notNull().default(""),
+  notifyBroadcast: boolean("notify_broadcast").notNull().default(true),
+  notifyWeeklyDigest: boolean("notify_weekly_digest").notNull().default(false),
+  notifySecurityAlerts: boolean("notify_security_alerts").notNull().default(true),
 });
 
 export const savedPrompts = pgTable("saved_prompts", {

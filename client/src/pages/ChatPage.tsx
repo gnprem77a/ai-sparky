@@ -204,6 +204,30 @@ export default function ChatPage() {
     }
   }, [usageData, isPro, toast]);
 
+  /* ── Global keyboard shortcuts ── */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+
+      // Cmd/Ctrl+K — new chat (only when not typing in an input)
+      if (mod && e.key === "k" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        handleNewChat();
+      }
+
+      // Escape — close search/summary/settings modals
+      if (e.key === "Escape") {
+        setSearchOpen(false);
+        setSearchQuery("");
+        setSummaryOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* ── Load user settings ── */
   const { data: userSettings } = useQuery<{
     fontSize: string; assistantName: string; activePromptId: string | null;

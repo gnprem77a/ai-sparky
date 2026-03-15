@@ -9,6 +9,7 @@ import {
   ArrowLeft, Crown, Shield, User, Lock, Palette, MessageSquare,
   Eye, EyeOff, Check, Save, LogOut, ChevronRight, Zap, Calendar,
   Hash, Bot, Type, Key, Sun, Moon, Brain, Plus, Trash2,
+  Bell, Download, AlertTriangle, Sparkles,
 } from "lucide-react";
 
 interface Settings {
@@ -16,6 +17,11 @@ interface Settings {
   fontSize: string;
   assistantName: string;
   activePromptId: string | null;
+  personaAvatarLetter: string;
+  personaPersonality: string;
+  notifyBroadcast: boolean;
+  notifyWeeklyDigest: boolean;
+  notifySecurityAlerts: boolean;
 }
 
 interface UsageData {
@@ -76,6 +82,19 @@ export default function ProfilePage() {
   const [activePromptId, setActivePromptId] = useState<string | null>(null);
   const [appearanceSaved, setAppearanceSaved] = useState(false);
   const [promptSaved, setPromptSaved]     = useState(false);
+
+  const [personaAvatarLetter, setPersonaAvatarLetter] = useState("A");
+  const [personaPersonality, setPersonaPersonality] = useState("");
+  const [personaSaved, setPersonaSaved] = useState(false);
+
+  const [notifyBroadcast, setNotifyBroadcast] = useState(true);
+  const [notifyWeeklyDigest, setNotifyWeeklyDigest] = useState(false);
+  const [notifySecurityAlerts, setNotifySecurityAlerts] = useState(true);
+  const [notifSaved, setNotifSaved] = useState(false);
+
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteInput, setDeleteInput] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem("theme-color") || "default");
 
   const themes = [
@@ -143,6 +162,11 @@ export default function ProfilePage() {
       setAssistantName(settings.assistantName ?? "Assistant");
       setSystemPrompt(settings.systemPrompt ?? "");
       setActivePromptId(settings.activePromptId ?? null);
+      setPersonaAvatarLetter(settings.personaAvatarLetter ?? "A");
+      setPersonaPersonality(settings.personaPersonality ?? "");
+      setNotifyBroadcast(settings.notifyBroadcast ?? true);
+      setNotifyWeeklyDigest(settings.notifyWeeklyDigest ?? false);
+      setNotifySecurityAlerts(settings.notifySecurityAlerts ?? true);
     }
   }, [settings]);
 
@@ -156,6 +180,32 @@ export default function ProfilePage() {
     settingsMutation.mutate({ fontSize, assistantName });
     setAppearanceSaved(true);
     setTimeout(() => setAppearanceSaved(false), 2000);
+  };
+
+  const handleSavePersona = () => {
+    const letter = personaAvatarLetter.trim().slice(0, 1).toUpperCase() || "A";
+    setPersonaAvatarLetter(letter);
+    settingsMutation.mutate({ personaAvatarLetter: letter, personaPersonality });
+    setPersonaSaved(true);
+    setTimeout(() => setPersonaSaved(false), 2000);
+  };
+
+  const handleSaveNotifications = () => {
+    settingsMutation.mutate({ notifyBroadcast, notifyWeeklyDigest, notifySecurityAlerts });
+    setNotifSaved(true);
+    setTimeout(() => setNotifSaved(false), 2000);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteInput !== user?.username) return;
+    setIsDeleting(true);
+    try {
+      await apiRequest("DELETE", "/api/auth/me");
+      logout.mutate();
+      window.location.href = "/";
+    } catch {
+      setIsDeleting(false);
+    }
   };
 
   const handleSavePrompt = () => {
@@ -645,6 +695,102 @@ export default function ProfilePage() {
           </div>
         </SectionCard>
 
+        {/* ── Custom AI Persona ── */}
+        <SectionCard icon={<Sparkles className="w-4 h-4" />} title="AI Persona">
+          <div className="space-y-5">
+            <p className="text-xs text-muted-foreground/60 leading-relaxed">
+              Give your AI assistant a custom identity. The avatar letter appears as its profile icon in chat, and the personality description shapes how it speaks to you.
+            </p>
+
+            <div className="flex items-center gap-5">
+              <div className={cn(
+                "w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold flex-shrink-0 select-none",
+                "bg-gradient-to-br from-primary/80 to-violet-500/80 text-white shadow-lg"
+              )}>
+                {personaAvatarLetter || "A"}
+              </div>
+              <div className="flex-1 space-y-2">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Avatar Letter</label>
+                <input
+                  type="text"
+                  value={personaAvatarLetter}
+                  onChange={(e) => setPersonaAvatarLetter(e.target.value.slice(0, 1).toUpperCase())}
+                  placeholder="A"
+                  maxLength={1}
+                  data-testid="input-persona-avatar-letter"
+                  className="w-16 text-center px-3 py-2 rounded-xl border border-border/50 bg-muted/30 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all uppercase"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <Bot className="w-3.5 h-3.5" /> Personality / Tone
+              </label>
+              <textarea
+                value={personaPersonality}
+                onChange={(e) => setPersonaPersonality(e.target.value)}
+                placeholder="e.g. Concise and technical. Always include code examples. Use bullet points."
+                maxLength={300}
+                rows={3}
+                data-testid="input-persona-personality"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-border/50 bg-muted/30 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none transition-all"
+              />
+              <p className="text-[11px] text-muted-foreground/50 mt-1">{personaPersonality.length}/300 · Added as context to every message.</p>
+            </div>
+
+            <button
+              onClick={handleSavePersona}
+              data-testid="button-save-persona"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all"
+            >
+              {personaSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Persona</>}
+            </button>
+          </div>
+        </SectionCard>
+
+        {/* ── Notification Preferences ── */}
+        <SectionCard icon={<Bell className="w-4 h-4" />} title="Notifications">
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground/60 leading-relaxed">
+              Choose which email notifications you receive. (Requires your email to be set in account settings.)
+            </p>
+            {[
+              { label: "System announcements", desc: "Important platform updates and broadcasts from the team", value: notifyBroadcast, set: setNotifyBroadcast, testId: "toggle-notify-broadcast" },
+              { label: "Weekly digest", desc: "A summary of your usage, top conversations, and token stats", value: notifyWeeklyDigest, set: setNotifyWeeklyDigest, testId: "toggle-notify-digest" },
+              { label: "Security alerts", desc: "Notifications about logins from new devices or password changes", value: notifySecurityAlerts, set: setNotifySecurityAlerts, testId: "toggle-notify-security" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-4 py-2 border-b border-border/30 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground/60 mt-0.5">{item.desc}</p>
+                </div>
+                <button
+                  onClick={() => item.set(!item.value)}
+                  data-testid={item.testId}
+                  className={cn(
+                    "relative w-10 h-6 rounded-full transition-colors flex-shrink-0",
+                    item.value ? "bg-primary" : "bg-muted-foreground/20"
+                  )}
+                >
+                  <span className={cn(
+                    "absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all",
+                    item.value ? "left-5" : "left-1"
+                  )} />
+                </button>
+              </div>
+            ))}
+
+            <button
+              onClick={handleSaveNotifications}
+              data-testid="button-save-notifications"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all"
+            >
+              {notifSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Preferences</>}
+            </button>
+          </div>
+        </SectionCard>
+
         {/* ── Account info ── */}
         <div className="rounded-2xl border border-border/40 bg-muted/10 px-5 py-4 space-y-2.5">
           <h3 className="text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider">Account Info</h3>
@@ -661,6 +807,76 @@ export default function ProfilePage() {
                 <span className="font-medium text-foreground/80">{memberSince}</span>
               </>
             )}
+          </div>
+        </div>
+
+        {/* ── Data & Account Deletion ── */}
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-destructive/20">
+            <AlertTriangle className="w-4 h-4 text-destructive/70" />
+            <h2 className="font-semibold text-sm text-foreground">Data & Account</h2>
+          </div>
+          <div className="p-5 space-y-5">
+            <div>
+              <p className="text-sm font-medium text-foreground mb-1">Export your data</p>
+              <p className="text-xs text-muted-foreground/60 mb-3">Download all your conversations and messages as a JSON file.</p>
+              <a
+                href="/api/data/export"
+                download
+                data-testid="button-export-data"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border/50 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download Export
+              </a>
+            </div>
+
+            <div className="border-t border-destructive/15 pt-5">
+              <p className="text-sm font-medium text-foreground mb-1">Delete account</p>
+              <p className="text-xs text-muted-foreground/60 mb-3">
+                Permanently deletes your account and all conversations. This cannot be undone.
+              </p>
+              {!deleteConfirm ? (
+                <button
+                  onClick={() => setDeleteConfirm(true)}
+                  data-testid="button-delete-account-start"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-destructive/30 text-destructive text-sm font-medium hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete my account
+                </button>
+              ) : (
+                <div className="space-y-3 p-4 rounded-xl bg-destructive/8 border border-destructive/20">
+                  <p className="text-sm text-destructive font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4" /> This will permanently delete everything.
+                  </p>
+                  <p className="text-xs text-muted-foreground">Type your username <span className="font-mono font-bold text-foreground">{user.username}</span> to confirm:</p>
+                  <input
+                    type="text"
+                    value={deleteInput}
+                    onChange={(e) => setDeleteInput(e.target.value)}
+                    placeholder={user.username}
+                    data-testid="input-delete-confirm"
+                    className="w-full px-3 py-2 rounded-lg border border-destructive/30 bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-destructive/30"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleteInput !== user.username || isDeleting}
+                      data-testid="button-delete-account-confirm"
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-destructive text-destructive-foreground text-sm font-semibold disabled:opacity-40 transition-all hover:opacity-90"
+                    >
+                      {isDeleting ? "Deleting…" : "Yes, delete my account"}
+                    </button>
+                    <button
+                      onClick={() => { setDeleteConfirm(false); setDeleteInput(""); }}
+                      data-testid="button-delete-account-cancel"
+                      className="px-4 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

@@ -485,7 +485,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── settings: update ── */
   app.patch("/api/settings", requireAuth as any, async (req: Request, res: Response) => {
-    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions, notificationSound, responseLanguage } = req.body;
+    const { systemPrompt, fontSize, assistantName, activePromptId, defaultModel, autoScroll, autoTitle, showTokenUsage, customInstructions, notificationSound, responseLanguage, personaAvatarLetter, personaPersonality, notifyBroadcast, notifyWeeklyDigest, notifySecurityAlerts } = req.body;
     const updateData: Parameters<typeof storage.updateUserSettings>[1] = {};
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
     if (fontSize !== undefined) updateData.fontSize = fontSize;
@@ -498,8 +498,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (customInstructions !== undefined) updateData.customInstructions = customInstructions;
     if (notificationSound !== undefined) updateData.notificationSound = notificationSound;
     if (responseLanguage !== undefined) updateData.responseLanguage = responseLanguage;
+    if (personaAvatarLetter !== undefined) updateData.personaAvatarLetter = personaAvatarLetter;
+    if (personaPersonality !== undefined) updateData.personaPersonality = personaPersonality;
+    if (notifyBroadcast !== undefined) updateData.notifyBroadcast = notifyBroadcast;
+    if (notifyWeeklyDigest !== undefined) updateData.notifyWeeklyDigest = notifyWeeklyDigest;
+    if (notifySecurityAlerts !== undefined) updateData.notifySecurityAlerts = notifySecurityAlerts;
     const settings = await storage.updateUserSettings(req.session.userId!, updateData);
     return res.json(settings);
+  });
+
+  /* ── account: delete self ── */
+  app.delete("/api/auth/me", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    await storage.deleteAllConversations(userId);
+    await storage.deleteUser(userId);
+    req.session.destroy(() => {});
+    return res.json({ success: true });
   });
 
   /* ── data: export all conversations ── */
@@ -703,6 +717,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── folders: delete ── */
   app.delete("/api/folders/:id", requireAuth as any, async (req: Request, res: Response) => {
     await storage.deleteFolder(req.params.id as string);
+    return res.json({ ok: true });
+  });
+
+  /* ── folders: reorder ── */
+  app.put("/api/folders/reorder", requireAuth as any, async (req: Request, res: Response) => {
+    const { orderedIds } = req.body;
+    if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds must be an array" });
+    await storage.reorderFolders(req.session.userId!, orderedIds as string[]);
     return res.json({ ok: true });
   });
 

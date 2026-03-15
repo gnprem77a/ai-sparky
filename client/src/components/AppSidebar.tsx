@@ -119,6 +119,8 @@ export function AppSidebar({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [dragFolderId, setDragFolderId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -173,6 +175,11 @@ export function AppSidebar({
 
   const deleteFolderMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/folders/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/folders"] }),
+  });
+
+  const reorderFoldersMutation = useMutation({
+    mutationFn: (orderedIds: string[]) => apiRequest("PUT", "/api/folders/reorder", { orderedIds }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/folders"] }),
   });
 
@@ -688,12 +695,39 @@ export function AppSidebar({
                   {folders.map((folder) => {
                     const folderConvs = unpinned.filter((c) => c.folderId === folder.id);
                     const isExpanded = expandedFolders[folder.id];
+                    const isDraggingOver = dragOverFolderId === folder.id && dragFolderId !== folder.id;
                     return (
-                      <div key={folder.id}>
+                      <div
+                        key={folder.id}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragFolderId(folder.id); }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverFolderId(folder.id); }}
+                        onDragLeave={() => setDragOverFolderId(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragOverFolderId(null);
+                          if (!dragFolderId || dragFolderId === folder.id) { setDragFolderId(null); return; }
+                          const ids = folders.map(f => f.id);
+                          const fromIdx = ids.indexOf(dragFolderId);
+                          const toIdx = ids.indexOf(folder.id);
+                          if (fromIdx === -1 || toIdx === -1) { setDragFolderId(null); return; }
+                          const newOrder = [...ids];
+                          newOrder.splice(fromIdx, 1);
+                          newOrder.splice(toIdx, 0, dragFolderId);
+                          reorderFoldersMutation.mutate(newOrder);
+                          setDragFolderId(null);
+                        }}
+                        onDragEnd={() => { setDragFolderId(null); setDragOverFolderId(null); }}
+                        className={cn(
+                          "rounded-lg transition-all",
+                          isDraggingOver && "ring-1 ring-primary/40 bg-primary/5",
+                          dragFolderId === folder.id && "opacity-50"
+                        )}
+                      >
                         <SidebarMenuItem>
                           <SidebarMenuButton
                             onClick={() => toggleFolder(folder.id)}
-                            className="w-full group/folder"
+                            className="w-full group/folder cursor-grab active:cursor-grabbing"
                           >
                             {isExpanded ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />}
                             <div className={cn("w-2 h-2 rounded-full mr-2", FOLDER_COLORS.find(c => c.name === folder.color)?.class || "bg-muted-foreground/40")} />

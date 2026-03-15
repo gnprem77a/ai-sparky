@@ -49,7 +49,7 @@ export interface IStorage {
   searchMessages(userId: string, query: string): Promise<{ conversationId: string; conversationTitle: string; messageId: string; snippet: string; role: string }[]>;
 
   getUserSettings(userId: string): Promise<UserSettings>;
-  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage">>): Promise<UserSettings>;
+  updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage" | "personaAvatarLetter" | "personaPersonality" | "notifyBroadcast" | "notifyWeeklyDigest" | "notifySecurityAlerts">>): Promise<UserSettings>;
   deleteAllConversations(userId: string): Promise<void>;
 
   getSavedPrompts(userId: string): Promise<SavedPrompt[]>;
@@ -59,6 +59,7 @@ export interface IStorage {
   getFolders(userId: string): Promise<Folder[]>;
   createFolder(userId: string, name: string, color: string): Promise<Folder>;
   deleteFolder(id: string): Promise<void>;
+  reorderFolders(userId: string, orderedIds: string[]): Promise<void>;
   moveConversationToFolder(conversationId: string, folderId: string | null): Promise<Conversation | undefined>;
 
   getAnalyticsOverview(userId: string): Promise<{ totalConversations: number; totalMessages: number; totalTokens: number; avgTokensPerMessage: number }>;
@@ -349,7 +350,7 @@ export class DatabaseStorage implements IStorage {
     return settings;
   }
 
-  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage">>): Promise<UserSettings> {
+  async updateUserSettings(userId: string, data: Partial<Pick<UserSettings, "systemPrompt" | "dailyMessageCount" | "lastMessageDate" | "fontSize" | "assistantName" | "activePromptId" | "defaultModel" | "autoScroll" | "autoTitle" | "showTokenUsage" | "customInstructions" | "notificationSound" | "responseLanguage" | "personaAvatarLetter" | "personaPersonality" | "notifyBroadcast" | "notifyWeeklyDigest" | "notifySecurityAlerts">>): Promise<UserSettings> {
     await this.getUserSettings(userId);
     const [updated] = await db.update(userSettings).set(data).where(eq(userSettings.userId, userId)).returning();
     return updated;
@@ -375,7 +376,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFolders(userId: string): Promise<Folder[]> {
-    return db.select().from(folders).where(eq(folders.userId, userId)).orderBy(asc(folders.createdAt));
+    return db.select().from(folders).where(eq(folders.userId, userId)).orderBy(asc(folders.sortOrder), asc(folders.createdAt));
   }
 
   async createFolder(userId: string, name: string, color: string): Promise<Folder> {
@@ -385,6 +386,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFolder(id: string): Promise<void> {
     await db.delete(folders).where(eq(folders.id, id));
+  }
+
+  async reorderFolders(userId: string, orderedIds: string[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.update(folders).set({ sortOrder: i }).where(
+        and(eq(folders.id, orderedIds[i]), eq(folders.userId, userId))
+      );
+    }
   }
 
   async moveConversationToFolder(conversationId: string, folderId: string | null): Promise<Conversation | undefined> {

@@ -187,7 +187,9 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
   /* keyboard */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    const mod = e.metaKey || e.ctrlKey;
+    // Enter (without shift) or Cmd/Ctrl+Enter — submit
+    if (e.key === "Enter" && (!e.shiftKey || mod)) {
       e.preventDefault();
       if (!isStreaming && (value.trim() || attachments.length > 0)) handleSend();
     }
