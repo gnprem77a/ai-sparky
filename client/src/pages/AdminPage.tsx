@@ -1007,6 +1007,7 @@ export default function AdminPage() {
   const [, navigate] = useLocation();
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
+  const [userSort, setUserSort] = useState<"name" | "plan" | "tokens" | "joined">("joined");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -1084,9 +1085,24 @@ export default function AdminPage() {
   const proCount = users.filter((u) => u.plan === "pro" && !isExpired(u.planExpiresAt)).length;
   const freeCount = totalUsers - proCount;
 
-  const filteredUsers = users.filter(u =>
-    u.username.toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter(u => u.username.toLowerCase().includes(userSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (userSort === "name") return a.username.localeCompare(b.username);
+      if (userSort === "plan") {
+        const pa = a.plan === "pro" && !isExpired(a.planExpiresAt) ? 1 : 0;
+        const pb = b.plan === "pro" && !isExpired(b.planExpiresAt) ? 1 : 0;
+        return pb - pa;
+      }
+      if (userSort === "tokens") {
+        const ta = tokenStats?.byUser.find(x => x.userId === a.id);
+        const tb = tokenStats?.byUser.find(x => x.userId === b.id);
+        const tokA = ta ? ta.inputTokens + ta.outputTokens : 0;
+        const tokB = tb ? tb.inputTokens + tb.outputTokens : 0;
+        return tokB - tokA;
+      }
+      return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+    });
 
   const stats = [
     { label: "Total Users", value: totalUsers, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -1293,17 +1309,31 @@ export default function AdminPage() {
 
         {/* Users table */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-4">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-3 flex-wrap">
             <h2 className="font-semibold text-foreground flex-shrink-0">All Users</h2>
-            <div className="relative flex-1 max-w-sm">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search by username..."
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-border bg-muted/20 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="relative flex-1 max-w-sm">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search by username..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  data-testid="input-user-search"
+                  className="w-full pl-9 pr-4 py-1.5 rounded-lg border border-border bg-muted/20 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <select
+                value={userSort}
+                onChange={(e) => setUserSort(e.target.value as typeof userSort)}
+                data-testid="select-user-sort"
+                className="px-3 py-1.5 rounded-lg border border-border bg-muted/20 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer flex-shrink-0"
+              >
+                <option value="joined">Sort: Newest</option>
+                <option value="name">Sort: Name</option>
+                <option value="plan">Sort: Plan</option>
+                <option value="tokens">Sort: Most tokens</option>
+              </select>
             </div>
             <span className="text-xs text-muted-foreground flex-shrink-0">{filteredUsers.length} users</span>
           </div>

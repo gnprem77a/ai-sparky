@@ -31,6 +31,7 @@ function isProActive(user: { plan: string; planExpiresAt: string | null } | null
 }
 
 import { UpgradeModal } from "@/components/UpgradeModal";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ChatPage() {
@@ -180,6 +181,28 @@ export default function ChatPage() {
   const streamStartRef = useRef<number>(0);
 
   const isPro = isProActive(user);
+
+  /* ── Usage tracking & approaching-limit notification ── */
+  const { data: usageData } = useQuery<{ count: number; limit: number; isPro: boolean }>({
+    queryKey: ["/api/settings/usage"],
+    queryFn: () => fetch("/api/settings/usage", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user && !isPro,
+    refetchInterval: 60000,
+  });
+
+  const limitWarningFiredRef = useRef(false);
+  useEffect(() => {
+    if (!usageData || isPro || limitWarningFiredRef.current) return;
+    const pct = usageData.count / usageData.limit;
+    if (pct >= 0.8 && pct < 1.0) {
+      limitWarningFiredRef.current = true;
+      toast({
+        title: "Approaching daily limit",
+        description: `You've used ${usageData.count} of ${usageData.limit} messages today. Upgrade to Pro for unlimited access.`,
+        variant: "default",
+      });
+    }
+  }, [usageData, isPro, toast]);
 
   /* ── Load user settings ── */
   const { data: userSettings } = useQuery<{
@@ -1366,6 +1389,7 @@ export default function ChatPage() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
       <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
+      {user && <OnboardingModal />}
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">

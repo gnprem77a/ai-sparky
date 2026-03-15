@@ -2,8 +2,8 @@ import { useLocation } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import {
   ArrowRight, Zap, Globe, Mic, Paperclip, Brain,
-  Image as ImageIcon, Search, Check, Star, Sparkles,
-  MessageSquare, History, ChevronRight,
+  Image as ImageIcon, Check, Star, Sparkles,
+  ChevronRight, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -86,16 +86,37 @@ const MODELS = [
   { name: "Claude Sonnet", tag: "Balanced", glow: "shadow-violet-500/20", border: "border-violet-500/30", dot: "bg-violet-400" },
   { name: "Claude Opus",   tag: "Powerful", glow: "shadow-amber-500/20",  border: "border-amber-500/30",  dot: "bg-amber-400"  },
   { name: "Claude Haiku",  tag: "Fast",     glow: "shadow-sky-500/20",    border: "border-sky-500/30",    dot: "bg-sky-400"    },
-  { name: "Llama 3.1 70B", tag: "Creative", glow: "shadow-green-500/20",  border: "border-green-500/30",  dot: "bg-green-400"  },
+  { name: "GPT-4o",        tag: "Creative", glow: "shadow-green-500/20",  border: "border-green-500/30",  dot: "bg-green-400"  },
+];
+
+const TESTIMONIALS = [
+  { name: "Sarah M.", role: "Product Manager", avatar: "S", color: "bg-violet-500", quote: "AI Sparky replaced 3 different AI tools for me. It has everything in one place — and it's fast." },
+  { name: "James K.", role: "Software Engineer", avatar: "J", color: "bg-blue-500", quote: "The multi-model switching is a game changer. I use fast mode for quick answers and Opus for complex code reviews." },
+  { name: "Priya R.", role: "Content Creator", avatar: "P", color: "bg-pink-500", quote: "The Knowledge Base feature alone is worth it. I uploaded all my brand docs and the AI knows my voice perfectly." },
+  { name: "Tom H.", role: "Freelance Writer", avatar: "T", color: "bg-amber-500", quote: "Web search grounding means I actually trust the answers. No more hallucinated sources." },
+  { name: "Leila F.", role: "Startup Founder", avatar: "L", color: "bg-emerald-500", quote: "We run it as our internal AI tool for the whole team. The admin controls and usage limits are exactly what we needed." },
+  { name: "Marcus D.", role: "Data Analyst", avatar: "M", color: "bg-cyan-500", quote: "PDF analysis and voice input save me hours every week. I can literally talk to my documents now." },
+];
+
+const FAQS = [
+  { q: "What's the difference between Free and Pro?", a: "Free gives you 20 messages per day with the fast AI model. Pro unlocks unlimited messages, all AI models (including the most powerful ones), web search, image generation, and priority speed." },
+  { q: "Can I switch AI models mid-conversation?", a: "Yes. You can change the model at any time using the selector in the chat bar. Each model has different strengths — try switching and see which one you prefer for a given task." },
+  { q: "Is my data private?", a: "Yes. Your conversations are stored only in your account and are never used to train AI models. You can export or delete your data at any time." },
+  { q: "What is the Knowledge Base?", a: "The Knowledge Base lets you upload your own documents (PDFs, text files, etc.). The AI can then search and reference them when you ask questions, making it a personalized expert on your content." },
+  { q: "How does web search work?", a: "When web search is enabled, the AI fetches live data from the internet before responding, so it can answer questions about current events, prices, and anything that changes over time." },
+  { q: "Can I use AI Sparky for my business?", a: "Yes. Pro plan includes API access so you can embed AI Sparky into your own apps. Webhooks, call history, and usage tracking make it easy to integrate with your existing workflows." },
 ];
 
 export default function LandingPage() {
   const [, navigate] = useLocation();
   const [scrollY, setScrollY] = useState(0);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const heroSection = useInView(0.1);
   const bentoSection = useInView(0.1);
   const modelsSection = useInView(0.1);
   const pricingSection = useInView(0.1);
+  const testimonialsSection = useInView(0.1);
+  const faqSection = useInView(0.1);
 
   useEffect(() => {
     const fn = () => setScrollY(window.scrollY);
@@ -393,6 +414,74 @@ export default function LandingPage() {
                   </ul>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Testimonials ── */}
+      <section className="py-24 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div
+            ref={testimonialsSection.ref}
+            className={cn("transition-all duration-700", testimonialsSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6")}
+          >
+            <p className="text-xs uppercase tracking-widest text-violet-400/70 font-semibold mb-4 text-center">Loved by users</p>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-center mb-4">
+              What people are saying
+            </h2>
+            <p className="text-white/40 text-center text-lg mb-16 font-light max-w-lg mx-auto">Real feedback from people using AI Sparky every day.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {TESTIMONIALS.map((t) => (
+                <div key={t.name} className="p-5 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.05] transition-all duration-300 flex flex-col gap-4">
+                  <p className="text-white/60 text-sm leading-relaxed flex-1">"{t.quote}"</p>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0", t.color)}>
+                      {t.avatar}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">{t.name}</p>
+                      <p className="text-xs text-white/30">{t.role}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section className="py-24 px-6">
+        <div className="max-w-2xl mx-auto">
+          <div
+            ref={faqSection.ref}
+            className={cn("transition-all duration-700", faqSection.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6")}
+          >
+            <p className="text-xs uppercase tracking-widest text-violet-400/70 font-semibold mb-4 text-center">FAQ</p>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-center mb-16">
+              Common questions
+            </h2>
+
+            <div className="space-y-3">
+              {FAQS.map((faq, i) => (
+                <div key={i} className="rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden">
+                  <button
+                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                    className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left hover:bg-white/[0.02] transition-colors"
+                    data-testid={`faq-toggle-${i}`}
+                  >
+                    <span className="font-semibold text-sm text-white">{faq.q}</span>
+                    <ChevronDown className={cn("w-4 h-4 text-white/40 flex-shrink-0 transition-transform", openFaq === i && "rotate-180")} />
+                  </button>
+                  {openFaq === i && (
+                    <div className="px-6 pb-5">
+                      <p className="text-white/50 text-sm leading-relaxed">{faq.a}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
