@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -56,6 +56,92 @@ const FONT_SIZES = [
   { value: "normal",  label: "Normal",  desc: "Default" },
   { value: "large",   label: "Large",   desc: "Easier to read" },
 ];
+
+function HeroCanvas({ isPro }: { isPro: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+
+  const initAndAnimate = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    canvas.width = W;
+    canvas.height = H;
+
+    const COUNT = 38;
+    const PRIMARY_COLOR = isPro ? "220,160,40" : "124,90,240";
+
+    type Particle = { x: number; y: number; vx: number; vy: number; r: number; opacity: number };
+    const particles: Particle[] = Array.from({ length: COUNT }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.45,
+      vy: (Math.random() - 0.5) * 0.45,
+      r: Math.random() * 2.2 + 1,
+      opacity: Math.random() * 0.5 + 0.3,
+    }));
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw connections
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const maxDist = 110;
+          if (dist < maxDist) {
+            const alpha = (1 - dist / maxDist) * 0.25;
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(${PRIMARY_COLOR},${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw particles
+      for (const p of particles) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${PRIMARY_COLOR},${p.opacity})`;
+        ctx.fill();
+
+        // Move
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+        if (p.y < -10) p.y = H + 10;
+        if (p.y > H + 10) p.y = -10;
+      }
+
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+  }, [isPro]);
+
+  useEffect(() => {
+    initAndAnimate();
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [initAndAnimate]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full"
+      style={{ display: "block" }}
+    />
+  );
+}
 
 function SectionCard({ icon, title, children, id }: { icon: React.ReactNode; title: string; children: React.ReactNode; id?: string }) {
   return (
@@ -313,14 +399,10 @@ export default function ProfilePage() {
         {/* ── Hero ── */}
         <div className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden">
           {/* Animated banner */}
-          <div className="relative h-28 overflow-hidden bg-gradient-to-br from-primary/10 via-violet-500/5 to-indigo-500/10">
-            {/* Floating orbs */}
-            <div className="profile-orb-1 absolute -top-6 -left-4 w-32 h-32 rounded-full bg-primary/30 blur-2xl" />
-            <div className="profile-orb-2 absolute top-2 left-1/3 w-24 h-24 rounded-full bg-violet-500/25 blur-xl" />
-            <div className="profile-orb-3 absolute -top-4 right-12 w-36 h-36 rounded-full bg-indigo-400/20 blur-2xl" />
-            <div className="profile-orb-4 absolute bottom-0 right-0 w-28 h-28 rounded-full bg-primary/20 blur-xl" />
-            {/* Subtle grid overlay */}
-            <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+          <div className="relative h-32 overflow-hidden bg-gradient-to-br from-primary/8 via-violet-500/5 to-indigo-500/8">
+            <HeroCanvas isPro={isPro} />
+            {/* Soft vignette fade at bottom so avatar overlaps cleanly */}
+            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card/80 to-transparent pointer-events-none" />
           </div>
           <div className="px-6 pb-6 -mt-10">
             <div className={cn(
