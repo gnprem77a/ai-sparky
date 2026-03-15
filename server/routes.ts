@@ -1267,7 +1267,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!apiRes.ok) {
           const errText = await apiRes.text();
           console.error("[image-gen] API error:", apiRes.status, errText);
-          return res.status(500).json({ error: `Image API returned ${apiRes.status}: ${errText.slice(0, 300)}` });
+          // Parse Azure/provider error to give a clean user-facing message
+          let friendlyError = "Image generation failed. Please try again.";
+          try {
+            const errJson = JSON.parse(errText);
+            const msg = errJson?.error?.message || errJson?.message || errJson?.error;
+            if (typeof msg === "string" && msg.length > 0 && msg.length < 200) {
+              friendlyError = msg;
+            } else if (apiRes.status === 500) {
+              friendlyError = "The image provider encountered an internal error. Please try again later.";
+            } else if (apiRes.status === 429) {
+              friendlyError = "Image generation rate limit reached. Please wait a moment and try again.";
+            } else if (apiRes.status === 401 || apiRes.status === 403) {
+              friendlyError = "Image generation authentication failed. Please check the API key in admin settings.";
+            } else if (apiRes.status === 404) {
+              friendlyError = "Image generation endpoint not found. Please check the API URL in admin settings.";
+            }
+          } catch { /* not JSON, use default */ }
+          return res.status(500).json({ error: friendlyError });
         }
 
         const rawText = await apiRes.text();
