@@ -58,8 +58,15 @@ export class OpenAICompatAdapter implements ProviderAdapter {
    * (POST /responses) instead of Chat Completions (POST /chat/completions).
    */
   private get isResponsesApi(): boolean {
-    const url = this.config.apiUrl ?? "";
-    return url.includes("/responses");
+    return (this.config.apiUrl ?? "").includes("/responses");
+  }
+
+  /**
+   * Whether this provider uses the Anthropic Messages API format
+   * (e.g. Azure AI Foundry's /anthropic/v1/messages endpoint).
+   */
+  private get isAnthropicApi(): boolean {
+    return (this.config.apiUrl ?? "").includes("/anthropic/");
   }
 
   private buildHeaders(): Record<string, string> {
@@ -77,6 +84,11 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       }
     } else {
       headers["Authorization"] = `Bearer ${this.config.apiKey ?? ""}`;
+    }
+
+    // Anthropic Messages API (including Azure's /anthropic/ endpoint) requires this header
+    if (this.isAnthropicApi) {
+      headers["anthropic-version"] = "2023-06-01";
     }
 
     if (this.config.headers) {
@@ -177,6 +189,14 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         const base = (this.config.apiUrl ?? "").replace(/\/$/, "");
         endpoint = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
         testBody = { model: this.config.modelName, input: ["test"] };
+      } else if (this.isAnthropicApi) {
+        // Anthropic Messages API format (no stream field for non-streaming)
+        endpoint = this.chatEndpoint();
+        testBody = {
+          model: this.config.modelName,
+          messages: [{ role: "user", content: "Say OK" }],
+          max_tokens: 5,
+        };
       } else if (this.isResponsesApi) {
         endpoint = this.chatEndpoint();
         testBody = {
@@ -236,6 +256,21 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
     const endpoint = this.chatEndpoint();
 
+    if (this.isAnthropicApi) {
+      const body: Record<string, unknown> = {
+        model: this.config.modelName,
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: userPrompt }],
+      };
+      if (systemPrompt) body.system = systemPrompt;
+      const res = await fetch(endpoint, { method: "POST", headers: this.buildHeaders(), body: JSON.stringify(body) });
+      if (!res.ok) throw new Error(`Provider error ${res.status}`);
+      const data = await res.json() as { content?: Array<{ type?: string; text?: string }> };
+      const text = data.content?.find((b) => b.type === "text")?.text ?? "";
+      if (!text) throw new Error("Empty response from provider");
+      return text;
+    }
+
     if (this.isResponsesApi) {
       const msgs: Array<{ role: string; content: string }> = [];
       msgs.push({ role: "user", content: userPrompt });
@@ -244,11 +279,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         maxTokens,
         false,
       );
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: this.buildHeaders(),
-        body: JSON.stringify(body),
-      });
+      const res = await fetch(endpoint, { method: "POST", headers: this.buildHeaders(), body: JSON.stringify(body) });
       if (!res.ok) throw new Error(`Provider error ${res.status}`);
       const data = await res.json();
       const text = this.parseResponsesOutput(data);
@@ -279,11 +310,90 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
     const endpoint = this.chatEndpoint();
 
+    if (this.isAnthropicApi) {
+      return this.streamAnthropicApi(endpoint, messages, systemPrompt, maxTokens, useTools, res);
+    }
+
     if (this.isResponsesApi) {
       return this.streamResponsesApi(endpoint, messages, systemPrompt, maxTokens, res);
     }
 
     return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Anthropic Messages API streaming (Azure /anthropic/v1/messages endpoint)
+  // ---------------------------------------------------------------------------
+
+  private async streamAnthropicApi(
+    endpoint: string,
+    messages: RawMessage[],
+    systemPrompt: string | undefined,
+    maxTokens: number,
+    useTools: boolean,
+    res: Response,
+  ): Promise<UsageResult> {
+    const anthropicMessages = messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    const body: Record<string, unknown> = {
+      model: this.config.modelName,
+      max_tokens: maxTokens,
+      messages: anthropicMessages,
+      stream: true,
+    };
+    if (systemPrompt) body.system = systemPrompt;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok || !response.body) {
+      const err = await response.text();
+      throw new Error(`Provider error ${response.status}: ${err.slice(0, 200)}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        try {
+          const ev = JSON.parse(raw) as {
+            type?: string;
+            index?: number;
+            delta?: { type?: string; text?: string };
+            message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+            usage?: { input_tokens?: number; output_tokens?: number };
+          };
+
+          if (ev.type === "message_start" && ev.message?.usage) {
+            inputTokens = ev.message.usage.input_tokens ?? 0;
+          }
+          if (ev.type === "message_delta" && ev.usage) {
+            outputTokens = ev.usage.output_tokens ?? 0;
+          }
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+            res.write(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`);
+          }
+        } catch {}
+      }
+    }
+
+    return { inputTokens, outputTokens };
   }
 
   // ---------------------------------------------------------------------------
