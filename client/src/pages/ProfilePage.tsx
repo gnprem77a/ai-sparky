@@ -372,7 +372,9 @@ export default function ProfilePage() {
   return (
     <div className={cn("min-h-screen text-foreground transition-colors duration-500", isPro ? "bg-gradient-to-b from-amber-950/[0.06] via-background to-background" : "bg-background")}>
       {/* Top nav */}
-      <div className={cn("sticky top-0 z-10 border-b backdrop-blur-md", isPro ? "border-amber-500/25 bg-amber-950/80 dark:bg-amber-950/60" : "border-border/40 bg-background/90")}>
+      <div className={cn("sticky top-0 z-10 border-b backdrop-blur-md", isPro ? "border-amber-500/30 bg-background/95" : "border-border/40 bg-background/90")}>
+        {/* Pro gold accent line at top */}
+        {isPro && <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />}
         <div className="max-w-2xl mx-auto flex items-center gap-3 px-4 h-14">
           <button
             onClick={() => navigate("/")}
@@ -386,12 +388,16 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2 min-w-0">
             <div className={cn(
               "w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0",
-              isPro ? "bg-amber-500/20 text-amber-400" : "bg-primary/20 text-primary"
+              isPro ? "bg-amber-500/20 text-amber-500" : "bg-primary/20 text-primary"
             )}>
               {avatarLetter}
             </div>
             <span className="text-sm font-medium text-foreground truncate">{user.username}</span>
-            {isPro && <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20"><Crown className="w-2.5 h-2.5" /> Pro</span>}
+            {isPro && (
+              <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/12 text-amber-500 border border-amber-500/25">
+                <Crown className="w-2.5 h-2.5" /> Pro
+              </span>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-2">
             {[
@@ -403,7 +409,12 @@ export default function ProfilePage() {
                 key={item.label}
                 href={item.href}
                 onClick={(e) => { e.preventDefault(); document.getElementById(item.href.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
-                className="hidden md:inline-flex text-xs text-muted-foreground/60 hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted/40"
+                className={cn(
+                  "hidden md:inline-flex text-xs transition-colors px-2 py-1 rounded-lg",
+                  isPro
+                    ? "text-foreground/50 hover:text-amber-500 hover:bg-amber-500/8"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/40"
+                )}
               >
                 {item.label}
               </a>
