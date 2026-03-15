@@ -1074,6 +1074,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (active) systemPrompt = active.content;
     }
     systemPrompt = systemPrompt ? `${nowBlock}\n\n${systemPrompt}` : nowBlock;
+
+    // Always inform the AI about the built-in image generation feature
+    const imageGenBlock = `This platform has a built-in AI image generation feature powered by FLUX Pro. When a user asks you to create, generate, draw, or make an image or picture, do NOT tell them to use external tools like DALL-E, Midjourney, or Stable Diffusion. Instead, let them know they can generate images directly in this chat by clicking the image icon (picture/photo button) next to the message input box at the bottom of the screen. Keep your response short and helpful when directing them to that button.`;
+    systemPrompt = `${systemPrompt}\n\n${imageGenBlock}`;
+
     const customInstructions = settings.customInstructions?.trim();
     if (customInstructions) {
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
