@@ -11,8 +11,9 @@ import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { SecondaryChat } from "@/components/SecondaryChat";
 import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -50,8 +51,10 @@ export default function ChatPage() {
 
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const { theme, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
   const { setOpenMobile, isMobile, openMobile } = useSidebar();
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
@@ -279,8 +282,25 @@ export default function ChatPage() {
 
   /* ── Auto-scroll ── */
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isStreaming, autoScroll]);
+    if (autoScroll && isAtBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, isStreaming, autoScroll, isAtBottom]);
+
+  /* ── Track scroll position for "scroll to bottom" button ── */
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      setIsAtBottom(scrollHeight - scrollTop - clientHeight < 80);
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setIsAtBottom(true);
+  };
 
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
@@ -465,6 +485,27 @@ export default function ChatPage() {
     window.addEventListener("afterprint", () => {
       document.getElementById("print-style")?.remove();
     }, { once: true });
+  };
+
+  const handleExportTxt = () => {
+    if (!messages.length) return;
+    const conv = conversations.find((c) => c.id === activeId);
+    const title = conv?.title ?? "Conversation";
+    const lines: string[] = [`${title}`, `${"=".repeat(title.length)}`, ""];
+    for (const msg of messages) {
+      const role = msg.role === "user" ? "You" : "AI";
+      const ts = new Date(msg.timestamp).toLocaleString();
+      lines.push(`[${role}] ${ts}`);
+      lines.push(msg.content);
+      lines.push("");
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^a-z0-9]/gi, "_")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleForkMessage = useCallback(async (messageId: string) => {
@@ -970,6 +1011,9 @@ export default function ChatPage() {
                     <DropdownMenuItem onClick={handleExport} className="gap-2 cursor-pointer">
                       <Download className="w-3.5 h-3.5" /> Download Markdown
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportTxt} className="gap-2 cursor-pointer">
+                      <FileText className="w-3.5 h-3.5" /> Download Plain Text
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleExportPDF} className="gap-2 cursor-pointer">
                       <Printer className="w-3.5 h-3.5" /> Export as PDF
                     </DropdownMenuItem>
@@ -1043,6 +1087,9 @@ export default function ChatPage() {
                     <DropdownMenuItem onClick={handleExport} data-testid="button-export-md" className="gap-2 cursor-pointer">
                       <Download className="w-3.5 h-3.5" /> Download Markdown
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportTxt} data-testid="button-export-txt" className="gap-2 cursor-pointer">
+                      <FileText className="w-3.5 h-3.5" /> Download Plain Text
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleExportPDF} data-testid="button-export-pdf" className="gap-2 cursor-pointer">
                       <Printer className="w-3.5 h-3.5" /> Export as PDF
                     </DropdownMenuItem>
@@ -1061,6 +1108,16 @@ export default function ChatPage() {
                 </Button>
               </>
             )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleTheme}
+              data-testid="button-toggle-theme"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              className="h-9 w-9 text-muted-foreground"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -1109,7 +1166,7 @@ export default function ChatPage() {
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Primary Chat */}
-          <div className={cn("flex-1 flex flex-col min-w-0", splitView && "border-r border-border/40")}>
+          <div className={cn("flex-1 flex flex-col min-w-0 relative", splitView && "border-r border-border/40")}>
             {/* Search bar */}
             {searchOpen && (
               <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 py-1.5 flex items-center gap-2 no-print">
@@ -1141,7 +1198,7 @@ export default function ChatPage() {
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
+            <div className="flex-1 relative overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
               {isLoadingMessages ? (
                 <div className="flex items-center justify-center h-full gap-2">
                   <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
@@ -1180,8 +1237,20 @@ export default function ChatPage() {
                     />
                   ))}
                   {isStreaming && (
-                    <div className="px-4 pb-1 text-[11px] text-muted-foreground/50 tabular-nums">
-                      {elapsedTime.toFixed(1)}s
+                    <div className="px-4 pb-3 max-w-3xl mx-auto flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground/50 tabular-nums">{elapsedTime.toFixed(1)}s</span>
+                      <button
+                        onClick={handleStop}
+                        data-testid="button-stop-streaming-inline"
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive text-xs font-semibold transition-colors"
+                      >
+                        <Square className="w-3 h-3 fill-current" /> Stop
+                      </button>
                     </div>
                   )}
                   {isGeneratingImage && (
@@ -1213,7 +1282,20 @@ export default function ChatPage() {
                   <div ref={bottomRef} className="h-4" />
                 </div>
               )}
+
             </div>
+
+            {/* Scroll to bottom button — absolute inside the relative primary chat column */}
+            {!isAtBottom && messages.length > 0 && (
+              <button
+                onClick={scrollToBottom}
+                data-testid="button-scroll-to-bottom"
+                className="absolute bottom-36 right-5 z-20 flex items-center gap-1.5 pl-3 pr-3.5 py-2 rounded-full bg-background/95 backdrop-blur-sm border border-border shadow-lg hover:shadow-xl hover:bg-card text-foreground font-medium transition-all duration-200 animate-in fade-in slide-in-from-bottom-2"
+              >
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Jump to latest</span>
+              </button>
+            )}
 
             {/* Plan banner for free users */}
             {!isPro && messages.length === 0 && !activeId && (

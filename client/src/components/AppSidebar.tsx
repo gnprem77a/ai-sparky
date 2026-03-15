@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap } from "lucide-react";
+import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
   SidebarContent,
@@ -75,6 +76,18 @@ const TAG_COLORS = [
   { id: "orange", chip: "bg-orange-500/15 text-orange-600 dark:text-orange-400", dot: "bg-orange-500", filter: "bg-orange-500/20 text-orange-600 dark:text-orange-400" },
 ];
 
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function AppSidebar({
   conversations,
   activeId,
@@ -91,6 +104,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { t } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -280,13 +294,18 @@ export function AppSidebar({
               className="flex-1 bg-transparent border-0 border-b border-primary/50 text-[13px] text-foreground focus:outline-none px-0 py-0 min-w-0"
             />
           ) : (
-            <span
-              className="flex-1 truncate text-left text-[13px] font-normal leading-snug"
-              onDoubleClick={(e) => startRename(conv, e)}
-              title="Double-click to rename"
-            >
-              {conv.title}
-            </span>
+            <div className="flex-1 min-w-0">
+              <span
+                className="block truncate text-left text-[13px] font-normal leading-snug"
+                onDoubleClick={(e) => startRename(conv, e)}
+                title="Double-click to rename"
+              >
+                {conv.title}
+              </span>
+              <span className="block text-[10px] text-muted-foreground/40 leading-none mt-0.5">
+                {relativeTime(conv.updatedAt)}
+              </span>
+            </div>
           )}
 
           {!isRenaming && (hoveredId === conv.id || conv.id === activeId) && (
@@ -481,7 +500,17 @@ export function AppSidebar({
             <img src="/logo.png" alt="AI Sparky" className="w-7 h-7 rounded-lg shadow-lg flex-shrink-0 object-cover" />
             <span className="font-semibold text-sm text-foreground tracking-tight">AI Sparky</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={toggleTheme}
+              data-testid="button-sidebar-theme"
+              title={theme === "dark" ? "Light mode" : "Dark mode"}
+              className="h-8 w-8 text-muted-foreground"
+            >
+              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </Button>
             <Button
               size="icon"
               variant="ghost"
@@ -719,6 +748,41 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="px-3 py-3 space-y-1">
+        {/* Usage bar for free users */}
+        {usage && !isPro && user && (
+          <div className="mb-1 px-1 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/15 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-amber-500" />
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">Daily usage</span>
+              </div>
+              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                {usage.count}/{usage.limit}
+              </span>
+            </div>
+            <div className="mx-1 h-1.5 rounded-full bg-amber-500/15 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all"
+                style={{ width: `${Math.min(100, (usage.count / usage.limit) * 100)}%` }}
+              />
+            </div>
+            {usage.count >= usage.limit ? (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 px-1 font-medium">
+                Limit reached · Resets at midnight
+              </p>
+            ) : (
+              <p className="text-[10px] text-muted-foreground/60 px-1">
+                {usage.limit - usage.count} messages left today
+              </p>
+            )}
+            <div className="px-1">
+              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <Crown className="w-2.5 h-2.5" /> Pro = unlimited messages + all models
+              </div>
+            </div>
+          </div>
+        )}
+
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>

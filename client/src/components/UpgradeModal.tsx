@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Crown, Check, X, Sparkles, Mail, MessageSquare } from "lucide-react";
+import { Crown, Check, X, Sparkles, Mail, MessageSquare, Zap, Brain, Infinity, Globe } from "lucide-react";
 
 interface UpgradeModalProps {
   open: boolean;
@@ -10,17 +10,24 @@ interface UpgradeModalProps {
   reason?: "limit" | "model";
 }
 
-const MODEL_FEATURES = [
-  { name: "Fast (free tier model)", free: true, pro: true },
-  { name: "Balanced model", free: false, pro: true },
-  { name: "Powerful model", free: false, pro: true },
-  { name: "Creative model", free: false, pro: true },
-  { name: "Auto — best model selected", free: false, pro: true },
-  { name: "Unlimited daily messages", free: false, pro: true },
+const PRO_HIGHLIGHTS = [
+  { icon: Infinity, label: "Unlimited messages", sub: "No daily cap, ever", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  { icon: Brain, label: "All AI models", sub: "Balanced, Powerful & Creative", color: "text-violet-400", bg: "bg-violet-500/10" },
+  { icon: Globe, label: "Web search", sub: "Real-time internet access", color: "text-blue-400", bg: "bg-blue-500/10" },
+  { icon: Sparkles, label: "Priority processing", sub: "Faster responses under load", color: "text-amber-400", bg: "bg-amber-500/10" },
+];
+
+const COMPARISON = [
+  { feature: "Daily messages", free: "20/day", pro: "Unlimited" },
+  { feature: "AI models", free: "Fast only", pro: "All models" },
+  { feature: "Web search", free: false, pro: true },
+  { feature: "Knowledge Base", free: "Limited", pro: "Full access" },
+  { feature: "Image generation", free: false, pro: true },
+  { feature: "Priority support", free: false, pro: true },
 ];
 
 export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeModalProps) {
-  const isModel = reason === "model";
+  const isLimit = reason === "limit";
   const [contactEmail, setContactEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,197 +41,154 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none shadow-2xl">
-        {/* Top accent bar */}
-        <div className={`h-1.5 w-full ${isModel
-          ? "bg-gradient-to-r from-violet-500 via-primary to-fuchsia-500"
-          : "bg-gradient-to-r from-amber-500 via-orange-500 to-red-400"
-        }`} />
+      <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden border-none shadow-2xl">
+        {/* Gradient header */}
+        <div className={`relative px-8 pt-8 pb-6 ${isLimit
+          ? "bg-gradient-to-br from-amber-500/15 via-orange-500/8 to-background"
+          : "bg-gradient-to-br from-primary/15 via-violet-500/8 to-background"
+        }`}>
+          {/* Top color bar */}
+          <div className={`absolute top-0 left-0 right-0 h-1 ${isLimit
+            ? "bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"
+            : "bg-gradient-to-r from-primary via-violet-500 to-fuchsia-500"
+          }`} />
 
-        <div className="p-8 space-y-5">
-          {isModel ? (
-            /* ── Model unlock ── */
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${isLimit
+              ? "bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/30"
+              : "bg-gradient-to-br from-primary to-violet-600 shadow-primary/30"
+            }`}>
+              {isLimit ? <Zap className="w-8 h-8 text-white" /> : <Crown className="w-8 h-8 text-white" />}
+            </div>
+            <div>
+              <DialogTitle className="text-2xl font-black tracking-tight mb-1.5">
+                {isLimit ? "You've hit your daily limit" : "Unlock Pro Models"}
+              </DialogTitle>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-[340px] mx-auto">
+                {isLimit
+                  ? "You've used all 20 free messages for today. Your limit resets at midnight — or upgrade to Pro for unlimited access."
+                  : "Pro members get full access to every AI model — including the most powerful and creative options available."}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-8 pb-8 space-y-5">
+          {isLimit ? (
+            /* ── Limit reached view ── */
             <>
-              <div className="flex flex-col items-center text-center space-y-3">
-                <div className="w-13 h-13 rounded-2xl bg-primary/10 flex items-center justify-center">
-                  <Crown className="w-7 h-7 text-primary" />
-                </div>
-                <div>
-                  <DialogTitle className="text-2xl font-bold tracking-tight">
-                    Unlock Pro Models
-                  </DialogTitle>
-                  <p className="text-muted-foreground text-sm mt-1.5 max-w-[340px] mx-auto">
-                    Pro members get full access to all advanced AI models — including the most powerful and creative options.
-                  </p>
-                </div>
+              {/* Pro highlights grid */}
+              <div className="grid grid-cols-2 gap-2.5">
+                {PRO_HIGHLIGHTS.map(({ icon: Icon, label, sub, color, bg }) => (
+                  <div key={label} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/40">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                      <Icon className={`w-4 h-4 ${color}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground leading-tight">{label}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div className="rounded-xl border border-border/50 bg-muted/30 overflow-hidden">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-border/50 bg-muted/50">
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Model / Feature</th>
-                      <th className="px-4 py-3 text-center font-medium text-muted-foreground">Free</th>
-                      <th className="px-4 py-3 text-center font-semibold text-primary">
-                        <span className="flex items-center justify-center gap-1">
-                          <Crown className="w-3 h-3" /> Pro
-                        </span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/30">
-                    {MODEL_FEATURES.map((f, i) => (
-                      <tr key={i} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2.5 text-foreground/80 font-medium text-[13px]">{f.name}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          {f.free ? (
-                            <Check className="w-4 h-4 text-emerald-500 mx-auto" />
-                          ) : (
-                            <X className="w-4 h-4 text-muted-foreground/30 mx-auto" />
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-center bg-primary/5">
-                          <Check className="w-4 h-4 text-primary mx-auto" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Admin contact CTA */}
-              <div className="flex flex-col gap-3">
-                {contactEmail ? (
-                  <Button
-                    size="lg"
-                    className="w-full font-bold h-12 text-base shadow-lg shadow-primary/20 hover-elevate active-elevate-2"
-                    asChild
-                    data-testid="button-contact-admin"
-                  >
-                    <a href={`mailto:${contactEmail}?subject=Pro%20Subscription%20Request`}>
-                      <Mail className="w-4 h-4 mr-2" />
-                      Contact Admin — {contactEmail}
-                    </a>
-                  </Button>
-                ) : (
-                  <Button
-                    size="lg"
-                    className="w-full font-bold h-12 text-base shadow-lg shadow-primary/20 hover-elevate active-elevate-2"
-                    onClick={() => onOpenChange(false)}
-                    data-testid="button-contact-admin"
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Contact Admin for Pro Access
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  className="w-full text-muted-foreground hover:text-foreground"
-                  onClick={() => onOpenChange(false)}
-                  data-testid="button-remind-later"
-                >
-                  Maybe later
-                </Button>
+              {/* Free vs Pro comparison */}
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="grid grid-cols-3 text-[11px] font-semibold border-b border-border/50 bg-muted/40">
+                  <div className="px-3 py-2 text-muted-foreground">Feature</div>
+                  <div className="px-3 py-2 text-center text-muted-foreground">Free</div>
+                  <div className="px-3 py-2 text-center text-primary bg-primary/5">✦ Pro</div>
+                </div>
+                {COMPARISON.map((row) => (
+                  <div key={row.feature} className="grid grid-cols-3 border-b border-border/30 last:border-0 text-[12px]">
+                    <div className="px-3 py-2 text-foreground/70">{row.feature}</div>
+                    <div className="px-3 py-2 text-center text-muted-foreground">
+                      {typeof row.free === "boolean" ? (
+                        row.free ? <Check className="w-3.5 h-3.5 text-emerald-500 mx-auto" /> : <X className="w-3.5 h-3.5 text-muted-foreground/30 mx-auto" />
+                      ) : row.free}
+                    </div>
+                    <div className="px-3 py-2 text-center bg-primary/3 text-primary font-medium">
+                      {typeof row.pro === "boolean" ? (
+                        row.pro ? <Check className="w-3.5 h-3.5 text-primary mx-auto" /> : <X className="w-3.5 h-3.5 mx-auto" />
+                      ) : row.pro}
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           ) : (
-            /* ── Daily limit reached ── */
-            <>
-              <div className="flex flex-col items-center text-center space-y-3">
-                <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
-                  <Sparkles className="w-7 h-7 text-amber-500" />
+            /* ── Model unlock view ── */
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              <div className="grid grid-cols-3 text-[11px] font-semibold border-b border-border/50 bg-muted/40">
+                <div className="px-3 py-2 text-muted-foreground">Model</div>
+                <div className="px-3 py-2 text-center text-muted-foreground">Free</div>
+                <div className="px-3 py-2 text-center text-primary bg-primary/5">✦ Pro</div>
+              </div>
+              {[
+                { name: "Fast model", free: true, pro: true },
+                { name: "Balanced model", free: false, pro: true },
+                { name: "Powerful model", free: false, pro: true },
+                { name: "Creative model", free: false, pro: true },
+                { name: "Auto-select best", free: false, pro: true },
+                { name: "Unlimited messages", free: false, pro: true },
+              ].map((row) => (
+                <div key={row.name} className="grid grid-cols-3 border-b border-border/30 last:border-0 text-[12px]">
+                  <div className="px-3 py-2 text-foreground/70 font-medium">{row.name}</div>
+                  <div className="px-3 py-2 text-center">
+                    {row.free ? <Check className="w-3.5 h-3.5 text-emerald-500 mx-auto" /> : <X className="w-3.5 h-3.5 text-muted-foreground/30 mx-auto" />}
+                  </div>
+                  <div className="px-3 py-2 text-center bg-primary/3">
+                    <Check className="w-3.5 h-3.5 text-primary mx-auto" />
+                  </div>
                 </div>
-                <div>
-                  <DialogTitle className="text-2xl font-bold tracking-tight">
-                    Daily limit reached
-                  </DialogTitle>
-                  <p className="text-muted-foreground mt-1.5">
-                    You've used <span className="text-foreground font-semibold">20/20</span> free messages for today.
-                    Your limit resets at midnight.
-                  </p>
-                </div>
-              </div>
-
-              {/* Pro upgrade info card */}
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                  <p className="text-sm font-semibold text-foreground">Upgrade to Pro for unlimited access</p>
-                </div>
-                <ul className="space-y-1.5 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                    Unlimited daily messages
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                    Access to all Pro AI models
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                    Priority processing &amp; web search
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                    Full Knowledge Base access
-                  </li>
-                </ul>
-              </div>
-
-              {/* Contact admin */}
-              <div className="rounded-xl border border-border/50 bg-muted/30 p-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  To subscribe to Pro, please contact your administrator
-                </p>
-                {contactEmail && (
-                  <p className="text-center mt-2">
-                    <a
-                      href={`mailto:${contactEmail}?subject=Pro%20Subscription%20Request`}
-                      className="text-sm font-semibold text-primary hover:underline inline-flex items-center gap-1.5"
-                      data-testid="link-admin-email"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      {contactEmail}
-                    </a>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                {contactEmail ? (
-                  <Button
-                    size="lg"
-                    className="w-full font-bold h-12 text-base bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-lg shadow-amber-500/20 hover-elevate active-elevate-2"
-                    asChild
-                    data-testid="button-contact-admin"
-                  >
-                    <a href={`mailto:${contactEmail}?subject=Pro%20Subscription%20Request`}>
-                      <Mail className="w-4 h-4 mr-2" />
-                      Email Admin for Pro Subscription
-                    </a>
-                  </Button>
-                ) : (
-                  <Button
-                    size="lg"
-                    className="w-full font-bold h-12 text-base bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-lg shadow-amber-500/20 hover-elevate active-elevate-2"
-                    onClick={() => onOpenChange(false)}
-                    data-testid="button-contact-admin"
-                  >
-                    <Crown className="w-4 h-4 mr-2" />
-                    Contact Admin for Pro Access
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  className="w-full text-muted-foreground hover:text-foreground"
-                  onClick={() => onOpenChange(false)}
-                  data-testid="button-remind-later"
-                >
-                  Remind me tomorrow
-                </Button>
-              </div>
-            </>
+              ))}
+            </div>
           )}
+
+          {/* Contact CTA */}
+          <div className="space-y-2.5">
+            {contactEmail ? (
+              <Button
+                size="lg"
+                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${isLimit
+                  ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-amber-500/25"
+                  : "shadow-primary/25"
+                }`}
+                asChild
+                data-testid="button-contact-admin"
+              >
+                <a href={`mailto:${contactEmail}?subject=Pro%20Subscription%20Request&body=Hi%2C%20I%27d%20like%20to%20upgrade%20to%20Pro.`}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Contact Admin — {contactEmail}
+                </a>
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${isLimit
+                  ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-amber-500/25"
+                  : "shadow-primary/25"
+                }`}
+                onClick={() => onOpenChange(false)}
+                data-testid="button-contact-admin"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Contact your administrator for Pro access
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              className="w-full text-muted-foreground hover:text-foreground text-sm"
+              onClick={() => onOpenChange(false)}
+              data-testid="button-remind-later"
+            >
+              {isLimit ? "Remind me tomorrow" : "Maybe later"}
+            </Button>
+          </div>
+
+          <p className="text-center text-[10px] text-muted-foreground/40">
+            Pro access is managed by your administrator
+          </p>
         </div>
       </DialogContent>
     </Dialog>
