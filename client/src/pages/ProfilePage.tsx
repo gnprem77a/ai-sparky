@@ -276,10 +276,35 @@ export default function ProfilePage() {
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Chat
+            Back
           </button>
           <span className="text-border/60">·</span>
-          <span className="text-sm font-medium text-foreground">Profile</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={cn(
+              "w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0",
+              isPro ? "bg-amber-500/20 text-amber-400" : "bg-primary/20 text-primary"
+            )}>
+              {avatarLetter}
+            </div>
+            <span className="text-sm font-medium text-foreground truncate">{user.username}</span>
+            {isPro && <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20"><Crown className="w-2.5 h-2.5" /> Pro</span>}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {[
+              { label: "Plan", href: "#plan" },
+              { label: "Appearance", href: "#appearance" },
+              { label: "Security", href: "#security" },
+            ].map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                onClick={(e) => { e.preventDefault(); document.getElementById(item.href.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                className="hidden md:inline-flex text-xs text-muted-foreground/60 hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted/40"
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -333,11 +358,47 @@ export default function ProfilePage() {
                 Sign out
               </button>
             </div>
+
+            {/* Quick stats row */}
+            <div className="flex flex-wrap gap-3 pt-1 mt-1 border-t border-border/30">
+              {[
+                { label: "Conversations", value: myStats?.conversations ?? "—", icon: <MessageSquare className="w-3.5 h-3.5 text-blue-400" /> },
+                { label: "Messages", value: myStats?.messages ?? "—", icon: <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> },
+                { label: "Tokens used", value: myStats ? (myStats.totalTokens).toLocaleString() : "—", icon: <Zap className="w-3.5 h-3.5 text-yellow-400" /> },
+              ].map((s) => (
+                <div key={s.label} className="flex items-center gap-1.5 text-sm">
+                  {s.icon}
+                  <span className="font-semibold text-foreground tabular-nums">{s.value}</span>
+                  <span className="text-muted-foreground/50 text-xs">{s.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
+        {/* ── Section Quick Nav ── */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
+          {[
+            { label: "Plan & Usage", href: "plan", icon: "⚡" },
+            { label: "Appearance", href: "appearance", icon: "🎨" },
+            { label: "AI Persona", href: "persona", icon: "🤖" },
+            { label: "Prompts", href: "prompts", icon: "💬" },
+            { label: "Memory", href: "memory", icon: "🧠" },
+            { label: "Security", href: "security", icon: "🔒" },
+            { label: "Notifications", href: "notifications", icon: "🔔" },
+          ].map((item) => (
+            <button
+              key={item.href}
+              onClick={() => document.getElementById(item.href)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/40 bg-card/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all whitespace-nowrap"
+            >
+              <span>{item.icon}</span> {item.label}
+            </button>
+          ))}
+        </div>
+
         {/* ── Plan & Usage ── */}
-        <SectionCard icon={<Zap className="w-4 h-4" />} title="Plan & Usage">
+        <SectionCard id="plan" icon={<Zap className="w-4 h-4" />} title="Plan & Usage">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -436,7 +497,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         {/* ── Appearance ── */}
-        <SectionCard icon={<Palette className="w-4 h-4" />} title="Appearance">
+        <SectionCard id="appearance" icon={<Palette className="w-4 h-4" />} title="Appearance">
           <div className="space-y-5">
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
@@ -669,7 +730,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         {/* ── Security ── */}
-        <SectionCard icon={<Lock className="w-4 h-4" />} title="Security">
+        <SectionCard id="security" icon={<Lock className="w-4 h-4" />} title="Security">
           <div className="space-y-4">
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
@@ -739,7 +800,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         {/* ── Custom AI Persona ── */}
-        <SectionCard icon={<Sparkles className="w-4 h-4" />} title="AI Persona">
+        <SectionCard id="persona" icon={<Sparkles className="w-4 h-4" />} title="AI Persona">
           <div className="space-y-5">
             <p className="text-xs text-muted-foreground/60 leading-relaxed">
               Give your AI assistant a custom identity. The avatar letter appears as its profile icon in chat, and the personality description shapes how it speaks to you.
@@ -793,7 +854,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         {/* ── Notification Preferences ── */}
-        <SectionCard icon={<Bell className="w-4 h-4" />} title="Notifications">
+        <SectionCard id="notifications" icon={<Bell className="w-4 h-4" />} title="Notifications">
           <div className="space-y-4">
             <p className="text-xs text-muted-foreground/60 leading-relaxed">
               Choose which email notifications you receive. (Requires your email to be set in account settings.)
