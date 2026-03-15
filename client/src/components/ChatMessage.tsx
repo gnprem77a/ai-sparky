@@ -715,12 +715,13 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
             </div>
           )}
           {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
-            <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl w-fit animate-fade-up" style={{ background: "linear-gradient(135deg, hsl(var(--primary)/0.08), hsl(var(--primary)/0.03))", border: "1px solid hsl(var(--primary)/0.15)" }}>
-              <div className="relative w-5 h-5 flex-shrink-0">
-                <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" style={{ animationDuration: "1.5s" }} />
-                <div className="absolute inset-[3px] rounded-full bg-gradient-to-br from-primary to-violet-500" />
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border/40 w-fit animate-fade-up shadow-sm">
+              <div className="flex items-end gap-[5px] h-4">
+                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
+                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
+                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
               </div>
-              <span className="text-[13px] font-medium bg-gradient-to-r from-primary/80 to-violet-400/80 bg-clip-text text-transparent">Thinking…</span>
+              <span className="text-[13px] text-muted-foreground/60 font-medium tracking-wide">Thinking</span>
             </div>
           ) : (
             <div className="max-w-none">
