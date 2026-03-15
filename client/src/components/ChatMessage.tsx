@@ -715,7 +715,14 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
             </div>
           )}
           {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
-            <div className="h-5" />
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-card border border-border/50 w-fit animate-fade-up shadow-md shadow-black/10">
+              <div className="flex gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary typing-dot" />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground">Thinking…</span>
+            </div>
           ) : (
             <div className="max-w-none">
               <ReactMarkdown
