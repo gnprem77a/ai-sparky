@@ -336,48 +336,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Analytics ── */}
-        <SectionCard id="analytics" icon={<BarChart2 className="w-4 h-4" />} title="Analytics">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "Conversations", value: myStats?.conversations ?? 0, icon: <MessageSquare className="w-4 h-4 text-blue-400" /> },
-                { label: "Messages Sent", value: myStats?.messages ?? 0, icon: <TrendingUp className="w-4 h-4 text-emerald-400" /> },
-                { label: "Input Tokens", value: (myStats?.inputTokens ?? 0).toLocaleString(), icon: <Zap className="w-4 h-4 text-yellow-400" /> },
-                { label: "Output Tokens", value: (myStats?.outputTokens ?? 0).toLocaleString(), icon: <Sparkles className="w-4 h-4 text-violet-400" /> },
-              ].map((stat) => (
-                <div key={stat.label} className="flex flex-col gap-1.5 px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
-                  <div className="flex items-center gap-1.5">{stat.icon}<span className="text-[11px] text-muted-foreground/60 font-medium">{stat.label}</span></div>
-                  <span className="text-xl font-bold text-foreground tabular-nums">{stat.value}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
-              <div className="flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-primary/60" />
-                <span className="text-sm text-muted-foreground/70 font-medium">Total Tokens Used</span>
-              </div>
-              <span className="text-sm font-bold text-foreground tabular-nums">{(myStats?.totalTokens ?? 0).toLocaleString()}</span>
-            </div>
-            {usage && (
-              <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-primary/60" />
-                  <span className="text-sm text-muted-foreground/70 font-medium">Today's Messages</span>
-                </div>
-                <span className="text-sm font-bold text-foreground tabular-nums">{usage.count} <span className="text-muted-foreground/40 font-normal">/ {usage.isPro ? "∞" : usage.limit}</span></span>
-              </div>
-            )}
-            <a
-              href="/analytics"
-              data-testid="link-view-full-analytics"
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-primary/30 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 transition-colors"
-            >
-              <BarChart2 className="w-4 h-4" /> View Full Analytics <ChevronRight className="w-4 h-4" />
-            </a>
-          </div>
-        </SectionCard>
-
         {/* ── Plan & Usage ── */}
         <SectionCard icon={<Zap className="w-4 h-4" />} title="Plan & Usage">
           <div className="space-y-4">
@@ -442,6 +400,37 @@ export default function ProfilePage() {
                   {isPro ? "Unlimited" : `${usage?.limit ?? 20}`}
                 </p>
               </div>
+            </div>
+
+            <div className="border-t border-border/30 pt-4 space-y-3">
+              <p className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">Usage Summary</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: "Conversations", value: myStats?.conversations ?? 0, icon: <MessageSquare className="w-3.5 h-3.5 text-blue-400" /> },
+                  { label: "Messages Sent", value: myStats?.messages ?? 0, icon: <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> },
+                  { label: "Input Tokens", value: (myStats?.inputTokens ?? 0).toLocaleString(), icon: <Zap className="w-3.5 h-3.5 text-yellow-400" /> },
+                  { label: "Output Tokens", value: (myStats?.outputTokens ?? 0).toLocaleString(), icon: <Sparkles className="w-3.5 h-3.5 text-violet-400" /> },
+                ].map((stat) => (
+                  <div key={stat.label} className="flex flex-col gap-1 px-3.5 py-2.5 rounded-xl border border-border/40 bg-muted/20">
+                    <div className="flex items-center gap-1.5">{stat.icon}<span className="text-[10px] text-muted-foreground/60 font-medium">{stat.label}</span></div>
+                    <span className="text-lg font-bold text-foreground tabular-nums">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-border/40 bg-muted/20">
+                <div className="flex items-center gap-1.5">
+                  <BarChart2 className="w-3.5 h-3.5 text-primary/60" />
+                  <span className="text-xs text-muted-foreground/70 font-medium">Total Tokens Used</span>
+                </div>
+                <span className="text-sm font-bold text-foreground tabular-nums">{(myStats?.totalTokens ?? 0).toLocaleString()}</span>
+              </div>
+              <a
+                href="/analytics"
+                data-testid="link-view-full-analytics"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-primary/30 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 transition-colors"
+              >
+                <BarChart2 className="w-4 h-4" /> View Full Analytics <ChevronRight className="w-4 h-4" />
+              </a>
             </div>
           </div>
         </SectionCard>
