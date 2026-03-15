@@ -1283,22 +1283,6 @@ export default function ChatPage() {
                       onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
                     />
                   ))}
-                  {isStreaming && (
-                    <div className="px-4 pb-3 max-w-3xl mx-auto flex items-center gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
-                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
-                        <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
-                      </div>
-                      <button
-                        onClick={handleStop}
-                        data-testid="button-stop-streaming-inline"
-                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive text-xs font-semibold transition-colors"
-                      >
-                        <Square className="w-3 h-3 fill-current" /> Stop
-                      </button>
-                    </div>
-                  )}
                   {isGeneratingImage && (
                     <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
                       <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
