@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import {
   Key, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft,
-  Terminal, Globe, BarChart2, Clock, ChevronRight,
+  Terminal, Globe, BarChart2, Clock, ChevronRight, Webhook, Save,
+  Zap, AlertCircle, CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,13 +81,19 @@ export default function ApiAccessPage() {
   const [, navigate] = useLocation();
   const [revealed, setRevealed] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "history" | "docs">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "history" | "webhooks" | "docs">("overview");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSaved, setWebhookSaved] = useState(false);
 
   const { data, isLoading } = useQuery<ApiKeyData>({
     queryKey: ["/api/me/api-key"],
     enabled: !!user && user.apiEnabled,
     retry: false,
   });
+
+  useEffect(() => {
+    if (data?.webhookUrl) setWebhookUrl(data.webhookUrl);
+  }, [data?.webhookUrl]);
 
   const { data: history, isLoading: historyLoading } = useQuery<ApiLog[]>({
     queryKey: ["/api/me/api-history"],
@@ -99,6 +106,15 @@ export default function ApiAccessPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/me/api-key"] });
       setRevealed(true);
+    },
+  });
+
+  const webhookMutation = useMutation({
+    mutationFn: (url: string) => apiRequest("PATCH", "/api/me/webhook", { webhookUrl: url }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/api-key"] });
+      setWebhookSaved(true);
+      setTimeout(() => setWebhookSaved(false), 2500);
     },
   });
 
@@ -178,6 +194,7 @@ console.log(data.content);`;
   const tabs = [
     { id: "overview" as const, label: "Overview", icon: BarChart2 },
     { id: "history" as const, label: "Call History", icon: Clock },
+    { id: "webhooks" as const, label: "Webhooks", icon: Webhook },
     { id: "docs" as const, label: "Docs & Examples", icon: Terminal },
   ];
 
@@ -393,6 +410,97 @@ console.log(data.content);`;
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Webhooks Tab */}
+        {activeTab === "webhooks" && (
+          <div className="space-y-6">
+            {/* Webhook URL config */}
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Webhook className="w-4 h-4 text-primary" /> Webhook Endpoint
+              </h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Enter a URL on your server. AI Sparky will send a POST request to this URL whenever a key event happens — like when a message is sent, a limit is reached, or access changes.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  placeholder="https://your-server.com/webhook"
+                  data-testid="input-webhook-url"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-border/60 bg-muted/30 text-sm text-foreground font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                />
+                <button
+                  onClick={() => webhookMutation.mutate(webhookUrl)}
+                  disabled={webhookMutation.isPending}
+                  data-testid="button-save-webhook"
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex-shrink-0",
+                    webhookSaved
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                      : "bg-primary text-primary-foreground hover:opacity-90"
+                  )}
+                >
+                  {webhookSaved ? <><CheckCheck className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save</>}
+                </button>
+              </div>
+              {webhookUrl && (
+                <button
+                  onClick={() => { setWebhookUrl(""); webhookMutation.mutate(""); }}
+                  className="text-xs text-destructive/70 hover:text-destructive transition-colors"
+                  data-testid="button-clear-webhook"
+                >
+                  Remove webhook
+                </button>
+              )}
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>Your server must respond with a 2xx status within 5 seconds or the request is considered failed. Webhooks are fired asynchronously and do not block the API response.</span>
+              </div>
+            </div>
+
+            {/* Events */}
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" /> Events
+              </h2>
+              <div className="space-y-2">
+                {[
+                  { event: "api.message.sent", desc: "Fired after every successful API chat call. Includes inputTokens and outputTokens.", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+                  { event: "api.rate_limited", desc: "Fired when a request is rejected due to the per-minute rate limit.", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                  { event: "api.limit.daily", desc: "Fired when the daily call limit is reached.", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                  { event: "api.limit.monthly", desc: "Fired when the monthly call limit is reached.", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                  { event: "api.access.granted", desc: "Fired when an admin enables API access for this account.", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+                  { event: "api.access.revoked", desc: "Fired when an admin disables API access for this account.", color: "text-red-400 bg-red-500/10 border-red-500/20" },
+                ].map((e) => (
+                  <div key={e.event} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-muted/10">
+                    <span className={cn("text-[10px] font-mono font-bold px-2 py-1 rounded-md border flex-shrink-0 mt-0.5", e.color)}>{e.event}</span>
+                    <span className="text-xs text-muted-foreground leading-relaxed">{e.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Payload example */}
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-primary" /> Payload Example
+              </h2>
+              <CodeBlock code={`POST https://your-server.com/webhook
+Content-Type: application/json
+
+{
+  "event": "api.message.sent",
+  "timestamp": "2025-03-15T10:30:00.000Z",
+  "username": "yourUsername",
+  "inputTokens": 142,
+  "outputTokens": 384,
+  "stream": false
+}`} language="json" />
+            </div>
           </div>
         )}
 

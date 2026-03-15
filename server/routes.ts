@@ -857,6 +857,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(logs);
   });
 
+  /* ── user: update webhook URL ── */
+  app.patch("/api/me/webhook", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user || !user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const { webhookUrl } = req.body;
+    await storage.setApiSettings(userId, { apiWebhookUrl: webhookUrl || null });
+    return res.json({ webhookUrl: webhookUrl || null });
+  });
+
   /* ── broadcasts: get active ── */
   app.get("/api/broadcast", requireAuth as any, async (req: Request, res: Response) => {
     const broadcast = await storage.getActiveBroadcast();
