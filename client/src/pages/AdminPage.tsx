@@ -979,34 +979,6 @@ function ProvidersSection() {
                 );
               })}
 
-              {/* Built-in fallback — always shown, read-only */}
-              <div className="rounded-xl border border-dashed border-violet-500/30 bg-violet-500/5 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 flex-shrink-0" />
-                  <div className="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center flex-shrink-0">
-                    <Cpu className="w-4 h-4 text-violet-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground">Bluesminds (Built-in Fallback)</span>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-400">Bluesminds</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-semibold">
-                        {sorted.filter(p => p.isEnabled).length === 0 ? "● Active" : "Standby"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground flex-wrap">
-                      <span className="flex items-center gap-1"><Cpu className="w-3 h-3" />claude-sonnet-4-6 / claude-haiku-4-5</span>
-                      <span className="flex items-center gap-1"><Globe className="w-3 h-3" />api.bluesminds.com/v1</span>
-                      <span className="flex items-center gap-1"><Key className="w-3 h-3" />BLUESMINDS_API_KEY (env)</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground/60 mt-1">
-                      Always available as last resort. Cannot be removed.
-                      {sorted.filter(p => p.isEnabled).length > 0 && " Only used if all custom providers above fail."}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0 text-[11px] text-muted-foreground/40 italic">read-only</div>
-                </div>
-              </div>
             </div>
           )}
 
