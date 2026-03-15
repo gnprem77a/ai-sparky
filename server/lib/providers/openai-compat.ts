@@ -132,11 +132,21 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         };
       }
 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: this.buildHeaders(),
-        body: JSON.stringify(testBody),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+
+      let res: Response;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: this.buildHeaders(),
+          body: JSON.stringify(testBody),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
       // Read as text first — some endpoints return plain-text errors (not JSON)
       const rawText = await res.text();
       let data: Record<string, unknown> = {};
@@ -151,7 +161,9 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
     } catch (e: unknown) {
-      return { success: false, latencyMs: Date.now() - start, message: (e as Error).message };
+      const isTimeout = (e as Error).name === "AbortError";
+      const msg = isTimeout ? "Connection timed out after 15s — check the URL and firewall settings" : (e as Error).message;
+      return { success: false, latencyMs: Date.now() - start, message: msg };
     }
   }
 
