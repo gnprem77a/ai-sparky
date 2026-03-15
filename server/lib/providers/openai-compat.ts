@@ -230,9 +230,30 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         clearTimeout(timeout);
       }
 
-      const rawText = await res.text();
+      let rawText = await res.text();
       let data: Record<string, unknown> = {};
       try { data = JSON.parse(rawText); } catch { /* not JSON */ }
+
+      // Some newer models (o-series, gpt-5) reject max_tokens — auto-retry with max_completion_tokens
+      const errMsg0 = (data as { error?: { message?: string } }).error?.message ?? rawText;
+      if (!res.ok && errMsg0.toLowerCase().includes("max_tokens")) {
+        const retryBody = { ...testBody, max_completion_tokens: (testBody as Record<string, unknown>).max_tokens };
+        delete (retryBody as Record<string, unknown>).max_tokens;
+        const controller2 = new AbortController();
+        const timeout2 = setTimeout(() => controller2.abort(), 15_000);
+        try {
+          res = await fetch(endpoint, {
+            method: "POST",
+            headers: this.buildHeaders(),
+            body: JSON.stringify(retryBody),
+            signal: controller2.signal,
+          });
+        } finally {
+          clearTimeout(timeout2);
+        }
+        rawText = await res.text();
+        try { data = JSON.parse(rawText); } catch { /* not JSON */ }
+      }
 
       if (!res.ok) {
         const isAuthError = res.status === 401 || res.status === 403;
@@ -479,12 +500,15 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     let inputTokens = 0;
     let outputTokens = 0;
     let conversationMessages = buildMessages(messages, systemPrompt);
+    // Some models (o-series, gpt-5+) require max_completion_tokens instead of max_tokens.
+    // We detect this on first failure and switch permanently for this request.
+    let tokenParam: "max_tokens" | "max_completion_tokens" = "max_tokens";
 
     for (let round = 0; round < 6; round++) {
       const body: Record<string, unknown> = {
         model: this.config.modelName,
         messages: conversationMessages,
-        max_tokens: maxTokens,
+        [tokenParam]: maxTokens,
         stream: true,
       };
       if (useTools) {
@@ -492,11 +516,28 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         body.tool_choice = "auto";
       }
 
-      const response = await fetch(endpoint, {
+      let response = await fetch(endpoint, {
         method: "POST",
         headers: this.buildHeaders(),
         body: JSON.stringify(body),
       });
+
+      // Auto-detect max_tokens rejection and retry with max_completion_tokens
+      if (!response.ok && tokenParam === "max_tokens") {
+        const errText = await response.text();
+        if (errText.toLowerCase().includes("max_tokens")) {
+          tokenParam = "max_completion_tokens";
+          const retryBody = { ...body, max_completion_tokens: maxTokens };
+          delete retryBody.max_tokens;
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers: this.buildHeaders(),
+            body: JSON.stringify(retryBody),
+          });
+        } else {
+          throw new Error(`Provider error ${response.status}: ${errText.slice(0, 200)}`);
+        }
+      }
 
       if (!response.ok || !response.body) {
         const err = await response.text();
