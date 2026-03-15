@@ -1223,7 +1223,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // ── Azure AI Foundry / OpenAI DALL-E / Generic REST ──
       try {
         let url = cfg.apiUrl!;
-        if (cfg.apiVersion) url += `?api-version=${cfg.apiVersion}`;
+        // Only append api-version if it isn't already in the URL
+        if (cfg.apiVersion && !url.includes("api-version")) {
+          url += (url.includes("?") ? "&" : "?") + `api-version=${cfg.apiVersion}`;
+        }
 
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (authStyle === "api-key") {
@@ -1232,14 +1235,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           headers["Authorization"] = `Bearer ${cfg.apiKey}`;
         }
 
-        const body: Record<string, unknown> = {
-          prompt: prompt.trim(),
-          n: 1,
-          size: "1024x1024",
-          response_format: "b64_json",
-        };
-        if (cfg.modelName) body["model"] = cfg.modelName;
+        // Detect Black Forest Labs / FLUX endpoints (different request + response format)
+        const isBFL = url.includes("blackforestlabs") || url.includes("/flux-") || url.includes("/bfl/");
 
+        let body: Record<string, unknown>;
+        if (isBFL) {
+          body = {
+            prompt: prompt.trim(),
+            width: 1024,
+            height: 1024,
+            steps: 1,
+            guidance: 3.5,
+            output_format: "jpeg",
+            safety_tolerance: 2,
+          };
+        } else {
+          body = {
+            prompt: prompt.trim(),
+            n: 1,
+            size: "1024x1024",
+            response_format: "b64_json",
+          };
+          if (cfg.modelName) body["model"] = cfg.modelName;
+        }
+
+        console.log(`[image-gen] POST ${url} (${isBFL ? "BFL/FLUX" : "DALL-E"} format)`);
         const apiRes = await fetch(url, {
           method: "POST",
           headers,
@@ -1248,13 +1268,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         if (!apiRes.ok) {
           const errText = await apiRes.text();
-          console.error("[image-gen] API error:", errText);
-          return res.status(500).json({ error: `Image API returned ${apiRes.status}: ${errText.slice(0, 200)}` });
+          console.error("[image-gen] API error:", apiRes.status, errText);
+          return res.status(500).json({ error: `Image API returned ${apiRes.status}: ${errText.slice(0, 300)}` });
         }
 
-        const data = await apiRes.json() as { data?: { b64_json?: string; url?: string }[] };
-        const item = data?.data?.[0];
+        const data = await apiRes.json() as {
+          data?: { b64_json?: string; url?: string }[];
+          images?: { url?: string; content_type?: string }[];
+        };
 
+        // BFL/FLUX response: { images: [{ url, content_type }] }
+        // The URL may be a data URI (base64) or a remote URL
+        if (isBFL && data?.images?.[0]) {
+          const imgItem = data.images[0];
+          const imgUrl = imgItem.url ?? "";
+          const mimeType = imgItem.content_type ?? "image/jpeg";
+          if (imgUrl.startsWith("data:")) {
+            const b64 = imgUrl.split(",")[1];
+            return res.json({ imageBase64: b64, mimeType });
+          }
+          const imgRes = await fetch(imgUrl);
+          const buffer = Buffer.from(await imgRes.arrayBuffer());
+          return res.json({ imageBase64: buffer.toString("base64"), mimeType });
+        }
+
+        // DALL-E style response: { data: [{ b64_json | url }] }
+        const item = data?.data?.[0];
         if (item?.b64_json) {
           return res.json({ imageBase64: item.b64_json, mimeType: "image/png" });
         }
@@ -1264,6 +1303,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
         }
 
+        console.error("[image-gen] Unexpected response shape:", JSON.stringify(data).slice(0, 300));
         return res.status(500).json({ error: "No image in API response" });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Image generation failed";
