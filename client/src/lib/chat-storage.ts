@@ -34,6 +34,7 @@ export interface Message {
   toolCalls?: ToolCall[];
   sources?: WebSource[];
   searching?: string;
+  routingInfo?: { category: string; model: string };
 }
 
 export interface Conversation {

@@ -121,6 +121,102 @@ function autoSelectModel(messages: RawMessage[]): ModelDefinition {
   return MODEL_REGISTRY.balanced;
 }
 
+/* ─── Smart provider routing ────────────────────────────────── */
+type RoutingCategory = "coding" | "math" | "creative" | "research" | "quick" | "general";
+
+const SMART_KEYWORDS: Record<RoutingCategory, string[]> = {
+  coding: [
+    "code", "debug", "function", "class", "bug", "script", "program", "error",
+    "exception", "implement", "refactor", "algorithm", "compile", "build", "deploy",
+    "git", "react", "node", "python", "javascript", "typescript", "sql", "api",
+    "backend", "frontend", "database", "regex", "async", "promise", "syntax",
+    "library", "framework", "package", "import", "module", "test", "unit test",
+  ],
+  math: [
+    "math", "calcul", "equation", "solve", "proof", "formula", "statistics",
+    "probability", "geometry", "algebra", "theorem", "integral", "derivative",
+    "matrix", "vector", "polynomial", "logarithm", "trigonometry", "arithmetic",
+  ],
+  creative: [
+    "write a", "story", "poem", "essay", "creative", "brainstorm", "imagine",
+    "fiction", "character", "novel", "song", "lyrics", "narrative", "plot",
+    "screenplay", "metaphor", "invent", "fantasy", "roleplay", "blog post",
+    "email draft", "rewrite", "tone", "style", "persuasive", "caption",
+  ],
+  research: [
+    "explain", "what is", "who is", "how does", "why does", "history", "science",
+    "overview", "background", "research", "compare", "difference between",
+    "summarize", "define", "meaning of", "tell me about", "describe",
+  ],
+  quick: [],   // detected by message length
+  general: [], // fallback
+};
+
+/** Score a provider for a given routing category. Higher = tried first. */
+function scoreProvider(name: string, category: RoutingCategory): number {
+  const n = name.toLowerCase();
+  switch (category) {
+    case "coding":
+      // Mistral excels at technical/code tasks
+      if (n.includes("mistral")) return 100;
+      if (n.includes("gpt"))     return 80;
+      if (n.includes("grok"))    return 60;
+      if (n.includes("claude") || n.includes("haiku")) return 40;
+      break;
+    case "math":
+      // Grok reasoning model excels at math/logic
+      if (n.includes("grok") || n.includes("reasoning")) return 100;
+      if (n.includes("mistral")) return 80;
+      if (n.includes("gpt"))     return 60;
+      if (n.includes("claude") || n.includes("haiku"))   return 40;
+      break;
+    case "creative":
+      // Claude Haiku excels at creative and writing tasks
+      if (n.includes("claude") || n.includes("haiku")) return 100;
+      if (n.includes("gpt"))     return 80;
+      if (n.includes("grok"))    return 60;
+      if (n.includes("mistral")) return 40;
+      break;
+    case "research":
+      // GPT excels at knowledge, explanations, research
+      if (n.includes("gpt"))     return 100;
+      if (n.includes("claude") || n.includes("haiku")) return 80;
+      if (n.includes("grok"))    return 60;
+      if (n.includes("mistral")) return 40;
+      break;
+    case "quick":
+      // Claude Haiku is fastest for short responses
+      if (n.includes("claude") || n.includes("haiku")) return 100;
+      if (n.includes("gpt"))     return 80;
+      if (n.includes("mistral")) return 60;
+      if (n.includes("grok"))    return 40;
+      break;
+  }
+  return 50; // neutral
+}
+
+function detectRoutingCategory(messages: RawMessage[]): RoutingCategory {
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const text = (lastUser?.content ?? "").toLowerCase().trim();
+  if (text.length < 60) return "quick";
+  for (const [cat, kws] of Object.entries(SMART_KEYWORDS) as [RoutingCategory, string[]][]) {
+    if (kws.length && kws.some((k) => text.includes(k))) return cat;
+  }
+  return "general";
+}
+
+function smartSortProviders(providers: ProviderConfig[], messages: RawMessage[]): { sorted: ProviderConfig[]; category: RoutingCategory } {
+  const category = detectRoutingCategory(messages);
+  if (category === "general") return { sorted: providers, category };
+  const sorted = [...providers].sort((a, b) => {
+    const sa = scoreProvider(a.modelName ?? a.name, category);
+    const sb = scoreProvider(b.modelName ?? b.name, category);
+    if (sb !== sa) return sb - sa;         // higher score first
+    return a.priority - b.priority;        // then original priority
+  });
+  return { sorted, category };
+}
+
 function resolveModel(requestedModel: string, messages: RawMessage[]): ModelDefinition {
   if (requestedModel === "auto") return autoSelectModel(messages);
   return getModel(requestedModel);
@@ -1039,7 +1135,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         priority: p.priority,
       }));
 
-      const { inputTokens, outputTokens, modelName: usedModelName } = await streamWithFallback(providerConfigs, {
+      // Smart routing: reorder providers based on query type
+      const { sorted: smartProviders, category: routingCategory } = smartSortProviders(providerConfigs, recentMessages as RawMessage[]);
+      if (routingCategory !== "general") {
+        const topProvider = smartProviders.find((p) => {
+          const isChatP = !((p.modelName ?? "").toLowerCase().includes("embed") || (p.apiUrl ?? "").toLowerCase().includes("embed") || (p.modelName ?? "").toLowerCase().includes("rerank") || (p.apiUrl ?? "").toLowerCase().includes("rerank"));
+          return p.isEnabled && isChatP;
+        });
+        if (topProvider) {
+          res.write(`data: ${JSON.stringify({ routingInfo: { category: routingCategory, model: topProvider.modelName ?? topProvider.name } })}\n\n`);
+        }
+      }
+
+      const { inputTokens, outputTokens, modelName: usedModelName } = await streamWithFallback(smartProviders, {
         messages: recentMessages,
         systemPrompt: systemPrompt ?? undefined,
         maxTokens,

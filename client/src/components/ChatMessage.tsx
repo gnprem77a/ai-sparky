@@ -708,6 +708,23 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
           {message.toolCalls && message.toolCalls.length > 0 && (
             <ToolCallsDisplay toolCalls={message.toolCalls} isStreaming={isStreaming} />
           )}
+          {message.routingInfo && isStreaming && message.routingInfo.category !== "quick" && message.routingInfo.category !== "general" && (
+            <div className="flex items-center gap-1.5 mb-1 animate-fade-up" data-testid="status-routing">
+              <div className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium",
+                message.routingInfo.category === "coding"   && "bg-emerald-500/8 border-emerald-500/20 text-emerald-500",
+                message.routingInfo.category === "math"     && "bg-blue-500/8 border-blue-500/20 text-blue-500",
+                message.routingInfo.category === "creative" && "bg-violet-500/8 border-violet-500/20 text-violet-500",
+                message.routingInfo.category === "research" && "bg-sky-500/8 border-sky-500/20 text-sky-500",
+              )}>
+                {message.routingInfo.category === "coding"   && <Terminal className="w-3 h-3" />}
+                {message.routingInfo.category === "math"     && <Hash className="w-3 h-3" />}
+                {message.routingInfo.category === "creative" && <Pencil className="w-3 h-3" />}
+                {message.routingInfo.category === "research" && <Globe className="w-3 h-3" />}
+                <span>Best model for {message.routingInfo.category}: <span className="opacity-70">{message.routingInfo.model}</span></span>
+              </div>
+            </div>
+          )}
           {message.searching && (
             <div className="flex items-center gap-2 py-2 text-sky-400/80 text-sm" data-testid="status-searching">
               <Globe className="w-3.5 h-3.5 animate-pulse" />

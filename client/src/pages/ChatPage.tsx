@@ -718,6 +718,11 @@ export default function ChatPage() {
               }
               throw new Error(parsed.error);
             }
+            if (parsed.routingInfo) {
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantMsgId ? { ...m, routingInfo: parsed.routingInfo } : m)
+              );
+            }
             if (parsed.searching) {
               setMessages((prev) =>
                 prev.map((m) => m.id === assistantMsgId ? { ...m, searching: parsed.query as string } : m)
