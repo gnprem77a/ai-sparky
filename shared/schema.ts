@@ -187,6 +187,20 @@ export const broadcasts = pgTable("broadcasts", {
   isActive: boolean("is_active").notNull().default(true),
 });
 
+export const imageGenConfig = pgTable("image_gen_config", {
+  id: integer("id").primaryKey().default(1),
+  providerType: text("provider_type").notNull().default("fal"),
+  apiUrl: text("api_url"),
+  apiKey: text("api_key"),
+  modelName: text("model_name"),
+  authStyle: text("auth_style").notNull().default("bearer"),
+  apiVersion: text("api_version"),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export type ImageGenConfig = typeof imageGenConfig.$inferSelect;
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,

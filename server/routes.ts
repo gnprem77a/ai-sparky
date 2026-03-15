@@ -1170,37 +1170,125 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  /* ── Image generation via fal.ai FLUX Pro ── */
+  /* ── Image generation (Azure AI Foundry / fal.ai / OpenAI DALL-E) ── */
   app.post("/api/generate-image", requireAuth as any, async (req: Request, res: Response) => {
-    const { prompt, aspectRatio = "square_hd" } = req.body;
+    const { prompt } = req.body;
     if (!prompt?.trim()) return res.status(400).json({ error: "prompt is required" });
 
+    // Load config from DB
+    const cfg = await storage.getImageGenConfig();
     const falKey = process.env.FAL_KEY;
-    if (!falKey) return res.status(503).json({ error: "Image generation is not configured. FAL_KEY is missing." });
 
-    fal.config({ credentials: falKey });
+    // Check something is configured
+    const hasDbConfig = cfg?.isEnabled && cfg?.apiKey && cfg?.apiUrl;
+    const hasFalEnvKey = !!falKey;
 
+    if (!hasDbConfig && !hasFalEnvKey) {
+      return res.status(503).json({
+        error: "Image generation is not configured. Go to Admin → Image Generation to set up your provider.",
+      });
+    }
+
+    // Prefer DB config when enabled; fall back to fal.ai env var
+    if (hasDbConfig && cfg) {
+      const providerType = cfg.providerType ?? "azure_foundry";
+      const authStyle = cfg.authStyle ?? "bearer";
+
+      // ── fal.ai via DB key ──
+      if (providerType === "fal") {
+        fal.config({ credentials: cfg.apiKey! });
+        try {
+          const modelId = cfg.modelName || "fal-ai/flux-pro/v1.1";
+          const result = await fal.subscribe(modelId as "fal-ai/flux-pro/v1.1", {
+            input: {
+              prompt: prompt.trim(),
+              image_size: "square_hd",
+              num_images: 1,
+              enable_safety_checker: true,
+              output_format: "png",
+            },
+          });
+          const imageUrl = result?.data?.images?.[0]?.url;
+          if (!imageUrl) return res.status(500).json({ error: "No image returned" });
+          const imgRes = await fetch(imageUrl);
+          const buffer = Buffer.from(await imgRes.arrayBuffer());
+          return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Image generation failed";
+          console.error("[fal] error:", msg);
+          return res.status(500).json({ error: msg });
+        }
+      }
+
+      // ── Azure AI Foundry / OpenAI DALL-E / Generic REST ──
+      try {
+        let url = cfg.apiUrl!;
+        if (cfg.apiVersion) url += `?api-version=${cfg.apiVersion}`;
+
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (authStyle === "api-key") {
+          headers["api-key"] = cfg.apiKey!;
+        } else {
+          headers["Authorization"] = `Bearer ${cfg.apiKey}`;
+        }
+
+        const body: Record<string, unknown> = {
+          prompt: prompt.trim(),
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json",
+        };
+        if (cfg.modelName) body["model"] = cfg.modelName;
+
+        const apiRes = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (!apiRes.ok) {
+          const errText = await apiRes.text();
+          console.error("[image-gen] API error:", errText);
+          return res.status(500).json({ error: `Image API returned ${apiRes.status}: ${errText.slice(0, 200)}` });
+        }
+
+        const data = await apiRes.json() as { data?: { b64_json?: string; url?: string }[] };
+        const item = data?.data?.[0];
+
+        if (item?.b64_json) {
+          return res.json({ imageBase64: item.b64_json, mimeType: "image/png" });
+        }
+        if (item?.url) {
+          const imgRes = await fetch(item.url);
+          const buffer = Buffer.from(await imgRes.arrayBuffer());
+          return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
+        }
+
+        return res.status(500).json({ error: "No image in API response" });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Image generation failed";
+        console.error("[image-gen] error:", msg);
+        return res.status(500).json({ error: msg });
+      }
+    }
+
+    // ── fal.ai fallback via FAL_KEY env var ──
+    fal.config({ credentials: falKey! });
     try {
       const result = await fal.subscribe("fal-ai/flux-pro/v1.1", {
         input: {
           prompt: prompt.trim(),
-          image_size: aspectRatio as "square_hd" | "square" | "portrait_4_3" | "portrait_16_9" | "landscape_4_3" | "landscape_16_9",
+          image_size: "square_hd",
           num_images: 1,
           enable_safety_checker: true,
           output_format: "png",
         },
       });
-
       const imageUrl = result?.data?.images?.[0]?.url;
-      const mimeType = "image/png";
       if (!imageUrl) return res.status(500).json({ error: "No image returned from FLUX Pro" });
-
       const imgRes = await fetch(imageUrl);
-      if (!imgRes.ok) return res.status(500).json({ error: "Failed to fetch generated image" });
       const buffer = Buffer.from(await imgRes.arrayBuffer());
-      const imageBase64 = buffer.toString("base64");
-
-      return res.json({ imageBase64, mimeType });
+      return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Image generation failed";
       console.error("[fal] FLUX Pro error:", msg);
@@ -1380,6 +1468,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const result = await testProvider(config);
     return res.json(result);
+  });
+
+  /* ── admin: image gen config ── */
+  app.get("/api/admin/image-gen-config", requireAdmin as any, async (_req: Request, res: Response) => {
+    const config = await storage.getImageGenConfig();
+    return res.json(config ?? null);
+  });
+
+  app.put("/api/admin/image-gen-config", requireAdmin as any, async (req: Request, res: Response) => {
+    const { providerType, apiUrl, apiKey, modelName, authStyle, apiVersion, isEnabled } = req.body;
+    const config = await storage.upsertImageGenConfig({
+      providerType: providerType ?? "azure_foundry",
+      apiUrl: apiUrl ?? null,
+      apiKey: apiKey ?? null,
+      modelName: modelName ?? null,
+      authStyle: authStyle ?? "bearer",
+      apiVersion: apiVersion ?? null,
+      isEnabled: Boolean(isEnabled),
+    });
+    return res.json(config);
   });
 
   app.post("/api/admin/providers/test-config", requireAdmin as any, async (req: Request, res: Response) => {

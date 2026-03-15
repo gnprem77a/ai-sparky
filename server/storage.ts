@@ -8,6 +8,7 @@ import {
   type UserMemory, userMemories,
   type Broadcast, type InsertBroadcast, broadcasts,
   type AiProvider, type InsertAiProvider, aiProviders,
+  type ImageGenConfig, imageGenConfig,
   type StudyNote, type StudyOutput, studyNotes, studyOutputs,
   type KnowledgeBase, type KbDocument, type KbChunk,
   knowledgeBases, kbDocuments, kbChunks,
@@ -86,6 +87,9 @@ export interface IStorage {
   deleteProvider(id: string): Promise<void>;
   setActiveProvider(id: string): Promise<void>;
   reorderProviders(ids: string[]): Promise<void>;
+
+  getImageGenConfig(): Promise<ImageGenConfig | undefined>;
+  upsertImageGenConfig(data: Partial<Omit<ImageGenConfig, "id" | "updatedAt">>): Promise<ImageGenConfig>;
 
   getStudyNotes(userId: string): Promise<StudyNote[]>;
   getStudyNote(id: string): Promise<StudyNote | undefined>;
@@ -631,6 +635,24 @@ export class DatabaseStorage implements IStorage {
     for (let i = 0; i < ids.length; i++) {
       await db.update(aiProviders).set({ priority: i }).where(eq(aiProviders.id, ids[i]));
     }
+  }
+
+  async getImageGenConfig(): Promise<ImageGenConfig | undefined> {
+    const [config] = await db.select().from(imageGenConfig).where(eq(imageGenConfig.id, 1));
+    return config;
+  }
+
+  async upsertImageGenConfig(data: Partial<Omit<ImageGenConfig, "id" | "updatedAt">>): Promise<ImageGenConfig> {
+    const [existing] = await db.select().from(imageGenConfig).where(eq(imageGenConfig.id, 1));
+    if (existing) {
+      const [updated] = await db.update(imageGenConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(imageGenConfig.id, 1))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(imageGenConfig).values({ id: 1, ...data }).returning();
+    return created;
   }
 
   async getStudyNotes(userId: string): Promise<StudyNote[]> {

@@ -9,10 +9,10 @@ import {
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
-  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2,
+  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, ImageIcon, Eye, EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { type Broadcast, type AiProvider } from "@shared/schema";
+import { type Broadcast, type AiProvider, type ImageGenConfig } from "@shared/schema";
 
 interface TokenStats {
   totalInputTokens: number;
@@ -794,6 +794,196 @@ function ProviderFormModal({
   );
 }
 
+const IMAGE_GEN_PROVIDERS = [
+  { value: "azure_foundry",  label: "Azure AI Foundry",    hint: "https://<resource>.services.ai.azure.com/images/generations", authDefault: "bearer", versionDefault: "2025-04-01-preview" },
+  { value: "azure_openai",   label: "Azure OpenAI (DALL-E)", hint: "https://<resource>.openai.azure.com/openai/deployments/<deploy>/images/generations", authDefault: "api-key", versionDefault: "2024-02-01" },
+  { value: "openai",         label: "OpenAI DALL-E",       hint: "https://api.openai.com/v1/images/generations", authDefault: "bearer", versionDefault: "" },
+  { value: "fal",            label: "fal.ai (FLUX Pro)",   hint: "Uses fal.ai client — model: fal-ai/flux-pro/v1.1", authDefault: "bearer", versionDefault: "" },
+];
+
+function ImageGenSection() {
+  const { data: cfg, isLoading } = useQuery<ImageGenConfig | null>({
+    queryKey: ["/api/admin/image-gen-config"],
+  });
+
+  const [form, setForm] = useState({ providerType: "azure_foundry", apiUrl: "", apiKey: "", modelName: "", authStyle: "bearer", apiVersion: "", isEnabled: false });
+  const [showKey, setShowKey] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (cfg) {
+      setForm({
+        providerType: cfg.providerType ?? "azure_foundry",
+        apiUrl: cfg.apiUrl ?? "",
+        apiKey: cfg.apiKey ?? "",
+        modelName: cfg.modelName ?? "",
+        authStyle: cfg.authStyle ?? "bearer",
+        apiVersion: cfg.apiVersion ?? "",
+        isEnabled: cfg.isEnabled ?? false,
+      });
+    }
+  }, [cfg]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiRequest("PUT", "/api/admin/image-gen-config", form).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/image-gen-config"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  const providerMeta = IMAGE_GEN_PROVIDERS.find((p) => p.value === form.providerType);
+
+  const handleProviderChange = (val: string) => {
+    const meta = IMAGE_GEN_PROVIDERS.find((p) => p.value === val);
+    setForm((f) => ({
+      ...f,
+      providerType: val,
+      authStyle: meta?.authDefault ?? "bearer",
+      apiVersion: meta?.versionDefault ?? "",
+      apiUrl: meta?.hint?.startsWith("https://") ? "" : f.apiUrl,
+    }));
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ImageIcon className="w-4 h-4 text-violet-400" />
+          <h2 className="font-semibold text-foreground">Image Generation</h2>
+          {form.isEnabled && (
+            <span className="text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Active</span>
+          )}
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-xs text-muted-foreground">Enable</span>
+          <button
+            onClick={() => setForm((f) => ({ ...f, isEnabled: !f.isEnabled }))}
+            className={cn("w-9 h-5 rounded-full transition-colors relative", form.isEnabled ? "bg-emerald-500" : "bg-muted-foreground/30")}
+          >
+            <span className={cn("absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform", form.isEnabled ? "translate-x-4" : "translate-x-0.5")} />
+          </button>
+        </label>
+      </div>
+      <div className="p-6 space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <>
+            {/* Provider selector */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Provider</label>
+                <select
+                  value={form.providerType}
+                  onChange={(e) => handleProviderChange(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  data-testid="select-image-gen-provider"
+                >
+                  {IMAGE_GEN_PROVIDERS.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Auth Style</label>
+                <select
+                  value={form.authStyle}
+                  onChange={(e) => setForm((f) => ({ ...f, authStyle: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="bearer">Bearer token (Authorization header)</option>
+                  <option value="api-key">api-key header (Azure style)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* API URL */}
+            {form.providerType !== "fal" && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">API Endpoint URL</label>
+                <input
+                  value={form.apiUrl}
+                  onChange={(e) => setForm((f) => ({ ...f, apiUrl: e.target.value }))}
+                  placeholder={providerMeta?.hint ?? "https://..."}
+                  className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
+                  data-testid="input-image-gen-url"
+                />
+              </div>
+            )}
+
+            {/* API Key */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">API Key</label>
+              <div className="relative">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={form.apiKey}
+                  onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
+                  placeholder="Paste your API key here"
+                  className="w-full h-9 pl-3 pr-9 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 font-mono"
+                  data-testid="input-image-gen-key"
+                />
+                <button
+                  onClick={() => setShowKey((s) => !s)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Model + API Version row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Model Name <span className="text-muted-foreground/50">(optional)</span></label>
+                <input
+                  value={form.modelName}
+                  onChange={(e) => setForm((f) => ({ ...f, modelName: e.target.value }))}
+                  placeholder={form.providerType === "fal" ? "fal-ai/flux-pro/v1.1" : form.providerType === "openai" ? "dall-e-3" : "Leave blank if in URL"}
+                  className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              </div>
+              {form.providerType !== "fal" && form.providerType !== "openai" && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">API Version <span className="text-muted-foreground/50">(Azure only)</span></label>
+                  <input
+                    value={form.apiVersion}
+                    onChange={(e) => setForm((f) => ({ ...f, apiVersion: e.target.value }))}
+                    placeholder={providerMeta?.versionDefault ?? "e.g. 2024-02-01"}
+                    className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Provider hint */}
+            {providerMeta && (
+              <div className="flex items-start gap-2 text-[11px] text-violet-400/80 bg-violet-500/5 border border-violet-500/15 rounded-lg px-3 py-2">
+                <Globe className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>{providerMeta.hint}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                data-testid="button-save-image-gen"
+              >
+                {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <Check className="w-3.5 h-3.5" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                {saved ? "Saved!" : "Save Configuration"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProvidersSection() {
   const [showForm, setShowForm] = useState(false);
   const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
@@ -1203,6 +1393,9 @@ export default function AdminPage() {
 
         {/* AI Providers Section */}
         <ProvidersSection />
+
+        {/* Image Generation Section */}
+        <ImageGenSection />
 
         {/* Token Usage Section */}
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
