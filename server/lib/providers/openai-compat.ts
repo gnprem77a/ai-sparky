@@ -56,8 +56,16 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   private buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
+    const apiUrl = this.config.apiUrl ?? "";
+
     if (this.config.providerType === "azure") {
-      headers["api-key"] = this.config.apiKey ?? "";
+      // Azure AI Foundry (services.ai.azure.com) uses "Authorization: Bearer <key>"
+      // Legacy Azure OpenAI (.openai.azure.com) uses "api-key: <key>"
+      if (apiUrl.includes("services.ai.azure.com") || apiUrl.includes(".inference.ai.azure.com")) {
+        headers["Authorization"] = `Bearer ${this.config.apiKey ?? ""}`;
+      } else {
+        headers["api-key"] = this.config.apiKey ?? "";
+      }
     } else {
       headers["Authorization"] = `Bearer ${this.config.apiKey ?? ""}`;
     }
