@@ -718,14 +718,6 @@ export default function ChatPage() {
               }
               throw new Error(parsed.error);
             }
-            if (parsed.providerFallback) {
-              const reason = parsed.reason === "rate_limited" ? "rate limited" : "unavailable";
-              toast({
-                title: `Provider fallback`,
-                description: `"${parsed.failedProvider}" was ${reason}. Switched to the next available provider.`,
-                duration: 4000,
-              });
-            }
             if (parsed.searching) {
               setMessages((prev) =>
                 prev.map((m) => m.id === assistantMsgId ? { ...m, searching: parsed.query as string } : m)
