@@ -500,6 +500,27 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
       .trim();
   };
 
+  const pickBestVoice = (): SpeechSynthesisVoice | null => {
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+
+    const priority = [
+      (v: SpeechSynthesisVoice) => /Google (US English|UK English Female|UK English Male)/i.test(v.name),
+      (v: SpeechSynthesisVoice) => /Google/i.test(v.name) && v.lang.startsWith("en"),
+      (v: SpeechSynthesisVoice) => /Microsoft.*Natural|Microsoft.*Online/i.test(v.name) && v.lang.startsWith("en"),
+      (v: SpeechSynthesisVoice) => /Microsoft/i.test(v.name) && v.lang.startsWith("en"),
+      (v: SpeechSynthesisVoice) => /Samantha|Alex|Karen|Daniel|Moira|Tessa/i.test(v.name),
+      (v: SpeechSynthesisVoice) => v.lang === "en-US" && !v.localService,
+      (v: SpeechSynthesisVoice) => v.lang.startsWith("en"),
+    ];
+
+    for (const test of priority) {
+      const match = voices.find(test);
+      if (match) return match;
+    }
+    return voices[0];
+  };
+
   const handleToggleSpeech = () => {
     if (isSpeaking) {
       window.speechSynthesis.cancel();
@@ -507,11 +528,29 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(stripMarkdown(message.content));
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
+    const speak = () => {
+      const utterance = new SpeechSynthesisUtterance(stripMarkdown(message.content));
+      const voice = pickBestVoice();
+      if (voice) utterance.voice = voice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.lang = voice?.lang ?? "en-US";
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(true);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.onvoiceschanged = null;
+        speak();
+      };
+    } else {
+      speak();
+    }
   };
 
   useEffect(() => {
