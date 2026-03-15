@@ -1281,11 +1281,14 @@ export default function ChatPage() {
                     />
                   ))}
                   {isGeneratingImage && (
-                    <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
-                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                      <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
-                      <span className="ml-1">Generating image…</span>
+                    <div className="px-4 pb-3 flex items-center gap-2.5 text-xs text-violet-400/80">
+                      <div className="flex items-center gap-1">
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
+                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
+                      </div>
+                      <span className="font-medium">Generating with FLUX Pro</span>
+                      <span className="text-violet-400/50 text-[10px] bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">fal.ai</span>
                     </div>
                   )}
                   {error && (

@@ -4,6 +4,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
+import { fal } from "@fal-ai/client";
 import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail } from "./lib/email";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -1169,9 +1170,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  /* ── Image generation via Bedrock Titan ── */
-  app.post("/api/generate-image", requireAuth as any, async (_req: Request, res: Response) => {
-    return res.status(503).json({ error: "Image generation is not available with the current API provider." });
+  /* ── Image generation via fal.ai FLUX Pro ── */
+  app.post("/api/generate-image", requireAuth as any, async (req: Request, res: Response) => {
+    const { prompt, aspectRatio = "square_hd" } = req.body;
+    if (!prompt?.trim()) return res.status(400).json({ error: "prompt is required" });
+
+    const falKey = process.env.FAL_KEY;
+    if (!falKey) return res.status(503).json({ error: "Image generation is not configured. FAL_KEY is missing." });
+
+    fal.config({ credentials: falKey });
+
+    try {
+      const result = await fal.subscribe("fal-ai/flux-pro/v1.1", {
+        input: {
+          prompt: prompt.trim(),
+          image_size: aspectRatio as "square_hd" | "square" | "portrait_4_3" | "portrait_16_9" | "landscape_4_3" | "landscape_16_9",
+          num_images: 1,
+          enable_safety_checker: true,
+          output_format: "png",
+        },
+      });
+
+      const imageUrl = result?.data?.images?.[0]?.url;
+      const mimeType = "image/png";
+      if (!imageUrl) return res.status(500).json({ error: "No image returned from FLUX Pro" });
+
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) return res.status(500).json({ error: "Failed to fetch generated image" });
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      const imageBase64 = buffer.toString("base64");
+
+      return res.json({ imageBase64, mimeType });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Image generation failed";
+      console.error("[fal] FLUX Pro error:", msg);
+      return res.status(500).json({ error: msg });
+    }
   });
 
   /* ── messages: pin/unpin ── */
