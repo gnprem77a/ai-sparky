@@ -1501,8 +1501,8 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         {[
           { icon: "🧠", label: "Multi-Model AI", desc: "GPT, Claude, Gemini & more" },
           { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
-          { icon: "💾", label: "Smart Memory", desc: "AI remembers your facts" },
-          { icon: "📊", label: "Analytics", desc: "Track your usage & tokens" },
+          { icon: "🎤", label: "Voice Chat", desc: "Talk instead of type" },
+          { icon: "📎", label: "File Uploads", desc: "Share images & PDFs" },
         ].map((f) => (
           <div key={f.label} className="flex flex-col items-center text-center gap-1 px-3 py-3 rounded-xl border border-border/40 bg-muted/20">
             <span className="text-xl">{f.icon}</span>

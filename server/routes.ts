@@ -545,6 +545,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ count, limit: 20, isPro: pro, date: today });
   });
 
+  /* ── user stats (analytics) ── */
+  app.get("/api/stats/me", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    const convs = await storage.getConversations(userId);
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalMessages = 0;
+    for (const conv of convs) {
+      const msgs = await storage.getMessages(conv.id);
+      const assistant = msgs.filter((m) => m.role === "assistant");
+      totalMessages += msgs.filter((m) => m.role === "user").length;
+      for (const m of assistant) {
+        totalInputTokens += m.inputTokens ?? 0;
+        totalOutputTokens += m.outputTokens ?? 0;
+      }
+    }
+    return res.json({
+      conversations: convs.length,
+      messages: totalMessages,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      totalTokens: totalInputTokens + totalOutputTokens,
+    });
+  });
+
   /* ── conversations: pin/unpin ── */
   app.patch("/api/conversations/:id/pin", requireAuth as any, async (req: Request, res: Response) => {
     const conv = await storage.getConversation(req.params.id as string);

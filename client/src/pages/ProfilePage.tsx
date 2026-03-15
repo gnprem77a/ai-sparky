@@ -9,7 +9,7 @@ import {
   ArrowLeft, Crown, Shield, User, Lock, Palette, MessageSquare,
   Eye, EyeOff, Check, Save, LogOut, ChevronRight, Zap, Calendar,
   Hash, Bot, Type, Key, Sun, Moon, Brain, Plus, Trash2,
-  Bell, Download, AlertTriangle, Sparkles,
+  Bell, Download, AlertTriangle, Sparkles, BarChart2, TrendingUp,
 } from "lucide-react";
 
 interface Settings {
@@ -41,6 +41,14 @@ interface Memory {
   id: string;
   content: string;
   createdAt: string;
+}
+
+interface UserStats {
+  conversations: number;
+  messages: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }
 
 const FONT_SIZES = [
@@ -138,6 +146,10 @@ export default function ProfilePage() {
 
   const { data: memories = [] } = useQuery<Memory[]>({
     queryKey: ["/api/memories"],
+  });
+
+  const { data: myStats } = useQuery<UserStats>({
+    queryKey: ["/api/stats/me"],
   });
 
   const [newMemory, setNewMemory] = useState("");
@@ -788,6 +800,44 @@ export default function ProfilePage() {
             >
               {notifSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Preferences</>}
             </button>
+          </div>
+        </SectionCard>
+
+        {/* ── Analytics ── */}
+        <SectionCard id="analytics" icon={<BarChart2 className="w-4 h-4" />} title="Analytics">
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground/70 leading-relaxed">
+              A summary of your usage across all conversations.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Conversations", value: myStats?.conversations ?? 0, icon: <MessageSquare className="w-4 h-4 text-blue-400" /> },
+                { label: "Messages Sent", value: myStats?.messages ?? 0, icon: <TrendingUp className="w-4 h-4 text-emerald-400" /> },
+                { label: "Input Tokens", value: (myStats?.inputTokens ?? 0).toLocaleString(), icon: <Zap className="w-4 h-4 text-yellow-400" /> },
+                { label: "Output Tokens", value: (myStats?.outputTokens ?? 0).toLocaleString(), icon: <Sparkles className="w-4 h-4 text-violet-400" /> },
+              ].map((stat) => (
+                <div key={stat.label} className="flex flex-col gap-1.5 px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
+                  <div className="flex items-center gap-1.5">{stat.icon}<span className="text-[11px] text-muted-foreground/60 font-medium">{stat.label}</span></div>
+                  <span className="text-xl font-bold text-foreground tabular-nums">{stat.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-primary/60" />
+                <span className="text-sm text-muted-foreground/70 font-medium">Total Tokens Used</span>
+              </div>
+              <span className="text-sm font-bold text-foreground tabular-nums">{(myStats?.totalTokens ?? 0).toLocaleString()}</span>
+            </div>
+            {usage && (
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-border/40 bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-primary/60" />
+                  <span className="text-sm text-muted-foreground/70 font-medium">Today's Messages</span>
+                </div>
+                <span className="text-sm font-bold text-foreground tabular-nums">{usage.count} <span className="text-muted-foreground/40 font-normal">/ {usage.isPro ? "∞" : usage.limit}</span></span>
+              </div>
+            )}
           </div>
         </SectionCard>
 
