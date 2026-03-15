@@ -1299,7 +1299,6 @@ export default function ChatPage() {
                         <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
                         <span className="typing-dot w-2 h-2 rounded-full bg-primary/60" />
                       </div>
-                      <span className="text-[11px] text-muted-foreground/50 tabular-nums">{elapsedTime.toFixed(1)}s</span>
                       <button
                         onClick={handleStop}
                         data-testid="button-stop-streaming-inline"
