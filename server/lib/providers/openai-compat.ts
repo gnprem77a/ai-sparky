@@ -1,7 +1,7 @@
 /**
  * OpenAI-compatible streaming adapter.
- * Covers: OpenAI, Azure OpenAI, Google Gemini (compat endpoint),
- *         Bluesminds, and any other OpenAI-compatible API.
+ * Covers: OpenAI, Azure OpenAI (Chat Completions + Responses API),
+ *         Google Gemini (compat endpoint), Bluesminds, and any other OpenAI-compatible API.
  */
 import type { Response } from "express";
 import { executeTool } from "../../tools";
@@ -53,14 +53,23 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     return "https://api.openai.com/v1";
   }
 
+  /**
+   * Whether this provider uses the OpenAI/Azure Responses API
+   * (POST /responses) instead of Chat Completions (POST /chat/completions).
+   */
+  private get isResponsesApi(): boolean {
+    const url = this.config.apiUrl ?? "";
+    return url.includes("/responses");
+  }
+
   private buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
 
     const apiUrl = this.config.apiUrl ?? "";
 
     if (this.config.providerType === "azure") {
-      // Azure AI Foundry (services.ai.azure.com) uses "Authorization: Bearer <key>"
-      // Legacy Azure OpenAI (.openai.azure.com) uses "api-key: <key>"
+      // Azure AI Foundry (services.ai.azure.com / inference.ai.azure.com) → Bearer token
+      // Legacy Azure OpenAI (openai.azure.com / cognitiveservices.azure.com) → api-key
       if (apiUrl.includes("services.ai.azure.com") || apiUrl.includes(".inference.ai.azure.com")) {
         headers["Authorization"] = `Bearer ${this.config.apiKey ?? ""}`;
       } else {
@@ -79,24 +88,72 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     return headers;
   }
 
+  /**
+   * Returns the full endpoint URL.
+   * If the user already provided a URL with a meaningful path, use it as-is.
+   * Otherwise append the standard /chat/completions path.
+   */
   private chatEndpoint(): string {
     const rawUrl = (this.config.apiUrl ?? "").replace(/\/$/, "");
 
-    // If the user already provided a complete chat completions URL, use it as-is.
-    // This covers Azure AI Foundry URLs like:
-    //   https://xxx.services.ai.azure.com/models/chat/completions?api-version=...
-    //   https://xxx.openai.azure.com/.../chat/completions
-    if (rawUrl.includes("/chat/completions")) {
-      return rawUrl;
-    }
+    // If the URL has a meaningful path (not just "/"), use it as-is.
+    // This covers /chat/completions, /openai/responses, /models/chat/completions, etc.
+    try {
+      const parsed = new URL(rawUrl);
+      if (parsed.pathname.length > 1) return rawUrl;
+    } catch {}
 
-    // Legacy Azure OpenAI (.openai.azure.com) needs api-version appended
+    // Base URL only — append the standard chat completions path.
+    // Legacy Azure OpenAI (.openai.azure.com) also needs api-version.
     const isLegacyAzure = this.config.providerType === "azure" &&
       rawUrl.includes(".openai.azure.com");
     return isLegacyAzure
       ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
       : `${this.baseUrl}/chat/completions`;
   }
+
+  // ---------------------------------------------------------------------------
+  // Responses API helpers (OpenAI / Azure OpenAI Responses API)
+  // ---------------------------------------------------------------------------
+
+  private buildResponsesBody(
+    messages: Array<{ role: string; content: unknown }>,
+    maxTokens: number,
+    stream: boolean,
+  ): Record<string, unknown> {
+    // System message becomes an extra top-level "instructions" field
+    const systemMsg = messages.find(m => m.role === "system");
+    const inputMsgs = messages.filter(m => m.role !== "system");
+
+    const body: Record<string, unknown> = {
+      model: this.config.modelName,
+      input: inputMsgs,
+      max_output_tokens: maxTokens,
+      stream,
+    };
+    if (systemMsg) body.instructions = systemMsg.content;
+    return body;
+  }
+
+  /** Parse non-streaming Responses API response → plain text */
+  private parseResponsesOutput(data: unknown): string {
+    const d = data as {
+      output?: Array<{
+        type?: string;
+        content?: Array<{ type?: string; text?: string }>;
+      }>;
+    };
+    for (const item of d.output ?? []) {
+      for (const part of item.content ?? []) {
+        if (part.type === "output_text" && part.text) return part.text;
+      }
+    }
+    return "";
+  }
+
+  // ---------------------------------------------------------------------------
+  // testConnection
+  // ---------------------------------------------------------------------------
 
   async testConnection(): Promise<TestResult> {
     const start = Date.now();
@@ -110,7 +167,6 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       let testBody: Record<string, unknown>;
 
       if (isRerankModel) {
-        // Cohere rerank endpoint — URL is the direct endpoint already
         endpoint = this.config.apiUrl ?? "";
         testBody = {
           model: this.config.modelName,
@@ -118,10 +174,17 @@ export class OpenAICompatAdapter implements ProviderAdapter {
           documents: ["hello world"],
         };
       } else if (isEmbedModel) {
-        // Embedding endpoint
         const base = (this.config.apiUrl ?? "").replace(/\/$/, "");
         endpoint = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
         testBody = { model: this.config.modelName, input: ["test"] };
+      } else if (this.isResponsesApi) {
+        endpoint = this.chatEndpoint();
+        testBody = {
+          model: this.config.modelName,
+          input: [{ role: "user", content: "Say OK" }],
+          max_output_tokens: 5,
+          stream: false,
+        };
       } else {
         endpoint = this.chatEndpoint();
         testBody = {
@@ -135,7 +198,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15_000);
 
-      let res: Response;
+      let res: globalThis.Response;
       try {
         res = await fetch(endpoint, {
           method: "POST",
@@ -147,7 +210,6 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         clearTimeout(timeout);
       }
 
-      // Read as text first — some endpoints return plain-text errors (not JSON)
       const rawText = await res.text();
       let data: Record<string, unknown> = {};
       try { data = JSON.parse(rawText); } catch { /* not JSON */ }
@@ -167,8 +229,34 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // generate (non-streaming, used for knowledge base / summaries)
+  // ---------------------------------------------------------------------------
+
   async generate({ systemPrompt, userPrompt, maxTokens = 2048 }: import("./types").GenerateOptions): Promise<string> {
     const endpoint = this.chatEndpoint();
+
+    if (this.isResponsesApi) {
+      const msgs: Array<{ role: string; content: string }> = [];
+      msgs.push({ role: "user", content: userPrompt });
+      const body = this.buildResponsesBody(
+        systemPrompt ? [{ role: "system", content: systemPrompt }, ...msgs] : msgs,
+        maxTokens,
+        false,
+      );
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: this.buildHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Provider error ${res.status}`);
+      const data = await res.json();
+      const text = this.parseResponsesOutput(data);
+      if (!text) throw new Error("Empty response from provider");
+      return text;
+    }
+
+    // Standard Chat Completions
     const msgs: Array<{ role: string; content: string }> = [];
     if (systemPrompt) msgs.push({ role: "system", content: systemPrompt });
     msgs.push({ role: "user", content: userPrompt });
@@ -184,9 +272,100 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     return text;
   }
 
+  // ---------------------------------------------------------------------------
+  // stream
+  // ---------------------------------------------------------------------------
+
   async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
     const endpoint = this.chatEndpoint();
 
+    if (this.isResponsesApi) {
+      return this.streamResponsesApi(endpoint, messages, systemPrompt, maxTokens, res);
+    }
+
+    return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Responses API streaming
+  // ---------------------------------------------------------------------------
+
+  private async streamResponsesApi(
+    endpoint: string,
+    messages: RawMessage[],
+    systemPrompt: string | undefined,
+    maxTokens: number,
+    res: Response,
+  ): Promise<UsageResult> {
+    const builtMsgs = buildMessages(messages, systemPrompt);
+    const body = this.buildResponsesBody(builtMsgs, maxTokens, true);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok || !response.body) {
+      const err = await response.text();
+      throw new Error(`Provider error ${response.status}: ${err.slice(0, 200)}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+
+      for (const line of lines) {
+        // Responses API uses both "event:" lines and "data:" lines
+        if (line.startsWith("data: ")) {
+          const raw = line.slice(6).trim();
+          if (!raw || raw === "[DONE]") continue;
+          try {
+            const chunk = JSON.parse(raw) as {
+              type?: string;
+              delta?: string;
+              response?: {
+                usage?: { input_tokens?: number; output_tokens?: number };
+              };
+            };
+
+            if (chunk.type === "response.output_text.delta" && chunk.delta) {
+              res.write(`data: ${JSON.stringify({ text: chunk.delta })}\n\n`);
+            }
+
+            if (chunk.type === "response.completed" && chunk.response?.usage) {
+              inputTokens = chunk.response.usage.input_tokens ?? 0;
+              outputTokens = chunk.response.usage.output_tokens ?? 0;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    return { inputTokens, outputTokens };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Standard Chat Completions streaming (with tool-call loop)
+  // ---------------------------------------------------------------------------
+
+  private async streamChatCompletions(
+    endpoint: string,
+    messages: RawMessage[],
+    systemPrompt: string | undefined,
+    maxTokens: number,
+    useTools: boolean,
+    res: Response,
+  ): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
     let conversationMessages = buildMessages(messages, systemPrompt);
