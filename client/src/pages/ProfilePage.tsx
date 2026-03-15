@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -56,6 +56,8 @@ const FONT_SIZES = [
   { value: "normal",  label: "Normal",  desc: "Default" },
   { value: "large",   label: "Large",   desc: "Easier to read" },
 ];
+
+const ProContext = createContext(false);
 
 function HeroCanvas({ isPro }: { isPro: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -144,11 +146,27 @@ function HeroCanvas({ isPro }: { isPro: boolean }) {
 }
 
 function SectionCard({ icon, title, children, id }: { icon: React.ReactNode; title: string; children: React.ReactNode; id?: string }) {
+  const isPro = useContext(ProContext);
   return (
-    <div id={id} className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden scroll-mt-4">
-      <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border/40 bg-muted/20">
-        <span className="text-primary/70">{icon}</span>
+    <div id={id} className={cn(
+      "rounded-2xl border overflow-hidden scroll-mt-4",
+      isPro
+        ? "border-amber-500/30 bg-card/70 shadow-sm shadow-amber-500/10"
+        : "border-border/50 bg-card/60"
+    )}>
+      <div className={cn(
+        "flex items-center gap-2.5 px-5 py-4 border-b relative overflow-hidden",
+        isPro
+          ? "border-amber-500/20 bg-amber-500/8 pro-header-shimmer"
+          : "border-border/40 bg-muted/20"
+      )}>
+        <span className={isPro ? "text-amber-400" : "text-primary/70"}>{icon}</span>
         <h2 className="font-semibold text-sm text-foreground">{title}</h2>
+        {isPro && (
+          <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-amber-400/60 uppercase tracking-wider">
+            <Crown className="w-3 h-3" /> Pro
+          </span>
+        )}
       </div>
       <div className="p-5">{children}</div>
     </div>
@@ -352,9 +370,9 @@ export default function ProfilePage() {
   const avatarLetter = user.username[0].toUpperCase();
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className={cn("min-h-screen text-foreground transition-colors duration-500", isPro ? "bg-gradient-to-b from-amber-950/[0.06] via-background to-background" : "bg-background")}>
       {/* Top nav */}
-      <div className="sticky top-0 z-10 border-b border-border/40 bg-background/90 backdrop-blur-md">
+      <div className={cn("sticky top-0 z-10 border-b backdrop-blur-md", isPro ? "border-amber-500/25 bg-amber-950/80 dark:bg-amber-950/60" : "border-border/40 bg-background/90")}>
         <div className="max-w-2xl mx-auto flex items-center gap-3 px-4 h-14">
           <button
             onClick={() => navigate("/")}
@@ -394,20 +412,34 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      <ProContext.Provider value={isPro}>
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
 
         {/* ── Hero ── */}
-        <div className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden">
+        <div className={cn("rounded-2xl border overflow-hidden", isPro ? "border-amber-500/30 shadow-lg shadow-amber-500/10" : "border-border/50 bg-card/60")}>
           {/* Animated banner */}
-          <div className="relative h-32 overflow-hidden bg-gradient-to-br from-primary/8 via-violet-500/5 to-indigo-500/8">
+          <div className={cn("relative h-32 overflow-hidden", isPro ? "bg-gradient-to-br from-amber-600/20 via-yellow-500/10 to-amber-800/15" : "bg-gradient-to-br from-primary/8 via-violet-500/5 to-indigo-500/8")}>
             <HeroCanvas isPro={isPro} />
-            {/* Soft vignette fade at bottom so avatar overlaps cleanly */}
-            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card/80 to-transparent pointer-events-none" />
+            {/* Pro watermark */}
+            {isPro && (
+              <div className="absolute inset-0 flex items-center justify-end pr-6 pointer-events-none select-none overflow-hidden">
+                <span className="text-[72px] font-black text-amber-400/8 tracking-[-4px] leading-none">PRO</span>
+              </div>
+            )}
+            {/* Pro top ribbon */}
+            {isPro && (
+              <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 backdrop-blur-sm">
+                <Crown className="w-3 h-3 text-amber-400" />
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wide">Pro Member</span>
+              </div>
+            )}
+            {/* Soft vignette fade at bottom */}
+            <div className={cn("absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t to-transparent pointer-events-none", isPro ? "from-amber-950/20" : "from-card/80")} />
           </div>
-          <div className="px-6 pb-6 -mt-10">
+          <div className={cn("px-6 pb-6 -mt-10", isPro && "bg-gradient-to-b from-amber-500/[0.04] to-transparent")}>
             <div className={cn(
               "w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-background",
-              isPro ? "bg-amber-500/20 text-amber-400" : "bg-gradient-to-br from-primary to-violet-500 text-white"
+              isPro ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-amber-400/40 pro-avatar-glow" : "bg-gradient-to-br from-primary to-violet-500 text-white"
             )}>
               {avatarLetter}
             </div>
@@ -1077,6 +1109,7 @@ export default function ProfilePage() {
 
         <div className="h-6" />
       </div>
+      </ProContext.Provider>
     </div>
   );
 }
