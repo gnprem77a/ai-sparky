@@ -15,6 +15,17 @@ import { useLanguage } from "@/lib/i18n";
 import { PromptLibrary } from "@/components/PromptLibrary";
 import Papa from "papaparse";
 
+const ROTATING_HINTS = [
+  "Ask me anything…",
+  "Paste code to debug or review…",
+  "Summarize a topic for me…",
+  "Help me write an email…",
+  "Explain a concept simply…",
+  "Brainstorm ideas with me…",
+  "Upload a file to analyze…",
+  "Translate text to another language…",
+];
+
 /* ─── accepted file types ────────────────────────────────────── */
 const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
 const EXTS_IMG = ".jpg,.jpeg,.png,.gif,.webp";
@@ -96,6 +107,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const { t } = useLanguage();
   const [attachments, setAttachments]     = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver]       = useState(false);
+  const [hintIndex, setHintIndex]         = useState(0);
   const [isProcessing, setIsProcessing]   = useState(false);
   const [menuOpen, setMenuOpen]           = useState(false);
   const [modelOpen, setModelOpen]         = useState(false);
@@ -172,6 +184,13 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [value]);
+
+  /* rotate placeholder hint every 4s when input is empty */
+  useEffect(() => {
+    if (value) return;
+    const id = setInterval(() => setHintIndex(i => (i + 1) % ROTATING_HINTS.length), 4000);
+    return () => clearInterval(id);
   }, [value]);
 
   /* close menus on outside click */
@@ -391,7 +410,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : t("input.placeholder")}
+            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : ROTATING_HINTS[hintIndex]}
             disabled={disabled}
             rows={1}
             data-testid="input-message"
@@ -399,7 +418,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               "w-full resize-none border-0 bg-transparent text-sm leading-relaxed",
               "focus-visible:ring-0 focus-visible:ring-offset-0",
               "min-h-[52px] max-h-[220px] py-3.5 px-4",
-              "placeholder:text-muted-foreground/40 text-foreground/90"
+              "placeholder:text-muted-foreground/40 placeholder:transition-all placeholder:duration-500 text-foreground/90"
             )}
           />
 
@@ -633,6 +652,14 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
             {/* ── right: image mode toggle + voice input + send / stop ────── */}
             <div className="flex items-center gap-2">
+              {value.length > 200 && (
+                <span className={cn(
+                  "text-[11px] tabular-nums select-none",
+                  value.length > 3800 ? "text-destructive" : "text-muted-foreground/40"
+                )}>
+                  {value.length.toLocaleString()}
+                </span>
+              )}
               {supportsSpeechRecognition && !isStreaming && (
                 <button
                   type="button"
@@ -707,7 +734,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         </div>
 
         <p className="text-center text-[11px] text-muted-foreground/30 mt-2.5 select-none">
-          Claude may make mistakes. Verify important information.
+          AI can make mistakes. Always verify important information.
         </p>
       </div>
     </div>

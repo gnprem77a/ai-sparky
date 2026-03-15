@@ -47,6 +47,7 @@ export default function ChatPage() {
   const [upgradeReason, setUpgradeReason] = useState<"limit" | "model">("limit");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [lastTokPerSec, setLastTokPerSec] = useState<number | null>(null);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
   const [pinnedOpen, setPinnedOpen] = useState(false);
 
@@ -825,6 +826,14 @@ export default function ChatPage() {
       setStreamingMessageId(null);
       isSubmittingRef.current = false;
       if (notificationSound && accumulated.length > 80) playChime();
+      if (finalOutputTokens && finalOutputTokens > 0) {
+        const elapsed = (Date.now() - streamStartRef.current) / 1000;
+        if (elapsed > 0) {
+          const tps = Math.round(finalOutputTokens / elapsed);
+          setLastTokPerSec(tps);
+          setTimeout(() => setLastTokPerSec(null), 8000);
+        }
+      }
     }
     /* ── Fetch follow-up suggestions (non-blocking) ── */
     setFollowUpSuggestions([]);
@@ -1300,6 +1309,13 @@ export default function ChatPage() {
                       </button>
                     </div>
                   )}
+                  {!isStreaming && lastTokPerSec !== null && (
+                    <div className="px-4 pb-3 max-w-3xl mx-auto flex items-center gap-2 animate-fade-up">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/8 border border-primary/15 text-[11px] text-primary/70 tabular-nums font-medium">
+                        ⚡ {elapsedTime.toFixed(1)}s · {lastTokPerSec} tok/s
+                      </span>
+                    </div>
+                  )}
                   {isGeneratingImage && (
                     <div className="px-4 pb-2 flex items-center gap-2 text-xs text-violet-400/70">
                       <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/70" />
@@ -1493,8 +1509,16 @@ const STARTER_TEMPLATES = [
   },
 ];
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
   const { t } = useLanguage();
+  const greeting = getGreeting();
   return (
     <div className="relative flex flex-col items-center justify-center min-h-full py-10 px-6 overflow-hidden">
       {/* Ambient glow */}
@@ -1505,6 +1529,7 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-3xl scale-[2] -z-10" />
       </div>
 
+      <p className="text-xs font-semibold text-primary/60 uppercase tracking-widest mb-1">{greeting}</p>
       <h1 className="text-[2rem] font-black tracking-tight text-foreground mb-2 text-center">
         {t("chat.empty.title")}
       </h1>
@@ -1517,8 +1542,8 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         {[
           { icon: "🧠", label: "Multi-Model AI", desc: "GPT, Claude, Gemini & more" },
           { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
-          { icon: "💾", label: "Memory", desc: "AI remembers you" },
-          { icon: "🔑", label: "Bring Your Key", desc: "Use your own API keys" },
+          { icon: "💾", label: "Smart Memory", desc: "AI remembers your facts" },
+          { icon: "📊", label: "Analytics", desc: "Track your usage & tokens" },
         ].map((f) => (
           <div key={f.label} className="flex flex-col items-center text-center gap-1 px-3 py-3 rounded-xl border border-border/40 bg-muted/20">
             <span className="text-xl">{f.icon}</span>
