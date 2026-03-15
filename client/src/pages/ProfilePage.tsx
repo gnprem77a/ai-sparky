@@ -312,7 +312,16 @@ export default function ProfilePage() {
 
         {/* ── Hero ── */}
         <div className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden">
-          <div className="h-24 bg-gradient-to-br from-primary/20 via-violet-500/10 to-transparent" />
+          {/* Animated banner */}
+          <div className="relative h-28 overflow-hidden bg-gradient-to-br from-primary/10 via-violet-500/5 to-indigo-500/10">
+            {/* Floating orbs */}
+            <div className="profile-orb-1 absolute -top-6 -left-4 w-32 h-32 rounded-full bg-primary/30 blur-2xl" />
+            <div className="profile-orb-2 absolute top-2 left-1/3 w-24 h-24 rounded-full bg-violet-500/25 blur-xl" />
+            <div className="profile-orb-3 absolute -top-4 right-12 w-36 h-36 rounded-full bg-indigo-400/20 blur-2xl" />
+            <div className="profile-orb-4 absolute bottom-0 right-0 w-28 h-28 rounded-full bg-primary/20 blur-xl" />
+            {/* Subtle grid overlay */}
+            <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+          </div>
           <div className="px-6 pb-6 -mt-10">
             <div className={cn(
               "w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-background",

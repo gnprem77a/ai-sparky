@@ -350,6 +350,43 @@
     transform-origin: bottom;
   }
 
+  /* Profile hero floating orb animations */
+  @keyframes orb-float-1 {
+    0%   { transform: translate(0%, 0%) scale(1); }
+    25%  { transform: translate(12%, -15%) scale(1.08); }
+    50%  { transform: translate(25%, 8%) scale(0.95); }
+    75%  { transform: translate(8%, 18%) scale(1.05); }
+    100% { transform: translate(0%, 0%) scale(1); }
+  }
+  @keyframes orb-float-2 {
+    0%   { transform: translate(0%, 0%) scale(1); }
+    30%  { transform: translate(-18%, 12%) scale(1.1); }
+    60%  { transform: translate(-8%, -18%) scale(0.9); }
+    100% { transform: translate(0%, 0%) scale(1); }
+  }
+  @keyframes orb-float-3 {
+    0%   { transform: translate(0%, 0%) scale(0.95); }
+    40%  { transform: translate(20%, -10%) scale(1.12); }
+    70%  { transform: translate(-12%, 15%) scale(0.88); }
+    100% { transform: translate(0%, 0%) scale(0.95); }
+  }
+  @keyframes orb-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%       { opacity: 0.85; }
+  }
+  .profile-orb-1 {
+    animation: orb-float-1 14s ease-in-out infinite, orb-pulse 7s ease-in-out infinite;
+  }
+  .profile-orb-2 {
+    animation: orb-float-2 18s ease-in-out infinite, orb-pulse 9s ease-in-out infinite 2s;
+  }
+  .profile-orb-3 {
+    animation: orb-float-3 22s ease-in-out infinite, orb-pulse 11s ease-in-out infinite 4s;
+  }
+  .profile-orb-4 {
+    animation: orb-float-1 16s ease-in-out infinite reverse, orb-pulse 8s ease-in-out infinite 1s;
+  }
+
   /* Scrollbar styling */
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;
