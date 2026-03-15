@@ -1240,15 +1240,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         let body: Record<string, unknown>;
         if (isBFL) {
-          body = {
-            prompt: prompt.trim(),
-            width: 1024,
-            height: 1024,
-            steps: 1,
-            guidance: 3.5,
-            output_format: "jpeg",
-            safety_tolerance: 2,
-          };
+          // Azure AI Foundry BFL/FLUX wrapper — only send minimal required fields
+          body = { prompt: prompt.trim() };
         } else {
           body = {
             prompt: prompt.trim(),
@@ -1259,7 +1252,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (cfg.modelName) body["model"] = cfg.modelName;
         }
 
-        console.log(`[image-gen] POST ${url} (${isBFL ? "BFL/FLUX" : "DALL-E"} format)`);
+        console.log(`[image-gen] POST ${url} (${isBFL ? "BFL/FLUX" : "DALL-E"} format) body=${JSON.stringify(body)}`);
         const apiRes = await fetch(url, {
           method: "POST",
           headers,
@@ -1272,17 +1265,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.status(500).json({ error: `Image API returned ${apiRes.status}: ${errText.slice(0, 300)}` });
         }
 
-        const data = await apiRes.json() as {
-          data?: { b64_json?: string; url?: string }[];
-          images?: { url?: string; content_type?: string }[];
-        };
+        const rawText = await apiRes.text();
+        console.log("[image-gen] raw response:", rawText.slice(0, 500));
+        let data: Record<string, unknown>;
+        try { data = JSON.parse(rawText); } catch { data = {}; }
 
-        // BFL/FLUX response: { images: [{ url, content_type }] }
-        // The URL may be a data URI (base64) or a remote URL
-        if (isBFL && data?.images?.[0]) {
-          const imgItem = data.images[0];
-          const imgUrl = imgItem.url ?? "";
-          const mimeType = imgItem.content_type ?? "image/jpeg";
+        const resolveUrl = async (imgUrl: string, mimeType = "image/jpeg") => {
           if (imgUrl.startsWith("data:")) {
             const b64 = imgUrl.split(",")[1];
             return res.json({ imageBase64: b64, mimeType });
@@ -1290,18 +1278,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const imgRes = await fetch(imgUrl);
           const buffer = Buffer.from(await imgRes.arrayBuffer());
           return res.json({ imageBase64: buffer.toString("base64"), mimeType });
+        };
+
+        if (isBFL) {
+          // BFL native sync: { images: [{ url, content_type }] }
+          const imgs = data?.images as { url?: string; content_type?: string }[] | undefined;
+          if (imgs?.[0]?.url) return resolveUrl(imgs[0].url!, imgs[0].content_type ?? "image/jpeg");
+
+          // BFL native async completed: { status: "Ready", result: { sample: "url" } }
+          const result = data?.result as { sample?: string } | undefined;
+          if (result?.sample) return resolveUrl(result.sample);
+
+          // BFL async pending — poll for result
+          const pollId = data?.id as string | undefined;
+          if (pollId) {
+            const baseUrl = url.split("?")[0].replace(/\/flux[^/]*$/, "");
+            const pollBase = baseUrl.includes("blackforestlabs") ? "https://api.bfl.ai/v1/get_result" : url.replace(/\/flux[^/]*(\?.*)?$/, `/get_result`);
+            for (let i = 0; i < 20; i++) {
+              await new Promise((r) => setTimeout(r, 3000));
+              const pollRes = await fetch(`${pollBase}?id=${pollId}`, { headers });
+              const pollData = await pollRes.json() as { status?: string; result?: { sample?: string } };
+              console.log(`[image-gen] poll attempt ${i + 1}:`, JSON.stringify(pollData).slice(0, 200));
+              if (pollData?.status === "Ready" && pollData?.result?.sample) {
+                return resolveUrl(pollData.result.sample);
+              }
+              if (pollData?.status === "Error" || pollData?.status === "Failed") break;
+            }
+            return res.status(500).json({ error: "Image generation timed out or failed during polling" });
+          }
         }
 
         // DALL-E style response: { data: [{ b64_json | url }] }
-        const item = data?.data?.[0];
-        if (item?.b64_json) {
-          return res.json({ imageBase64: item.b64_json, mimeType: "image/png" });
-        }
-        if (item?.url) {
-          const imgRes = await fetch(item.url);
-          const buffer = Buffer.from(await imgRes.arrayBuffer());
-          return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
-        }
+        const dalleData = data as { data?: { b64_json?: string; url?: string }[] };
+        const item = dalleData?.data?.[0];
+        if (item?.b64_json) return res.json({ imageBase64: item.b64_json, mimeType: "image/png" });
+        if (item?.url) return resolveUrl(item.url, "image/png");
 
         console.error("[image-gen] Unexpected response shape:", JSON.stringify(data).slice(0, 300));
         return res.status(500).json({ error: "No image in API response" });
