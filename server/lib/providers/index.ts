@@ -64,7 +64,7 @@ export async function streamWithFallback(
     try {
       const adapter = buildAdapter(prov);
       const result = await adapter.stream(opts);
-      return result;
+      return { ...result, modelName: prov.modelName ?? prov.name };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       const isRateLimit = lastError.message.includes("429") || lastError.message.toLowerCase().includes("rate limit");

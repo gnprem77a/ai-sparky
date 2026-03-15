@@ -17,6 +17,7 @@ export interface StreamOptions {
 export interface UsageResult {
   inputTokens: number;
   outputTokens: number;
+  modelName?: string;
 }
 
 export interface TestResult {

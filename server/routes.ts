@@ -1039,7 +1039,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         priority: p.priority,
       }));
 
-      const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+      const { inputTokens, outputTokens, modelName: usedModelName } = await streamWithFallback(providerConfigs, {
         messages: recentMessages,
         systemPrompt: systemPrompt ?? undefined,
         maxTokens,
@@ -1048,6 +1048,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }, (failedProvider, reason) => {
         res.write(`data: ${JSON.stringify({ providerFallback: true, failedProvider, reason })}\n\n`);
       });
+      if (usedModelName) {
+        res.write(`data: ${JSON.stringify({ modelUsed: usedModelName })}\n\n`);
+      }
       res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       res.end();
     } catch (primaryErr: unknown) {
