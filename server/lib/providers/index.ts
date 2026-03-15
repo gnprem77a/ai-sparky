@@ -47,7 +47,16 @@ export async function streamWithFallback(
   opts: Omit<StreamOptions, "res"> & { res: Response },
   onFallback?: (failedProvider: string, reason: string) => void,
 ): Promise<UsageResult> {
-  const enabledProviders = providers.filter((p) => p.isEnabled).sort((a, b) => a.priority - b.priority);
+  const isChatProvider = (p: ProviderConfig) => {
+    const modelLower = (p.modelName ?? "").toLowerCase();
+    const urlLower = (p.apiUrl ?? "").toLowerCase();
+    return !modelLower.includes("embed") && !urlLower.includes("embed")
+        && !modelLower.includes("rerank") && !urlLower.includes("rerank");
+  };
+
+  const enabledProviders = providers
+    .filter((p) => p.isEnabled && isChatProvider(p))
+    .sort((a, b) => a.priority - b.priority);
 
   let lastError: Error | null = null;
 
@@ -83,7 +92,14 @@ export async function generateText(
   userPrompt: string,
   maxTokens = 2048,
 ): Promise<string> {
-  const candidates = [...providers.filter((p) => p.isEnabled).sort((a, b) => a.priority - b.priority)];
+  const isChatProvider = (p: ProviderConfig) => {
+    const modelLower = (p.modelName ?? "").toLowerCase();
+    const urlLower = (p.apiUrl ?? "").toLowerCase();
+    return !modelLower.includes("embed") && !urlLower.includes("embed")
+        && !modelLower.includes("rerank") && !urlLower.includes("rerank");
+  };
+
+  const candidates = [...providers.filter((p) => p.isEnabled && isChatProvider(p)).sort((a, b) => a.priority - b.priority)];
 
   const fallback: ProviderConfig = {
     id: "builtin",
