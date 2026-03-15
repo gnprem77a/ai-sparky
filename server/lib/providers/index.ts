@@ -66,29 +66,10 @@ export async function streamWithFallback(
   }
 
   if (enabledProviders.length > 0) {
-    throw lastError ?? new Error("All providers failed");
+    throw lastError ?? new Error("All configured providers failed. Please check your provider settings in the admin panel.");
   }
 
-  const fallbackConfig: ProviderConfig = {
-    id: "builtin",
-    name: "Bluesminds (built-in)",
-    providerType: "bluesminds",
-    apiUrl: "https://api.bluesminds.com/v1",
-    apiKey: process.env.BLUESMINDS_API_KEY ?? "",
-    modelName: "claude-sonnet-4-6",
-    headers: null,
-    httpMethod: "POST",
-    authStyle: "bearer",
-    authHeaderName: null,
-    streamMode: "none",
-    bodyTemplate: null,
-    responsePath: null,
-    isActive: true,
-    isEnabled: true,
-    priority: 0,
-  };
-
-  return buildAdapter(fallbackConfig).stream(opts);
+  throw new Error("No AI providers are configured. Please add a provider in the admin panel.");
 }
 
 /**

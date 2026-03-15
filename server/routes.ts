@@ -885,12 +885,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "messages array is required" });
     }
 
-    if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
-      return res.status(500).json({
-        error: "AWS credentials not configured. Add AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION to Secrets.",
-      });
-    }
-
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ error: "User not found" });
 
