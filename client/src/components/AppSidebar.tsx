@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, BookMarked, Brain, BarChart2, Globe } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
@@ -783,34 +783,70 @@ export function AppSidebar({
           </div>
         )}
 
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <a href="/gallery" data-testid="link-gallery">
-                <ImageIcon className="w-4 h-4" />
-                <span>Gallery</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <a href="/kb" data-testid="link-knowledge-base">
-                <Database className="w-4 h-4 text-blue-400" />
-                <span>Knowledge Base</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {user?.apiEnabled && (
+        {/* Navigation links */}
+        {user && (
+          <div className="space-y-0.5">
+            <p className="px-2 pb-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">Explore</p>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/kb" data-testid="link-knowledge-base" className="group">
+                    <Database className="w-4 h-4 text-blue-400 group-hover:text-blue-400" />
+                    <span>Knowledge Base</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/profile#prompts" data-testid="link-saved-prompts" className="group">
+                    <BookMarked className="w-4 h-4 text-violet-400 group-hover:text-violet-400" />
+                    <span>Saved Prompts</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/profile#memory" data-testid="link-memory" className="group">
+                    <Brain className="w-4 h-4 text-pink-400 group-hover:text-pink-400" />
+                    <span>Memory</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/analytics" data-testid="link-analytics" className="group">
+                    <BarChart2 className="w-4 h-4 text-emerald-400 group-hover:text-emerald-400" />
+                    <span>Analytics</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {user?.apiEnabled && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <a href="/api-access" data-testid="link-api-access" className="group">
+                      <Key className="w-4 h-4 text-amber-400 group-hover:text-amber-400" />
+                      <span>API Access</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+            </SidebarMenu>
+          </div>
+        )}
+
+        {/* Guest nav: just KB */}
+        {!user && (
+          <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <a href="/api-access" data-testid="link-api-access">
-                  <Key className="w-4 h-4 text-emerald-400" />
-                  <span>API Access</span>
+                <a href="/kb" data-testid="link-knowledge-base">
+                  <Database className="w-4 h-4 text-blue-400" />
+                  <span>Knowledge Base</span>
                 </a>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          )}
-        </SidebarMenu>
+          </SidebarMenu>
+        )}
 
         {/* Profile trigger + popup */}
         <div ref={profileMenuRef} className="relative">

@@ -1464,6 +1464,22 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         {t("chat.empty.subtitle")}
       </p>
 
+      {/* Feature highlights */}
+      <div className="w-full max-w-2xl mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {[
+          { icon: "🧠", label: "Multi-Model AI", desc: "GPT, Claude, Gemini & more" },
+          { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
+          { icon: "💾", label: "Memory", desc: "AI remembers you" },
+          { icon: "🔑", label: "Bring Your Key", desc: "Use your own API keys" },
+        ].map((f) => (
+          <div key={f.label} className="flex flex-col items-center text-center gap-1 px-3 py-3 rounded-xl border border-border/40 bg-muted/20">
+            <span className="text-xl">{f.icon}</span>
+            <span className="text-[11px] font-semibold text-foreground">{f.label}</span>
+            <span className="text-[10px] text-muted-foreground/60 leading-tight">{f.desc}</span>
+          </div>
+        ))}
+      </div>
+
       {/* Starter Templates */}
       <div className="w-full max-w-2xl mb-6">
         <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-3">Starter Templates</p>

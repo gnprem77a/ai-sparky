@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Crown, Shield, User, Lock, Palette, MessageSquare,
   Eye, EyeOff, Check, Save, LogOut, ChevronRight, Zap, Calendar,
-  Hash, Bot, Type, Key, Sun, Moon,
+  Hash, Bot, Type, Key, Sun, Moon, Brain, Plus, Trash2,
 } from "lucide-react";
 
 interface Settings {
@@ -31,15 +31,21 @@ interface SavedPrompt {
   content: string;
 }
 
+interface Memory {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
 const FONT_SIZES = [
   { value: "compact", label: "Compact", desc: "Smaller text" },
   { value: "normal",  label: "Normal",  desc: "Default" },
   { value: "large",   label: "Large",   desc: "Easier to read" },
 ];
 
-function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function SectionCard({ icon, title, children, id }: { icon: React.ReactNode; title: string; children: React.ReactNode; id?: string }) {
   return (
-    <div className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden">
+    <div id={id} className="rounded-2xl border border-border/50 bg-card/60 overflow-hidden scroll-mt-4">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border/40 bg-muted/20">
         <span className="text-primary/70">{icon}</span>
         <h2 className="font-semibold text-sm text-foreground">{title}</h2>
@@ -53,6 +59,16 @@ export default function ProfilePage() {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    }
+  }, []);
 
   const [fontSize, setFontSize]         = useState("normal");
   const [assistantName, setAssistantName] = useState("Assistant");
@@ -99,6 +115,26 @@ export default function ProfilePage() {
 
   const { data: prompts = [] } = useQuery<SavedPrompt[]>({
     queryKey: ["/api/prompts"],
+  });
+
+  const { data: memories = [] } = useQuery<Memory[]>({
+    queryKey: ["/api/memories"],
+  });
+
+  const [newMemory, setNewMemory] = useState("");
+
+  const addMemoryMutation = useMutation({
+    mutationFn: (content: string) =>
+      apiRequest("POST", "/api/memories", { content }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/memories"] });
+      setNewMemory("");
+    },
+  });
+
+  const deleteMemoryMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/memories/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/memories"] }),
   });
 
   useEffect(() => {
@@ -427,7 +463,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         {/* ── System Prompt ── */}
-        <SectionCard icon={<MessageSquare className="w-4 h-4" />} title="System Prompt">
+        <SectionCard id="prompts" icon={<MessageSquare className="w-4 h-4" />} title="System Prompt">
           <div className="space-y-4">
             {prompts.length > 0 && (
               <div>
@@ -478,6 +514,64 @@ export default function ProfilePage() {
             >
               {promptSaved ? <><Check className="w-4 h-4" /> Saved!</> : <><Save className="w-4 h-4" /> Save Prompt</>}
             </button>
+          </div>
+        </SectionCard>
+
+        {/* ── Memory ── */}
+        <SectionCard id="memory" icon={<Brain className="w-4 h-4" />} title="Memory">
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground/70 leading-relaxed">
+              Facts saved here are automatically included in every conversation so the AI remembers important details about you.
+            </p>
+
+            {memories.length > 0 && (
+              <div className="space-y-2">
+                {memories.map((m) => (
+                  <div key={m.id} className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-border/50 bg-muted/20 group">
+                    <Brain className="w-3.5 h-3.5 text-pink-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-foreground/80 flex-1 leading-relaxed">{m.content}</span>
+                    <button
+                      onClick={() => deleteMemoryMutation.mutate(m.id)}
+                      disabled={deleteMemoryMutation.isPending}
+                      data-testid={`button-delete-memory-${m.id}`}
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-destructive transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {memories.length === 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground/50 py-2">
+                <Brain className="w-3.5 h-3.5" /> No memories saved yet.
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newMemory}
+                onChange={(e) => setNewMemory(e.target.value)}
+                placeholder="e.g. I prefer concise answers, I work in Python…"
+                data-testid="input-new-memory"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemory.trim()) {
+                    addMemoryMutation.mutate(newMemory.trim());
+                  }
+                }}
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-border/50 bg-muted/30 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+              />
+              <button
+                onClick={() => { if (newMemory.trim()) addMemoryMutation.mutate(newMemory.trim()); }}
+                disabled={addMemoryMutation.isPending || !newMemory.trim()}
+                data-testid="button-add-memory"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" /> Add
+              </button>
+            </div>
           </div>
         </SectionCard>
 
