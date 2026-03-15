@@ -47,7 +47,6 @@ export default function ChatPage() {
   const [upgradeReason, setUpgradeReason] = useState<"limit" | "model">("limit");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [lastTokPerSec, setLastTokPerSec] = useState<number | null>(null);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
   const [pinnedOpen, setPinnedOpen] = useState(false);
 
@@ -826,14 +825,6 @@ export default function ChatPage() {
       setStreamingMessageId(null);
       isSubmittingRef.current = false;
       if (notificationSound && accumulated.length > 80) playChime();
-      if (finalOutputTokens && finalOutputTokens > 0) {
-        const elapsed = (Date.now() - streamStartRef.current) / 1000;
-        if (elapsed > 0) {
-          const tps = Math.round(finalOutputTokens / elapsed);
-          setLastTokPerSec(tps);
-          setTimeout(() => setLastTokPerSec(null), 8000);
-        }
-      }
     }
     /* ── Fetch follow-up suggestions (non-blocking) ── */
     setFollowUpSuggestions([]);
@@ -1306,13 +1297,6 @@ export default function ChatPage() {
                       >
                         <Square className="w-3 h-3 fill-current" /> Stop
                       </button>
-                    </div>
-                  )}
-                  {!isStreaming && lastTokPerSec !== null && (
-                    <div className="px-4 pb-3 max-w-3xl mx-auto flex items-center gap-2 animate-fade-up">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/8 border border-primary/15 text-[11px] text-primary/70 tabular-nums font-medium">
-                        ⚡ {elapsedTime.toFixed(1)}s · {lastTokPerSec} tok/s
-                      </span>
                     </div>
                   )}
                   {isGeneratingImage && (
