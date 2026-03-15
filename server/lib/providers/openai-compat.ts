@@ -72,10 +72,19 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   }
 
   private chatEndpoint(): string {
-    // Azure AI Foundry (services.ai.azure.com) does NOT need api-version
-    // Legacy Azure OpenAI (.openai.azure.com) DOES need api-version
+    const rawUrl = (this.config.apiUrl ?? "").replace(/\/$/, "");
+
+    // If the user already provided a complete chat completions URL, use it as-is.
+    // This covers Azure AI Foundry URLs like:
+    //   https://xxx.services.ai.azure.com/models/chat/completions?api-version=...
+    //   https://xxx.openai.azure.com/.../chat/completions
+    if (rawUrl.includes("/chat/completions")) {
+      return rawUrl;
+    }
+
+    // Legacy Azure OpenAI (.openai.azure.com) needs api-version appended
     const isLegacyAzure = this.config.providerType === "azure" &&
-      !(this.config.apiUrl ?? "").includes("services.ai.azure.com");
+      rawUrl.includes(".openai.azure.com");
     return isLegacyAzure
       ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
       : `${this.baseUrl}/chat/completions`;
