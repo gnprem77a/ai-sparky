@@ -1151,29 +1151,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const dbProviders = await storage.getActiveProviders();
 
-      // Warmup: inject a fake prior exchange on first-message conversations for
-      // providers that downgrade cold-session requests to weaker models.
-      const isFirstMessage = (messages as RawMessage[]).filter((m) => m.role === "user").length === 1;
-      if (isFirstMessage) {
-        const warmupProviders = dbProviders.filter((p) => p.apiUrl?.includes("178.128.89.9"));
-        for (const wp of warmupProviders) {
-          try {
-            const isResponsesEndpoint = (wp.apiUrl ?? "").includes("/responses");
-            const warmupBody = isResponsesEndpoint
-              ? { model: wp.modelName, input: [{ role: "user", content: "initialize" }], max_output_tokens: 1, stream: false }
-              : { model: wp.modelName, messages: [{ role: "user", content: "initialize" }], max_tokens: 1, stream: false };
-            await Promise.race([
-              fetch(wp.apiUrl!, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${wp.apiKey ?? ""}`, "Content-Type": "application/json" },
-                body: JSON.stringify(warmupBody),
-              }),
-              new Promise((r) => setTimeout(r, 3000)),
-            ]);
-          } catch {}
-        }
-      }
-
       const providerConfigs: ProviderConfig[] = dbProviders.map((p) => ({
         id: p.id,
         name: p.name,
