@@ -9,7 +9,7 @@ import {
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
-  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2,
+  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type Broadcast, type AiProvider } from "@shared/schema";
@@ -46,6 +46,14 @@ interface AdminUser {
   apiMonthlyLimit?: number | null;
   apiWebhookUrl?: string | null;
   apiRateLimitPerMin?: number | null;
+  isFlagged?: boolean;
+  flagReason?: string | null;
+}
+
+interface FeatureStat {
+  feature: string;
+  count: number;
+  uniqueUsers: number;
 }
 
 type Duration = "1w" | "1m" | "1y" | "permanent" | "custom";
@@ -1079,6 +1087,25 @@ export default function AdminPage() {
     },
   });
 
+  const { data: featureStats = [] } = useQuery<FeatureStat[]>({
+    queryKey: ["/api/admin/stats/features"],
+    queryFn: () => fetch("/api/admin/stats/features", { credentials: "include" }).then((r) => r.json()),
+    enabled: !!user?.isAdmin,
+    refetchInterval: 30000,
+  });
+
+  const flagMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/flag`, { reason }).then((r) => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
+  });
+
+  const unflagMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/unflag`, {}).then((r) => r.json()),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
+  });
+
   if (isLoading || !user?.isAdmin) return null;
 
   const totalUsers = users.length;
@@ -1689,6 +1716,93 @@ export default function AdminPage() {
             })}
           </div>
         </div>
+
+        {/* ── Feature Activity ── */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden" data-testid="section-feature-activity">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
+            <Activity className="w-4 h-4 text-sky-500" />
+            <h2 className="font-semibold text-foreground">Feature Activity</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{featureStats.length} features tracked</span>
+          </div>
+          {featureStats.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+              No activity yet — events are recorded as users interact with the platform.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {featureStats.map((stat) => {
+                const totalEvents = featureStats.reduce((s, f) => s + f.count, 0);
+                const pct = totalEvents > 0 ? Math.round((stat.count / totalEvents) * 100) : 0;
+                const label = stat.feature.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                return (
+                  <div key={stat.feature} className="flex items-center gap-4 px-6 py-3" data-testid={`row-feature-${stat.feature}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{label}</p>
+                      <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-sky-500/70 transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-shrink-0">
+                      <span className="tabular-nums"><strong className="text-foreground">{stat.count.toLocaleString()}</strong> events</span>
+                      <span className="tabular-nums"><strong className="text-foreground">{stat.uniqueUsers}</strong> users</span>
+                      <span className="tabular-nums w-10 text-right text-muted-foreground/60">{pct}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Abuse / Flagged Users ── */}
+        {(() => {
+          const flaggedUsers = users.filter(u => u.isFlagged);
+          return (
+            <div className="rounded-2xl border border-destructive/30 bg-card overflow-hidden" data-testid="section-flagged-users">
+              <div className="px-6 py-4 border-b border-destructive/20 flex items-center gap-3">
+                <Flag className="w-4 h-4 text-destructive" />
+                <h2 className="font-semibold text-foreground">Flagged Users</h2>
+                {flaggedUsers.length > 0 && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-destructive/15 text-destructive text-[11px] font-bold">
+                    {flaggedUsers.length}
+                  </span>
+                )}
+              </div>
+              {flaggedUsers.length === 0 ? (
+                <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+                  No flagged users — the system automatically flags accounts that exhaust their free daily limit in under 30 minutes.
+                </div>
+              ) : (
+                <div className="divide-y divide-border/40">
+                  {flaggedUsers.map((u) => (
+                    <div key={u.id} className="flex items-center gap-4 px-6 py-3.5" data-testid={`row-flagged-${u.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{u.username}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{u.flagReason || "Flagged"}</p>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground flex-shrink-0">
+                        {u.plan}
+                      </span>
+                      <button
+                        onClick={() => unflagMutation.mutate(u.id)}
+                        disabled={unflagMutation.isPending}
+                        data-testid={`button-unflag-${u.id}`}
+                        title="Clear flag"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted/50 transition-colors disabled:opacity-50 flex-shrink-0"
+                      >
+                        <FlagOff className="w-3 h-3" />
+                        Unflag
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       </main>
     </div>

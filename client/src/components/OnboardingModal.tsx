@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Brain, Globe, Paperclip, BookOpen, Zap, Crown, ArrowRight, Check, Sparkles,
+  Brain, Globe, Paperclip, BookOpen, Zap, Crown, ArrowRight, Check, Sparkles, Mic, Pin, LayoutList,
 } from "lucide-react";
 
 const STEPS = [
@@ -39,6 +39,19 @@ const STEPS = [
       { icon: Globe, label: "Web search", desc: "Get answers backed by live internet data" },
       { icon: Paperclip, label: "Upload files", desc: "Share PDFs, images, documents to analyze" },
       { icon: BookOpen, label: "Knowledge Base", desc: "Build a searchable library from your own docs" },
+    ],
+    cta: "Next →",
+  },
+  {
+    icon: <Sparkles className="w-8 h-8" />,
+    iconBg: "bg-gradient-to-br from-pink-500 to-rose-500",
+    title: "Power user features",
+    subtitle: "Work smarter with every conversation",
+    desc: "A few extras that make a big difference:",
+    bullets: [
+      { icon: Pin, label: "Pin messages", desc: "Hover any reply → pin icon to bookmark it for later" },
+      { icon: Mic, label: "Voice input", desc: "Tap the mic in the chat bar to dictate your message" },
+      { icon: LayoutList, label: "Prompt library", desc: "Save favourite prompts and re-use them instantly" },
     ],
     cta: "Next →",
   },

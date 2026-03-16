@@ -14,6 +14,7 @@ import {
   knowledgeBases, kbDocuments, kbChunks,
   type ApiLog, apiLogs,
   type PasswordResetToken, passwordResetTokens,
+  featureEvents,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -119,6 +120,12 @@ export interface IStorage {
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   deletePasswordResetToken(token: string): Promise<void>;
   deletePasswordResetTokensByUser(userId: string): Promise<void>;
+
+  trackFeatureEvent(userId: string, feature: string): Promise<void>;
+  getFeatureStats(): Promise<{ feature: string; count: number; uniqueUsers: number }[]>;
+  getFeatureStatsByDay(feature: string, days?: number): Promise<{ date: string; count: number }[]>;
+  flagUser(id: string, reason: string): Promise<void>;
+  unflagUser(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -781,6 +788,49 @@ export class DatabaseStorage implements IStorage {
 
   async deletePasswordResetTokensByUser(userId: string): Promise<void> {
     await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+  }
+
+  async trackFeatureEvent(userId: string, feature: string): Promise<void> {
+    await db.insert(featureEvents).values({ userId, feature });
+  }
+
+  async getFeatureStats(): Promise<{ feature: string; count: number; uniqueUsers: number }[]> {
+    const rows = await db.execute(drizzleSql`
+      SELECT feature,
+             COUNT(*)::int AS count,
+             COUNT(DISTINCT user_id)::int AS unique_users
+      FROM feature_events
+      GROUP BY feature
+      ORDER BY count DESC
+    `);
+    return (rows.rows as { feature: string; count: number; unique_users: number }[]).map(r => ({
+      feature: r.feature,
+      count: Number(r.count),
+      uniqueUsers: Number(r.unique_users),
+    }));
+  }
+
+  async getFeatureStatsByDay(feature: string, days = 14): Promise<{ date: string; count: number }[]> {
+    const rows = await db.execute(drizzleSql`
+      SELECT DATE(created_at)::text AS date, COUNT(*)::int AS count
+      FROM feature_events
+      WHERE feature = ${feature}
+        AND created_at >= NOW() - INTERVAL '1 day' * ${days}
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `);
+    return (rows.rows as { date: string; count: number }[]).map(r => ({
+      date: r.date,
+      count: Number(r.count),
+    }));
+  }
+
+  async flagUser(id: string, reason: string): Promise<void> {
+    await db.update(users).set({ isFlagged: true, flagReason: reason }).where(eq(users.id, id));
+  }
+
+  async unflagUser(id: string): Promise<void> {
+    await db.update(users).set({ isFlagged: false, flagReason: null }).where(eq(users.id, id));
   }
 }
 

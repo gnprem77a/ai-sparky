@@ -22,6 +22,8 @@ export const users = pgTable("users", {
   apiMonthlyResetAt: timestamp("api_monthly_reset_at"),
   apiWebhookUrl: text("api_webhook_url"),
   apiRateLimitPerMin: integer("api_rate_limit_per_min"),
+  isFlagged: boolean("is_flagged").notNull().default(false),
+  flagReason: text("flag_reason"),
 });
 
 export const conversations = pgTable("conversations", {
@@ -250,3 +252,12 @@ export type KbDocument = typeof kbDocuments.$inferSelect;
 export type KbChunk = typeof kbChunks.$inferSelect;
 export type InsertKnowledgeBase = z.infer<typeof insertKnowledgeBaseSchema>;
 export type InsertKbDocument = z.infer<typeof insertKbDocumentSchema>;
+
+export const featureEvents = pgTable("feature_events", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  feature: text("feature").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type FeatureEvent = typeof featureEvents.$inferSelect;

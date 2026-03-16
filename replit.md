@@ -112,8 +112,10 @@ server/
 - **Conversation Summary**: Sparkles icon button in header; calls `POST /api/summarize` with current messages; returns 3–5 bullet-point TL;DR from Claude Haiku (InvokeModelCommand, non-streaming); displayed in a Dialog modal
 
 ### Admin
-- **User management**: list users, change plans (Free/Pro with duration)
+- **User management**: list users, change plans (Free/Pro with duration), flag/unflag users for abuse
 - **Token usage**: per-user input/output token totals + estimated cost breakdown
+- **Feature Activity**: real-time table of feature usage events (events, unique users, % share bar)
+- **Flagged Users / Abuse Detection**: free users exhausting daily limit in < 30 min auto-flagged; admin can review and unflag
 - **AI Provider Engine**: fully dynamic universal provider management
   - Add/edit/delete/toggle unlimited providers
   - Per-provider: Name, Type, Base URL, API Key, Model Name, HTTP Method (POST/GET/PUT/PATCH/DELETE), Headers JSON, Body Template, Response Path, Priority, Enable toggle
@@ -137,6 +139,8 @@ server/
 - `knowledge_bases` — id, userId, name, description, createdAt
 - `kb_documents` — id, kbId, name, content, createdAt
 - `kb_chunks` — id, docId, kbId, content, embedding (real[]), createdAt
+- `feature_events` — id (serial), userId, feature (text), createdAt — tracks feature usage per user
+- `users.isFlagged` (boolean) + `users.flagReason` (text) — abuse detection columns
 
 **Note**: Do NOT run `npm run db:push` directly. Use direct SQL for schema changes.
 

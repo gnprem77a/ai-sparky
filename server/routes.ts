@@ -899,6 +899,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(stats);
   });
 
+  /* ── admin: feature activity stats ── */
+  app.get("/api/admin/stats/features", requireAdmin as any, async (req: Request, res: Response) => {
+    const stats = await storage.getFeatureStats();
+    return res.json(stats);
+  });
+
+  app.get("/api/admin/stats/features/:feature/daily", requireAdmin as any, async (req: Request, res: Response) => {
+    const { feature } = req.params as { feature: string };
+    const days = Number(req.query.days) || 14;
+    const stats = await storage.getFeatureStatsByDay(feature, days);
+    return res.json(stats);
+  });
+
   /* ── admin: list users ── */
   app.get("/api/admin/users", requireAdmin as any, async (req: Request, res: Response) => {
     const allUsers = await storage.getAllUsers();
@@ -911,6 +924,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       apiMonthlyLimit: u.apiMonthlyLimit ?? null,
       apiWebhookUrl: u.apiWebhookUrl ?? null,
       apiRateLimitPerMin: u.apiRateLimitPerMin ?? null,
+      isFlagged: u.isFlagged,
+      flagReason: u.flagReason ?? null,
     })));
   });
 
@@ -992,6 +1007,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       email: email || null,
     });
     return res.json(user);
+  });
+
+  /* ── admin: flag / unflag user ── */
+  app.patch("/api/admin/users/:id/flag", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const { reason } = req.body as { reason?: string };
+    await storage.flagUser(id, reason || "Manually flagged by admin");
+    return res.json({ ok: true });
+  });
+
+  app.patch("/api/admin/users/:id/unflag", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    await storage.unflagUser(id);
+    return res.json({ ok: true });
+  });
+
+  /* ── feature event tracking ── */
+  app.post("/api/events/track", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const { feature } = req.body as { feature?: string };
+    if (!feature || typeof feature !== "string") return res.status(400).json({ error: "feature required" });
+    await storage.trackFeatureEvent(userId, feature.slice(0, 64));
+    return res.json({ ok: true });
   });
 
   /* ── user: get own API key info ── */
@@ -1099,6 +1137,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         dailyMessageCount: count + 1,
         lastMessageDate: today,
       });
+
+      /* ── abuse detection: track message & flag rapid exhaustion ── */
+      await storage.trackFeatureEvent(user.id, "send_message");
+      if (count + 1 >= FREE_DAILY_LIMIT && !user.isFlagged) {
+        const dailyEvents = await storage.getFeatureStatsByDay("send_message", 1);
+        const todayCount = dailyEvents.find((e) => e.date === today)?.count ?? 0;
+        if (todayCount >= FREE_DAILY_LIMIT) {
+          const minuteAgo30 = new Date(Date.now() - 30 * 60 * 1000);
+          const { db: dbConn } = await import("./db");
+          const { sql: drizzSql } = await import("drizzle-orm");
+          const firstRows = await dbConn.execute(drizzSql`
+            SELECT created_at FROM feature_events
+            WHERE user_id = ${user.id} AND feature = 'send_message'
+              AND created_at >= NOW() - INTERVAL '1 day'
+            ORDER BY created_at ASC LIMIT 1
+          `);
+          if (firstRows.rows.length > 0) {
+            const firstAt = new Date((firstRows.rows[0] as { created_at: string }).created_at);
+            if (firstAt >= minuteAgo30) {
+              await storage.flagUser(user.id, `Exhausted free daily limit (${FREE_DAILY_LIMIT} msgs) in under 30 minutes`);
+            }
+          }
+        }
+      }
+    } else {
+      /* track pro user messages too */
+      void storage.trackFeatureEvent(user.id, "send_message");
     }
 
     /* ── load system prompt ── */

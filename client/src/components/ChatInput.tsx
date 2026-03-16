@@ -13,6 +13,7 @@ import { type Attachment, readFileAsAttachment, formatFileSize } from "@/lib/cha
 import { type ModelId, MODELS } from "@/components/ModelSelector";
 import { useLanguage } from "@/lib/i18n";
 import { PromptLibrary } from "@/components/PromptLibrary";
+import { useTrackEvent } from "@/hooks/use-track-event";
 import Papa from "papaparse";
 
 const ROTATING_HINTS = [
@@ -103,6 +104,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const modelMenuRef   = useRef<HTMLDivElement>(null);
 
   const { t } = useLanguage();
+  const track = useTrackEvent();
   const [attachments, setAttachments]     = useState<Attachment[]>([]);
   const [isDragOver, setIsDragOver]       = useState(false);
   const [hintIndex, setHintIndex]         = useState(0);
@@ -130,6 +132,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
   const toggleRecording = () => {
     if (isRecording) { stopRecording(); return; }
+    track("voice_input");
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new (SpeechRecognition as any)();
@@ -475,7 +478,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               </div>
 
               {/* Prompt library */}
-              <PromptLibrary currentInput={value} onInsert={(content) => onChange(content)} />
+              <PromptLibrary currentInput={value} onInsert={(content) => { onChange(content); track("prompt_library"); }} />
 
               {/* divider */}
               <div className="w-px h-4 bg-border/40" />
@@ -497,7 +500,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   <span className={cn("w-3.5 h-3.5 flex-shrink-0", modelOpen ? "text-primary" : selectedModel.iconColor)}>
                     {selectedModel.icon}
                   </span>
-                  <span>{selectedModel.friendlyName}</span>
+                  <span className="hidden sm:inline">{selectedModel.friendlyName}</span>
                   {!isPro && <Lock className="w-2.5 h-2.5 opacity-50" />}
                   <ChevronDown className={cn("w-3.5 h-3.5 opacity-60 transition-transform duration-200", modelOpen && "rotate-180")} />
                 </button>
@@ -505,7 +508,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                 {/* model dropdown */}
                 {modelOpen && (
                   <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
-                    <div className="w-76 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                    <div className="w-64 sm:w-76 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
 
                       {/* ── Pro section ── */}
                       <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
@@ -677,7 +680,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               {onToggleWebSearch && !isStreaming && (
                 <button
                   type="button"
-                  onClick={onToggleWebSearch}
+                  onClick={() => { if (!isWebSearch) track("web_search"); onToggleWebSearch(); }}
                   data-testid="button-web-search"
                   title={isWebSearch ? "Web search on — click to disable" : "Enable web search grounding"}
                   className={cn(
