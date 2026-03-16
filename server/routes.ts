@@ -485,13 +485,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const allUsers = await storage.getAllUsers();
     const user = allUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
     if (!user) return res.json({ ok: true });
+    if (!emailConfigured()) return res.status(503).json({ error: "Email service is not configured. Contact the administrator." });
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await storage.deletePasswordResetTokensByUser(user.id);
     await storage.createPasswordResetToken(user.id, token, expiresAt);
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-    await sendEmail(user.email!, "Reset your password", forgotPasswordEmail(user.username, resetUrl));
+    try {
+      await sendEmail(user.email!, "Reset your password", forgotPasswordEmail(user.username, resetUrl));
+    } catch {
+      return res.status(502).json({ error: "Failed to send reset email. Please try again later." });
+    }
     return res.json({ ok: true });
   });
 
@@ -950,7 +955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.setApiEnabled(id, true);
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     if (target.email) {
-      sendEmail(target.email, "API Access Granted", apiAccessGrantedEmail(target.username, baseUrl));
+      sendEmail(target.email, "API Access Granted", apiAccessGrantedEmail(target.username, baseUrl)).catch(() => {});
     }
     if (target.apiWebhookUrl) {
       fireWebhook(target.apiWebhookUrl, "api.access.granted", { username: target.username });
@@ -965,7 +970,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.setApiKey(id, null);
     await storage.setApiEnabled(id, false);
     if (target.email) {
-      sendEmail(target.email, "API Access Revoked", apiAccessRevokedEmail(target.username));
+      sendEmail(target.email, "API Access Revoked", apiAccessRevokedEmail(target.username)).catch(() => {});
     }
     if (target.apiWebhookUrl) {
       fireWebhook(target.apiWebhookUrl, "api.access.revoked", { username: target.username });
@@ -1417,16 +1422,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/kb/:id", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
-    await storage.deleteKnowledgeBase(req.params.id);
+    await storage.deleteKnowledgeBase(id);
     res.status(204).end();
   });
 
   /* ── kb: generate/remove share link ── */
   app.post("/api/kb/:id/share", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
     const token = kb.shareToken ?? crypto.randomUUID();
     const updated = await storage.updateKnowledgeBase(kb.id, { isPublic: true, shareToken: token });
@@ -1435,7 +1442,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/kb/:id/share", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
     await storage.updateKnowledgeBase(kb.id, { isPublic: false, shareToken: undefined });
     return res.json({ ok: true });
@@ -1443,7 +1451,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── kb: view public shared kb (no auth required) ── */
   app.get("/api/kb/shared/:token", async (req, res) => {
-    const kb = await storage.getKnowledgeBaseByToken(req.params.token);
+    const { token } = req.params as { token: string };
+    const kb = await storage.getKnowledgeBaseByToken(token);
     if (!kb || !kb.isPublic) return res.status(404).json({ error: "Knowledge base not found or not shared" });
     const docs = await storage.getKbDocuments(kb.id);
     return res.json({ kb: { id: kb.id, name: kb.name, description: kb.description }, docs });
@@ -1452,7 +1461,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── kb: clone shared kb into own account ── */
   app.post("/api/kb/shared/:token/clone", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const sourceKb = await storage.getKnowledgeBaseByToken(req.params.token);
+    const { token } = req.params as { token: string };
+    const sourceKb = await storage.getKnowledgeBaseByToken(token);
     if (!sourceKb || !sourceKb.isPublic) return res.status(404).json({ error: "Not found" });
     const newKb = await storage.createKnowledgeBase(userId, `Copy of: ${sourceKb.name}`, sourceKb.description);
     const docs = await storage.getKbDocuments(sourceKb.id);
@@ -1469,15 +1479,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/kb/:id/documents", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
-    const docs = await storage.getKbDocuments(req.params.id);
+    const docs = await storage.getKbDocuments(id);
     res.json(docs);
   });
 
   app.post("/api/kb/:id/documents", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
 
     const { name, content } = req.body as { name: string; content: string };
@@ -1506,7 +1518,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const doc = await storage.createKbDocument({
-      kbId: req.params.id,
+      kbId: id,
       userId,
       name: name.trim(),
       content: content.trim(),
@@ -1516,7 +1528,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.createKbChunks(
       chunks.map((text, i) => ({
         docId: doc.id,
-        kbId: req.params.id,
+        kbId: id,
         content: text,
         embedding: embeddings[i],
         chunkIndex: i,
@@ -1528,16 +1540,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.delete("/api/kb/:id/documents/:docId", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id, docId } = req.params as { id: string; docId: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
-    await storage.deleteKbChunksByDoc(req.params.docId);
-    await storage.deleteKbDocument(req.params.docId);
+    await storage.deleteKbChunksByDoc(docId);
+    await storage.deleteKbDocument(docId);
     res.status(204).end();
   });
 
   app.post("/api/kb/:id/chat", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
-    const kb = await storage.getKnowledgeBase(req.params.id);
+    const { id } = req.params as { id: string };
+    const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
 
     const { question } = req.body as { question: string };
@@ -1571,11 +1585,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(502).json({ error: `Embedding failed: ${(err as Error).message}` });
     }
 
-    const allChunks = await storage.getKbChunks(req.params.id);
+    const allChunks = await storage.getKbChunks(id);
     if (allChunks.length === 0) return res.status(400).json({ error: "No documents in this knowledge base" });
 
     const docMap = new Map<string, string>();
-    const kbDocs = await storage.getKbDocuments(req.params.id);
+    const kbDocs = await storage.getKbDocuments(id);
     for (const d of kbDocs) docMap.set(d.id, d.name);
 
     const scored: RankedChunk[] = allChunks

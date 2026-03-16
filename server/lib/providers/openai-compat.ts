@@ -527,7 +527,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         const errText = await response.text();
         if (errText.toLowerCase().includes("max_tokens")) {
           tokenParam = "max_completion_tokens";
-          const retryBody = { ...body, max_completion_tokens: maxTokens };
+          const retryBody: Record<string, unknown> = { ...body, max_completion_tokens: maxTokens };
           delete retryBody.max_tokens;
           response = await fetch(endpoint, {
             method: "POST",
