@@ -4,7 +4,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
-import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail } from "./lib/email";
+import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail } from "./lib/email";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
@@ -478,6 +478,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
+  /* ── auth: forgot password ── */
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required." });
+    const allUsers = await storage.getAllUsers();
+    const user = allUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    if (!user) return res.json({ ok: true });
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await storage.deletePasswordResetTokensByUser(user.id);
+    await storage.createPasswordResetToken(user.id, token, expiresAt);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    await sendEmail(user.email!, "Reset your password", forgotPasswordEmail(user.username, resetUrl));
+    return res.json({ ok: true });
+  });
+
+  /* ── auth: reset password ── */
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) return res.status(400).json({ error: "Token and new password are required." });
+    if (newPassword.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+    const record = await storage.getPasswordResetToken(token);
+    if (!record) return res.status(400).json({ error: "Invalid or expired reset link." });
+    if (new Date() > record.expiresAt) {
+      await storage.deletePasswordResetToken(token);
+      return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+    }
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await storage.updatePassword(record.userId, hashed);
+    await storage.deletePasswordResetToken(token);
+    return res.json({ ok: true });
+  });
+
   /* ── auth: delete account ── */
   app.delete("/api/auth/account", requireAuth as any, async (req: Request, res: Response) => {
     const { password } = req.body;
@@ -900,6 +934,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const expiry = expiresAt ? new Date(expiresAt) : null;
     const user = await storage.setPlan(id, plan, expiry);
     if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.email) {
+      sendEmail(user.email, `Your plan has been updated to ${plan === "pro" ? "Pro ✨" : "Free"}`, planChangedEmail(user.username, plan)).catch(() => {});
+    }
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
 

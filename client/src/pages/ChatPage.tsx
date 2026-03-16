@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingModel, setStreamingModel] = useState<string | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelId>("auto");
@@ -592,6 +593,7 @@ export default function ChatPage() {
     abortRef.current = controller;
 
     setIsStreaming(true);
+    setStreamingModel(isPro ? (modelOverride ?? model) : "fast");
     setStreamingMessageId(assistantMsgId);
 
     const historyForApi = msgs
@@ -662,6 +664,7 @@ export default function ChatPage() {
                 setUpgradeReason("limit");
                 setShowUpgradeModal(true);
                 setIsStreaming(false);
+                setStreamingModel(null);
                 setStreamingMessageId(null);
                 setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
                 return;
@@ -694,6 +697,7 @@ export default function ChatPage() {
             }
             if (parsed.modelUsed) {
               finalModelUsed = parsed.modelUsed;
+              setStreamingModel(parsed.modelUsed);
               if (flushTimeout) { clearTimeout(flushTimeout); flush(); }
               setMessages((prev) =>
                 prev.map((m) =>
@@ -769,6 +773,7 @@ export default function ChatPage() {
       }
     } finally {
       setIsStreaming(false);
+      setStreamingModel(null);
       setStreamingMessageId(null);
       isSubmittingRef.current = false;
       if (notificationSound && accumulated.length > 80) playChime();
@@ -1202,6 +1207,7 @@ export default function ChatPage() {
                       key={msg.id}
                       message={msg}
                       isStreaming={isStreaming && msg.id === streamingMessageId}
+                      streamingModel={isStreaming && msg.id === streamingMessageId ? streamingModel ?? undefined : undefined}
                       isLast={msg.id === lastAssistantMsg?.id}
                       conversationId={activeId ?? undefined}
                       assistantName={assistantName}

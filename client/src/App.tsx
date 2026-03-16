@@ -19,6 +19,7 @@ const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage
 const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 const ApiAccessPage = lazy(() => import("@/pages/ApiAccessPage"));
+const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -43,6 +44,14 @@ const style: CSSProperties = {
 function AppInner() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
+
+  if (location.startsWith("/reset-password")) {
+    return (
+      <Suspense fallback={null}>
+        <ResetPasswordPage />
+      </Suspense>
+    );
+  }
 
   if (location.startsWith("/share/")) {
     return (

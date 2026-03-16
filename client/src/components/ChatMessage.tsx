@@ -129,6 +129,7 @@ function fmtTokens(n: number): string {
 interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
+  streamingModel?: string;
   onRegenerate?: () => void;
   onRetryWith?: (model: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
@@ -385,7 +386,7 @@ const RETRY_MODELS = [
   { key: "creative", label: "Creative", desc: "Imaginative output",  color: "text-rose-400",   proOnly: true  },
 ];
 
-function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -739,6 +740,11 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
                 <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
               </div>
               <span className="text-[13px] text-muted-foreground/60 font-medium tracking-wide">Thinking</span>
+              {streamingModel && (
+                <span className="text-[11px] font-mono bg-primary/8 text-primary/70 px-2 py-0.5 rounded-md border border-primary/15">
+                  {streamingModel}
+                </span>
+              )}
             </div>
           ) : (
             <div className="max-w-none">
@@ -770,9 +776,9 @@ function ChatMessageInner({ message, isStreaming, onRegenerate, onRetryWith, onE
                     }
 
                     return (
-                      <div className="relative rounded-xl overflow-hidden my-4 border border-white/12 shadow-xl bg-[#181a24]" data-testid={`code-block-${lang}`}>
+                      <div className="relative rounded-xl overflow-hidden my-4 border border-border/50 shadow-lg bg-[#181a24]" data-testid={`code-block-${lang}`}>
                         {/* Header bar */}
-                        <div className="flex items-center justify-between bg-[#13151e] border-b border-white/6 px-4 py-2.5">
+                        <div className="flex items-center justify-between bg-[#13151e] border-b border-white/8 px-4 py-2.5">
                           <div className="flex items-center gap-3">
                             {/* Traffic lights */}
                             <div className="flex gap-1.5">
@@ -1201,6 +1207,7 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.message.reaction === next.message.reaction &&
   prev.message.stopped === next.message.stopped &&
   prev.isStreaming === next.isStreaming &&
+  prev.streamingModel === next.streamingModel &&
   prev.isLast === next.isLast &&
   prev.assistantName === next.assistantName &&
   prev.fontSize === next.fontSize &&

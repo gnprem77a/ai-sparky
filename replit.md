@@ -38,7 +38,7 @@ client/src/
     chat-storage.ts     - Type definitions, utilities, export helpers
 shared/
   models.ts             - Single source of truth for model registry
-  schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts, userMemories)
+  schema.ts             - Drizzle schema (users, conversations, messages, userSettings, savedPrompts, userMemories, passwordResetTokens)
 server/
   db.ts                 - Drizzle + pg pool
   storage.ts            - DatabaseStorage (CRUD for all entities + searchMessages + provider CRUD)

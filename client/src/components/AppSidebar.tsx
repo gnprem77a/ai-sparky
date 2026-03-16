@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, Globe } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, Globe, BarChart2 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
@@ -926,6 +926,16 @@ export function AppSidebar({
                     >
                       <UserCircle className="w-4 h-4 text-muted-foreground" />
                       My Profile
+                    </a>
+
+                    <a
+                      href="/analytics"
+                      onClick={() => setProfileMenuOpen(false)}
+                      data-testid="button-sidebar-analytics"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <BarChart2 className="w-4 h-4 text-muted-foreground" />
+                      Usage Analytics
                     </a>
 
                     {user.isAdmin && (

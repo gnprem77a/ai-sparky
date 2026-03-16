@@ -13,6 +13,7 @@ import {
   type KnowledgeBase, type KbDocument, type KbChunk,
   knowledgeBases, kbDocuments, kbChunks,
   type ApiLog, apiLogs,
+  type PasswordResetToken, passwordResetTokens,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -113,6 +114,11 @@ export interface IStorage {
   createKbChunks(chunks: { docId: string; kbId: string; content: string; embedding: number[]; chunkIndex: number }[]): Promise<void>;
   getKbChunks(kbId: string): Promise<KbChunk[]>;
   deleteKbChunksByDoc(docId: string): Promise<void>;
+
+  createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  deletePasswordResetToken(token: string): Promise<void>;
+  deletePasswordResetTokensByUser(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -757,6 +763,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteKbChunksByDoc(docId: string): Promise<void> {
     await db.delete(kbChunks).where(eq(kbChunks.docId, docId));
+  }
+
+  async createPasswordResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken> {
+    const [row] = await db.insert(passwordResetTokens).values({ userId, token, expiresAt }).returning();
+    return row;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [row] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    return row;
+  }
+
+  async deletePasswordResetToken(token: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+  }
+
+  async deletePasswordResetTokensByUser(userId: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
   }
 }
 

@@ -68,6 +68,20 @@ export function planChangedEmail(username: string, plan: string): string {
   `;
 }
 
+export function forgotPasswordEmail(username: string, resetUrl: string): string {
+  return `
+    <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
+      <h2 style="margin:0 0 8px;color:#111;">Reset your password</h2>
+      <p style="color:#555;">Hi <strong>${username}</strong>,</p>
+      <p style="color:#555;">You requested a password reset. Click the button below to set a new password. This link expires in 1 hour.</p>
+      <p style="margin:24px 0;">
+        <a href="${resetUrl}" style="background:#6d28d9;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Reset Password</a>
+      </p>
+      <p style="color:#888;font-size:13px;">If you did not request a password reset, you can safely ignore this email.</p>
+    </div>
+  `;
+}
+
 export function apiLimitReachedEmail(username: string, limitType: "daily" | "monthly", limit: number): string {
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
