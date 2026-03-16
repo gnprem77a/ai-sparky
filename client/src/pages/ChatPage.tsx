@@ -100,10 +100,6 @@ export default function ChatPage() {
     localStorage.setItem("chat-split-view", String(splitView));
   }, [splitView]);
 
-  /* ── Image generation state ── */
-  const [isImageMode, setIsImageMode] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-
   /* ── Web search grounding state ── */
   const [webSearchMode, setWebSearchMode] = useState(false);
 
@@ -585,61 +581,6 @@ export default function ChatPage() {
     setQuotedMessage({ id: messageId, snippet });
   }, []);
 
-  const handleGenerateImage = async (prompt: string) => {
-    if (!prompt.trim() || isGeneratingImage) return;
-    setIsGeneratingImage(true);
-    setError(null);
-
-    const userMsgId = crypto.randomUUID();
-    const assistantMsgId = crypto.randomUUID();
-    const userMsg: Message = { id: userMsgId, role: "user", content: `🎨 Generate image: ${prompt}`, timestamp: Date.now(), isPinned: false };
-    const assistantMsg: Message = { id: assistantMsgId, role: "assistant", content: "", timestamp: Date.now(), isPinned: false };
-
-    let convId = activeId;
-    if (!convId) {
-      const res = await apiRequest("POST", "/api/conversations", { title: `Image: ${prompt.slice(0, 40)}`, model: "auto" });
-      const newConv: Conversation = await res.json();
-      convId = newConv.id;
-      setActiveId(convId);
-      setActiveConversationId(convId);
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-    }
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput("");
-
-    try {
-      const res = await apiRequest("POST", "/api/generate-image", { prompt });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Image generation failed");
-
-      const imageMarkdown = `![Generated image](data:${data.mimeType};base64,${data.imageBase64})`;
-      const finalContent = `Here's your generated image:\n\n${imageMarkdown}`;
-
-      setMessages((prev) => prev.map((m) => m.id === assistantMsgId ? { ...m, content: finalContent } : m));
-
-      await apiRequest("POST", `/api/conversations/${convId}/messages`, { role: "user", content: userMsg.content });
-      await apiRequest("POST", `/api/conversations/${convId}/messages`, { role: "assistant", content: finalContent });
-      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-    } catch (err: unknown) {
-      const e = err as Error;
-      // Parse clean message out of "500: {\"error\":\"...\"}"-style throws
-      let displayError = e.message;
-      try {
-        const jsonStart = e.message.indexOf("{");
-        if (jsonStart !== -1) {
-          const parsed = JSON.parse(e.message.slice(jsonStart));
-          if (parsed?.error && typeof parsed.error === "string") displayError = parsed.error;
-        }
-      } catch { /* keep original */ }
-      setError(displayError);
-      setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
-    } finally {
-      setIsGeneratingImage(false);
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
   /* ── Stream assistant reply ── */
   const streamAssistantReply = async (
     convId: string,
@@ -849,12 +790,6 @@ export default function ChatPage() {
     setFollowUpSuggestions([]);
     const text = input.trim();
     if ((!text && attachments.length === 0) || isStreaming || isSubmittingRef.current) return;
-
-    /* Route to image generation if image mode is on */
-    if (isImageMode && text) {
-      await handleGenerateImage(text);
-      return;
-    }
 
     isSubmittingRef.current = true;
     setError(null);
@@ -1289,17 +1224,6 @@ export default function ChatPage() {
                       onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
                     />
                   ))}
-                  {isGeneratingImage && (
-                    <div className="px-4 pb-3 flex items-center gap-2.5 text-xs text-violet-400/80">
-                      <div className="flex items-center gap-1">
-                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
-                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
-                        <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400/80" />
-                      </div>
-                      <span className="font-medium">Generating with FLUX Pro</span>
-                      <span className="text-violet-400/50 text-[10px] bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full">fal.ai</span>
-                    </div>
-                  )}
                   {error && (
                     <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -1375,14 +1299,12 @@ export default function ChatPage() {
                 onChange={setInput}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
-                isStreaming={isStreaming || isGeneratingImage}
+                isStreaming={isStreaming}
                 model={isPro ? model : "fast"}
                 onModelChange={handleModelChange}
                 isPro={isPro}
                 quotedMessage={quotedMessage ?? undefined}
                 onClearQuote={() => setQuotedMessage(null)}
-                isImageMode={isImageMode}
-                onToggleImageMode={() => setIsImageMode((m) => !m)}
                 isWebSearch={webSearchMode}
                 onToggleWebSearch={() => setWebSearchMode((m) => !m)}
                 onUpgradeClick={() => {

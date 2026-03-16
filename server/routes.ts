@@ -4,7 +4,6 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
-import { fal } from "@fal-ai/client";
 import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail } from "./lib/email";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -1075,10 +1074,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     systemPrompt = systemPrompt ? `${nowBlock}\n\n${systemPrompt}` : nowBlock;
 
-    // Always inform the AI about the built-in image generation feature
-    const imageGenBlock = `This platform has a built-in AI image generation feature powered by FLUX Pro. When a user asks you to create, generate, draw, or make an image or picture, do NOT tell them to use external tools like DALL-E, Midjourney, or Stable Diffusion. Instead, let them know they can generate images directly in this chat by clicking the image icon (picture/photo button) next to the message input box at the bottom of the screen. Keep your response short and helpful when directing them to that button.`;
-    systemPrompt = `${systemPrompt}\n\n${imageGenBlock}`;
-
     const customInstructions = settings.customInstructions?.trim();
     if (customInstructions) {
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
@@ -1172,200 +1167,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error(`[providers] stream failed:`, err.message);
       res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
       res.end();
-    }
-  });
-
-  /* ── Image generation (Azure AI Foundry / fal.ai / OpenAI DALL-E) ── */
-  app.post("/api/generate-image", requireAuth as any, async (req: Request, res: Response) => {
-    const { prompt } = req.body;
-    if (!prompt?.trim()) return res.status(400).json({ error: "prompt is required" });
-
-    // Load config from DB
-    const cfg = await storage.getImageGenConfig();
-    const falKey = process.env.FAL_KEY;
-
-    // Check something is configured
-    const hasDbConfig = cfg?.isEnabled && cfg?.apiKey && cfg?.apiUrl;
-    const hasFalEnvKey = !!falKey;
-
-    if (!hasDbConfig && !hasFalEnvKey) {
-      return res.status(503).json({
-        error: "Image generation is not configured. Go to Admin → Image Generation to set up your provider.",
-      });
-    }
-
-    // Prefer DB config when enabled; fall back to fal.ai env var
-    if (hasDbConfig && cfg) {
-      const providerType = cfg.providerType ?? "azure_foundry";
-      const authStyle = cfg.authStyle ?? "bearer";
-
-      // ── fal.ai via DB key ──
-      if (providerType === "fal") {
-        fal.config({ credentials: cfg.apiKey! });
-        try {
-          const modelId = cfg.modelName || "fal-ai/flux-pro/v1.1";
-          const result = await fal.subscribe(modelId as "fal-ai/flux-pro/v1.1", {
-            input: {
-              prompt: prompt.trim(),
-              image_size: "square_hd",
-              num_images: 1,
-              enable_safety_checker: true,
-              output_format: "png",
-            },
-          });
-          const imageUrl = result?.data?.images?.[0]?.url;
-          if (!imageUrl) return res.status(500).json({ error: "No image returned" });
-          const imgRes = await fetch(imageUrl);
-          const buffer = Buffer.from(await imgRes.arrayBuffer());
-          return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Image generation failed";
-          console.error("[fal] error:", msg);
-          return res.status(500).json({ error: msg });
-        }
-      }
-
-      // ── Azure AI Foundry / OpenAI DALL-E / Generic REST ──
-      try {
-        let url = cfg.apiUrl!;
-        // Only append api-version if it isn't already in the URL
-        if (cfg.apiVersion && !url.includes("api-version")) {
-          url += (url.includes("?") ? "&" : "?") + `api-version=${cfg.apiVersion}`;
-        }
-
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (authStyle === "api-key") {
-          headers["api-key"] = cfg.apiKey!;
-        } else {
-          headers["Authorization"] = `Bearer ${cfg.apiKey}`;
-        }
-
-        // Detect Black Forest Labs / FLUX endpoints (different request + response format)
-        const isBFL = url.includes("blackforestlabs") || url.includes("/flux-") || url.includes("/bfl/");
-
-        let body: Record<string, unknown>;
-        if (isBFL) {
-          // Azure AI Foundry BFL/FLUX wrapper — only send minimal required fields
-          body = { prompt: prompt.trim() };
-        } else {
-          body = {
-            prompt: prompt.trim(),
-            n: 1,
-            size: "1024x1024",
-            response_format: "b64_json",
-          };
-          if (cfg.modelName) body["model"] = cfg.modelName;
-        }
-
-        console.log(`[image-gen] POST ${url} (${isBFL ? "BFL/FLUX" : "DALL-E"} format) body=${JSON.stringify(body)}`);
-        const apiRes = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        });
-
-        if (!apiRes.ok) {
-          const errText = await apiRes.text();
-          console.error("[image-gen] API error:", apiRes.status, errText);
-          // Parse Azure/provider error to give a clean user-facing message
-          let friendlyError = "Image generation failed. Please try again.";
-          try {
-            const errJson = JSON.parse(errText);
-            const msg = errJson?.error?.message || errJson?.message || errJson?.error;
-            if (typeof msg === "string" && msg.length > 0 && msg.length < 200) {
-              friendlyError = msg;
-            } else if (apiRes.status === 500) {
-              friendlyError = "The image provider encountered an internal error. Please try again later.";
-            } else if (apiRes.status === 429) {
-              friendlyError = "Image generation rate limit reached. Please wait a moment and try again.";
-            } else if (apiRes.status === 401 || apiRes.status === 403) {
-              friendlyError = "Image generation authentication failed. Please check the API key in admin settings.";
-            } else if (apiRes.status === 404) {
-              friendlyError = "Image generation endpoint not found. Please check the API URL in admin settings.";
-            }
-          } catch { /* not JSON, use default */ }
-          return res.status(500).json({ error: friendlyError });
-        }
-
-        const rawText = await apiRes.text();
-        console.log("[image-gen] raw response:", rawText.slice(0, 500));
-        let data: Record<string, unknown>;
-        try { data = JSON.parse(rawText); } catch { data = {}; }
-
-        const resolveUrl = async (imgUrl: string, mimeType = "image/jpeg") => {
-          if (imgUrl.startsWith("data:")) {
-            const b64 = imgUrl.split(",")[1];
-            return res.json({ imageBase64: b64, mimeType });
-          }
-          const imgRes = await fetch(imgUrl);
-          const buffer = Buffer.from(await imgRes.arrayBuffer());
-          return res.json({ imageBase64: buffer.toString("base64"), mimeType });
-        };
-
-        if (isBFL) {
-          // BFL native sync: { images: [{ url, content_type }] }
-          const imgs = data?.images as { url?: string; content_type?: string }[] | undefined;
-          if (imgs?.[0]?.url) return resolveUrl(imgs[0].url!, imgs[0].content_type ?? "image/jpeg");
-
-          // BFL native async completed: { status: "Ready", result: { sample: "url" } }
-          const result = data?.result as { sample?: string } | undefined;
-          if (result?.sample) return resolveUrl(result.sample);
-
-          // BFL async pending — poll for result
-          const pollId = data?.id as string | undefined;
-          if (pollId) {
-            const baseUrl = url.split("?")[0].replace(/\/flux[^/]*$/, "");
-            const pollBase = baseUrl.includes("blackforestlabs") ? "https://api.bfl.ai/v1/get_result" : url.replace(/\/flux[^/]*(\?.*)?$/, `/get_result`);
-            for (let i = 0; i < 20; i++) {
-              await new Promise((r) => setTimeout(r, 3000));
-              const pollRes = await fetch(`${pollBase}?id=${pollId}`, { headers });
-              const pollData = await pollRes.json() as { status?: string; result?: { sample?: string } };
-              console.log(`[image-gen] poll attempt ${i + 1}:`, JSON.stringify(pollData).slice(0, 200));
-              if (pollData?.status === "Ready" && pollData?.result?.sample) {
-                return resolveUrl(pollData.result.sample);
-              }
-              if (pollData?.status === "Error" || pollData?.status === "Failed") break;
-            }
-            return res.status(500).json({ error: "Image generation timed out or failed during polling" });
-          }
-        }
-
-        // DALL-E style response: { data: [{ b64_json | url }] }
-        const dalleData = data as { data?: { b64_json?: string; url?: string }[] };
-        const item = dalleData?.data?.[0];
-        if (item?.b64_json) return res.json({ imageBase64: item.b64_json, mimeType: "image/png" });
-        if (item?.url) return resolveUrl(item.url, "image/png");
-
-        console.error("[image-gen] Unexpected response shape:", JSON.stringify(data).slice(0, 300));
-        return res.status(500).json({ error: "No image in API response" });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Image generation failed";
-        console.error("[image-gen] error:", msg);
-        return res.status(500).json({ error: msg });
-      }
-    }
-
-    // ── fal.ai fallback via FAL_KEY env var ──
-    fal.config({ credentials: falKey! });
-    try {
-      const result = await fal.subscribe("fal-ai/flux-pro/v1.1", {
-        input: {
-          prompt: prompt.trim(),
-          image_size: "square_hd",
-          num_images: 1,
-          enable_safety_checker: true,
-          output_format: "png",
-        },
-      });
-      const imageUrl = result?.data?.images?.[0]?.url;
-      if (!imageUrl) return res.status(500).json({ error: "No image returned from FLUX Pro" });
-      const imgRes = await fetch(imageUrl);
-      const buffer = Buffer.from(await imgRes.arrayBuffer());
-      return res.json({ imageBase64: buffer.toString("base64"), mimeType: "image/png" });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Image generation failed";
-      console.error("[fal] FLUX Pro error:", msg);
-      return res.status(500).json({ error: msg });
     }
   });
 
@@ -1541,26 +1342,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const result = await testProvider(config);
     return res.json(result);
-  });
-
-  /* ── admin: image gen config ── */
-  app.get("/api/admin/image-gen-config", requireAdmin as any, async (_req: Request, res: Response) => {
-    const config = await storage.getImageGenConfig();
-    return res.json(config ?? null);
-  });
-
-  app.put("/api/admin/image-gen-config", requireAdmin as any, async (req: Request, res: Response) => {
-    const { providerType, apiUrl, apiKey, modelName, authStyle, apiVersion, isEnabled } = req.body;
-    const config = await storage.upsertImageGenConfig({
-      providerType: providerType ?? "azure_foundry",
-      apiUrl: apiUrl ?? null,
-      apiKey: apiKey ?? null,
-      modelName: modelName ?? null,
-      authStyle: authStyle ?? "bearer",
-      apiVersion: apiVersion ?? null,
-      isEnabled: Boolean(isEnabled),
-    });
-    return res.json(config);
   });
 
   app.post("/api/admin/providers/test-config", requireAdmin as any, async (req: Request, res: Response) => {

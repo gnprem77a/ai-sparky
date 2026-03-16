@@ -88,15 +88,13 @@ interface ChatInputProps {
   isPro?: boolean;
   quotedMessage?: { id: string; snippet: string };
   onClearQuote?: () => void;
-  isImageMode?: boolean;
-  onToggleImageMode?: () => void;
   isWebSearch?: boolean;
   onToggleWebSearch?: () => void;
   onUpgradeClick?: () => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isImageMode = false, onToggleImageMode, isWebSearch = false, onToggleWebSearch, onUpgradeClick }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -410,7 +408,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isDragOver ? "Drop to attach…" : isImageMode ? "Describe an image to generate…" : ROTATING_HINTS[hintIndex]}
+            placeholder={isDragOver ? "Drop to attach…" : ROTATING_HINTS[hintIndex]}
             disabled={disabled}
             rows={1}
             data-testid="input-message"
@@ -650,7 +648,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
               )}
             </div>
 
-            {/* ── right: image mode toggle + voice input + send / stop ────── */}
+            {/* ── right: web search + send / stop ────── */}
             <div className="flex items-center gap-2">
               {value.length > 200 && (
                 <span className={cn(
@@ -690,22 +688,6 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   )}
                 >
                   <Globe className="w-4 h-4" />
-                </button>
-              )}
-              {onToggleImageMode && !isStreaming && (
-                <button
-                  type="button"
-                  onClick={onToggleImageMode}
-                  data-testid="button-image-mode"
-                  title={isImageMode ? "Switch to chat mode" : "Switch to image generation mode"}
-                  className={cn(
-                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
-                    isImageMode
-                      ? "bg-violet-500/20 text-violet-400 ring-1 ring-violet-500/40"
-                      : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
-                  )}
-                >
-                  <Sparkles className="w-4 h-4" />
                 </button>
               )}
               {isStreaming ? (
