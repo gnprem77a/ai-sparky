@@ -1356,7 +1356,7 @@ export default function ChatPage() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
       <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
-      {user && <OnboardingModal />}
+      {user && <OnboardingModal onStartWithPrompt={(prompt) => setInput(prompt)} />}
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">

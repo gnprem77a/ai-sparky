@@ -1017,6 +1017,8 @@ export default function AdminPage() {
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userSort, setUserSort] = useState<"name" | "plan" | "tokens" | "joined">("joined");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActionPending, setBulkActionPending] = useState(false);
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -1108,6 +1110,41 @@ export default function AdminPage() {
 
   if (isLoading || !user?.isAdmin) return null;
 
+  const toggleSelectUser = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkSetPlan = async (plan: "free" | "pro") => {
+    setBulkActionPending(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          apiRequest("PATCH", `/api/admin/users/${id}/plan`, { plan, expiresAt: null })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setSelectedIds(new Set());
+    } finally {
+      setBulkActionPending(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selectedIds.size} users? This cannot be undone.`)) return;
+    setBulkActionPending(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => apiRequest("DELETE", `/api/admin/users/${id}`)));
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setSelectedIds(new Set());
+    } finally {
+      setBulkActionPending(false);
+    }
+  };
+
   const totalUsers = users.length;
   const adminCount = users.filter((u) => u.isAdmin).length;
   const proCount = users.filter((u) => u.plan === "pro" && !isExpired(u.planExpiresAt)).length;
@@ -1131,6 +1168,16 @@ export default function AdminPage() {
       }
       return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     });
+
+  const selectableUsers = filteredUsers.filter(u => u.id !== user.id);
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === selectableUsers.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableUsers.map(u => u.id)));
+    }
+  };
 
   const stats = [
     { label: "Total Users", value: totalUsers, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
@@ -1363,8 +1410,65 @@ export default function AdminPage() {
                 <option value="tokens">Sort: Most tokens</option>
               </select>
             </div>
-            <span className="text-xs text-muted-foreground flex-shrink-0">{filteredUsers.length} users</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
+                <input
+                  type="checkbox"
+                  data-testid="checkbox-select-all-users"
+                  checked={selectableUsers.length > 0 && selectedIds.size === selectableUsers.length}
+                  onChange={toggleSelectAll}
+                  className="w-3.5 h-3.5 rounded cursor-pointer accent-primary"
+                />
+                All
+              </label>
+              <span className="text-xs text-muted-foreground">{filteredUsers.length} users</span>
+            </div>
           </div>
+
+          {/* Bulk action toolbar */}
+          {selectedIds.size > 0 && (
+            <div className="px-6 py-3 border-b border-border/60 bg-primary/5 flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-semibold text-primary flex-shrink-0">
+                {selectedIds.size} selected
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => bulkSetPlan("pro")}
+                  disabled={bulkActionPending}
+                  data-testid="button-bulk-upgrade-pro"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 border border-amber-500/30 transition-all disabled:opacity-50"
+                >
+                  {bulkActionPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Crown className="w-3 h-3" />}
+                  Upgrade to Pro
+                </button>
+                <button
+                  onClick={() => bulkSetPlan("free")}
+                  disabled={bulkActionPending}
+                  data-testid="button-bulk-downgrade-free"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted/60 border border-border transition-all disabled:opacity-50"
+                >
+                  <UserCircle className="w-3 h-3" />
+                  Downgrade to Free
+                </button>
+                <button
+                  onClick={bulkDelete}
+                  disabled={bulkActionPending}
+                  data-testid="button-bulk-delete"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/30 transition-all disabled:opacity-50"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete selected
+                </button>
+              </div>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-clear-selection"
+              >
+                Clear
+              </button>
+            </div>
+          )}
 
           {usersLoading ? (
             <div className="flex items-center justify-center py-16 gap-2">
@@ -1380,8 +1484,18 @@ export default function AdminPage() {
                 const expired = u.plan === "pro" && isExpired(u.planExpiresAt);
                 const activePlan = u.plan === "pro" && !expired ? "pro" : "free";
                 return (
-                  <div key={u.id} data-testid={`row-user-${u.id}`} className="px-6 py-4">
+                  <div key={u.id} data-testid={`row-user-${u.id}`} className={cn("px-6 py-4 transition-colors", selectedIds.has(u.id) && "bg-primary/3")}>
                     <div className="flex items-center gap-4">
+                      {/* Checkbox (not for self) */}
+                      {u.id !== user.id && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(u.id)}
+                          onChange={() => toggleSelectUser(u.id)}
+                          data-testid={`checkbox-user-${u.id}`}
+                          className="w-3.5 h-3.5 rounded cursor-pointer accent-primary flex-shrink-0"
+                        />
+                      )}
                       {/* Avatar */}
                       <div className={cn(
                         "w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0",

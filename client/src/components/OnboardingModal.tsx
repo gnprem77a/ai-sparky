@@ -6,69 +6,104 @@ import {
   Brain, Globe, Paperclip, BookOpen, Zap, Crown, ArrowRight, Check, Sparkles, Mic, Pin, LayoutList,
 } from "lucide-react";
 
-const STEPS = [
-  {
-    icon: <Sparkles className="w-8 h-8" />,
-    iconBg: "bg-gradient-to-br from-violet-500 to-fuchsia-500",
-    title: "Welcome to AI Sparky",
-    subtitle: "Your personal AI, powered by frontier models",
-    desc: "Ask anything, analyze documents, generate images, search the web in real-time — all from one chat interface.",
-    bullets: null,
-    cta: "Let's go →",
-  },
-  {
-    icon: <Brain className="w-8 h-8" />,
-    iconBg: "bg-gradient-to-br from-blue-500 to-cyan-500",
-    title: "Choose the right AI",
-    subtitle: "Multiple models, one place",
-    desc: "Switch between AI models anytime using the dropdown in the chat bar.",
-    bullets: [
-      { icon: Zap, label: "Fast", desc: "Quick answers, perfect for everyday tasks" },
-      { icon: Brain, label: "Balanced", desc: "Great all-round performance" },
-      { icon: Crown, label: "Powerful", desc: "Deep reasoning for complex problems" },
-    ],
-    cta: "Next →",
-  },
-  {
-    icon: <Globe className="w-8 h-8" />,
-    iconBg: "bg-gradient-to-br from-emerald-500 to-teal-500",
-    title: "More than just chat",
-    subtitle: "A full toolkit in every conversation",
-    desc: "Use these tools to get more from every conversation:",
-    bullets: [
-      { icon: Globe, label: "Web search", desc: "Get answers backed by live internet data" },
-      { icon: Paperclip, label: "Upload files", desc: "Share PDFs, images, documents to analyze" },
-      { icon: BookOpen, label: "Knowledge Base", desc: "Build a searchable library from your own docs" },
-    ],
-    cta: "Next →",
-  },
-  {
-    icon: <Sparkles className="w-8 h-8" />,
-    iconBg: "bg-gradient-to-br from-pink-500 to-rose-500",
-    title: "Power user features",
-    subtitle: "Work smarter with every conversation",
-    desc: "A few extras that make a big difference:",
-    bullets: [
-      { icon: Pin, label: "Pin messages", desc: "Hover any reply → pin icon to bookmark it for later" },
-      { icon: Mic, label: "Voice input", desc: "Tap the mic in the chat bar to dictate your message" },
-      { icon: LayoutList, label: "Prompt library", desc: "Save favourite prompts and re-use them instantly" },
-    ],
-    cta: "Next →",
-  },
-  {
-    icon: <Check className="w-8 h-8" />,
-    iconBg: "bg-gradient-to-br from-emerald-500 to-green-500",
-    title: "You're all set!",
-    subtitle: "Start your first conversation",
-    desc: "Type a message below to get started. You have 20 free messages per day — upgrade to Pro for unlimited access.",
-    bullets: null,
-    cta: "Start chatting",
-  },
+const STARTER_PROMPTS = [
+  "Explain quantum computing to me like I'm 10 years old",
+  "Write a professional email declining a meeting",
+  "Summarize the key differences between Python and JavaScript",
 ];
+
+interface OnboardingModalProps {
+  onStartWithPrompt?: (prompt: string) => void;
+}
+
+function buildSteps(onStartWithPrompt?: (prompt: string) => void, onFinish?: () => void) {
+  return [
+    {
+      icon: <Sparkles className="w-8 h-8" />,
+      iconBg: "bg-gradient-to-br from-violet-500 to-fuchsia-500",
+      title: "Welcome to AI Sparky",
+      subtitle: "Your personal AI, powered by frontier models",
+      desc: "Ask anything, analyze documents, generate images, search the web in real-time — all from one chat interface.",
+      bullets: null,
+      extra: null,
+      cta: "Let's go →",
+    },
+    {
+      icon: <Brain className="w-8 h-8" />,
+      iconBg: "bg-gradient-to-br from-blue-500 to-cyan-500",
+      title: "Choose the right AI",
+      subtitle: "Multiple models, one place",
+      desc: "Switch between AI models anytime using the dropdown in the chat bar.",
+      bullets: [
+        { icon: Zap, label: "Fast", desc: "Quick answers, perfect for everyday tasks" },
+        { icon: Brain, label: "Balanced", desc: "Great all-round performance" },
+        { icon: Crown, label: "Powerful", desc: "Deep reasoning for complex problems" },
+      ],
+      extra: null,
+      cta: "Next →",
+    },
+    {
+      icon: <Globe className="w-8 h-8" />,
+      iconBg: "bg-gradient-to-br from-emerald-500 to-teal-500",
+      title: "More than just chat",
+      subtitle: "A full toolkit in every conversation",
+      desc: "Use these tools to get more from every conversation:",
+      bullets: [
+        { icon: Globe, label: "Web search", desc: "Get answers backed by live internet data" },
+        { icon: Paperclip, label: "Upload files", desc: "Share PDFs, images, documents to analyze" },
+        { icon: BookOpen, label: "Knowledge Base", desc: "Build a searchable library from your own docs" },
+      ],
+      extra: null,
+      cta: "Next →",
+    },
+    {
+      icon: <Sparkles className="w-8 h-8" />,
+      iconBg: "bg-gradient-to-br from-pink-500 to-rose-500",
+      title: "Power user features",
+      subtitle: "Work smarter with every conversation",
+      desc: "A few extras that make a big difference:",
+      bullets: [
+        { icon: Pin, label: "Pin messages", desc: "Hover any reply → pin icon to bookmark it for later" },
+        { icon: Mic, label: "Voice input", desc: "Tap the mic in the chat bar to dictate your message" },
+        { icon: LayoutList, label: "Prompt library", desc: "Save favourite prompts and re-use them instantly" },
+      ],
+      extra: null,
+      cta: "Next →",
+    },
+    {
+      icon: <Check className="w-8 h-8" />,
+      iconBg: "bg-gradient-to-br from-emerald-500 to-green-500",
+      title: "You're all set!",
+      subtitle: "Start your first conversation",
+      desc: "Try one of these to get started, or type your own message below:",
+      bullets: null,
+      extra: (
+        <div className="space-y-2">
+          {STARTER_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => { onStartWithPrompt?.(prompt); onFinish?.(); }}
+              className="w-full text-left px-3.5 py-3 rounded-xl bg-muted/30 border border-border/40 hover:bg-muted/60 hover:border-border/70 transition-all group"
+            >
+              <p className="text-xs text-foreground/80 group-hover:text-foreground leading-snug transition-colors">
+                "{prompt}"
+              </p>
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5 group-hover:text-muted-foreground/70 transition-colors">Click to try this →</p>
+            </button>
+          ))}
+          <p className="text-[10px] text-center text-muted-foreground/40 pt-1">
+            Free: 20 messages/day · Upgrade to Pro for unlimited access
+          </p>
+        </div>
+      ),
+      cta: "Start chatting",
+    },
+  ];
+}
 
 const STORAGE_KEY = "onboarding-complete-v1";
 
-export function OnboardingModal() {
+export function OnboardingModal({ onStartWithPrompt }: OnboardingModalProps) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -83,6 +118,8 @@ export function OnboardingModal() {
     localStorage.setItem(STORAGE_KEY, "1");
     setOpen(false);
   };
+
+  const STEPS = buildSteps(onStartWithPrompt, finish);
 
   const next = () => {
     if (step < STEPS.length - 1) {
@@ -134,6 +171,9 @@ export function OnboardingModal() {
               ))}
             </div>
           )}
+
+          {/* Extra content (e.g. starter prompts) */}
+          {current.extra}
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-1">

@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Crown, Check, X, Sparkles, Mail, MessageSquare, Zap, Brain, Infinity, Globe } from "lucide-react";
+import { Crown, Check, X, Sparkles, Mail, MessageSquare, Zap, Brain, Infinity, Globe, Lock, BookOpen, ImageIcon } from "lucide-react";
 
 interface UpgradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpgrade?: () => void;
-  reason?: "limit" | "model";
+  reason?: "limit" | "model" | "feature";
+  featureName?: string;
+  featureDescription?: string;
 }
 
 const PRO_HIGHLIGHTS = [
@@ -26,8 +28,28 @@ const COMPARISON = [
   { feature: "Priority support", free: false, pro: true },
 ];
 
-export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeModalProps) {
+const FEATURE_META: Record<string, { icon: React.ElementType; color: string; bg: string; gradient: string; bar: string }> = {
+  "Knowledge Base": {
+    icon: BookOpen, color: "text-blue-400", bg: "bg-blue-500/15",
+    gradient: "from-blue-500/15 via-indigo-500/8 to-background",
+    bar: "from-blue-400 via-indigo-500 to-blue-400",
+  },
+  "Image generation": {
+    icon: ImageIcon, color: "text-fuchsia-400", bg: "bg-fuchsia-500/15",
+    gradient: "from-fuchsia-500/15 via-violet-500/8 to-background",
+    bar: "from-fuchsia-400 via-violet-500 to-fuchsia-400",
+  },
+};
+
+const DEFAULT_FEATURE = {
+  icon: Lock, color: "text-primary", bg: "bg-primary/15",
+  gradient: "from-primary/15 via-violet-500/8 to-background",
+  bar: "from-primary via-violet-500 to-fuchsia-500",
+};
+
+export function UpgradeModal({ open, onOpenChange, reason = "limit", featureName, featureDescription }: UpgradeModalProps) {
   const isLimit = reason === "limit";
+  const isFeature = reason === "feature";
   const [contactEmail, setContactEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,43 +61,70 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
     }
   }, [open]);
 
+  const featureMeta = featureName ? (FEATURE_META[featureName] ?? DEFAULT_FEATURE) : DEFAULT_FEATURE;
+  const FeatureIcon = featureMeta.icon;
+
+  const headerGradient = isLimit
+    ? "bg-gradient-to-br from-amber-500/15 via-orange-500/8 to-background"
+    : isFeature
+    ? `bg-gradient-to-br ${featureMeta.gradient}`
+    : "bg-gradient-to-br from-primary/15 via-violet-500/8 to-background";
+
+  const topBar = isLimit
+    ? "bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"
+    : isFeature
+    ? `bg-gradient-to-r ${featureMeta.bar}`
+    : "bg-gradient-to-r from-primary via-violet-500 to-fuchsia-500";
+
+  const iconBg = isLimit
+    ? "bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/30"
+    : isFeature
+    ? `${featureMeta.bg} shadow-primary/20`
+    : "bg-gradient-to-br from-primary to-violet-600 shadow-primary/30";
+
+  const ctaClass = isLimit
+    ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-amber-500/25"
+    : "shadow-primary/25";
+
+  const title = isLimit
+    ? "You've hit your daily limit"
+    : isFeature
+    ? `${featureName ?? "This"} is a Pro feature`
+    : "Unlock Pro Models";
+
+  const subtitle = isLimit
+    ? "You've used all 20 free messages for today. Your limit resets at midnight — or upgrade to Pro for unlimited access."
+    : isFeature
+    ? (featureDescription ?? `Upgrade to Pro to unlock ${featureName ?? "this feature"} and get full access to everything AI Sparky has to offer.`)
+    : "Pro members get full access to every AI model — including the most powerful and creative options available.";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden border-none shadow-2xl">
         {/* Gradient header */}
-        <div className={`relative px-8 pt-8 pb-6 ${isLimit
-          ? "bg-gradient-to-br from-amber-500/15 via-orange-500/8 to-background"
-          : "bg-gradient-to-br from-primary/15 via-violet-500/8 to-background"
-        }`}>
+        <div className={`relative px-8 pt-8 pb-6 ${headerGradient}`}>
           {/* Top color bar */}
-          <div className={`absolute top-0 left-0 right-0 h-1 ${isLimit
-            ? "bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400"
-            : "bg-gradient-to-r from-primary via-violet-500 to-fuchsia-500"
-          }`} />
+          <div className={`absolute top-0 left-0 right-0 h-1 ${topBar}`} />
 
           <div className="flex flex-col items-center text-center gap-3">
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${isLimit
-              ? "bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-500/30"
-              : "bg-gradient-to-br from-primary to-violet-600 shadow-primary/30"
-            }`}>
-              {isLimit ? <Zap className="w-8 h-8 text-white" /> : <Crown className="w-8 h-8 text-white" />}
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${iconBg}`}>
+              {isLimit ? (
+                <Zap className="w-8 h-8 text-white" />
+              ) : isFeature ? (
+                <FeatureIcon className={`w-8 h-8 ${featureMeta.color}`} />
+              ) : (
+                <Crown className="w-8 h-8 text-white" />
+              )}
             </div>
             <div>
-              <DialogTitle className="text-2xl font-black tracking-tight mb-1.5">
-                {isLimit ? "You've hit your daily limit" : "Unlock Pro Models"}
-              </DialogTitle>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-[340px] mx-auto">
-                {isLimit
-                  ? "You've used all 20 free messages for today. Your limit resets at midnight — or upgrade to Pro for unlimited access."
-                  : "Pro members get full access to every AI model — including the most powerful and creative options available."}
-              </p>
+              <DialogTitle className="text-2xl font-black tracking-tight mb-1.5">{title}</DialogTitle>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-[340px] mx-auto">{subtitle}</p>
             </div>
           </div>
         </div>
 
         <div className="px-8 pb-8 space-y-5">
           {isLimit ? (
-            /* ── Limit reached view ── */
             <>
               {/* Pro highlights grid */}
               <div className="grid grid-cols-2 gap-2.5">
@@ -116,6 +165,36 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
                 ))}
               </div>
             </>
+          ) : isFeature ? (
+            <>
+              {/* Feature-specific locked view */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 overflow-hidden">
+                <div className="p-4 flex items-start gap-3 border-b border-border/30">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${featureMeta.bg}`}>
+                    <Lock className={`w-5 h-5 ${featureMeta.color}`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Locked on Free plan</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {featureName ?? "This feature"} requires a Pro subscription. Upgrade to unlock it instantly.
+                    </p>
+                  </div>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-2.5">
+                  {PRO_HIGHLIGHTS.map(({ icon: Icon, label, sub, color, bg }) => (
+                    <div key={label} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-background/60 border border-border/40">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                        <Icon className={`w-3.5 h-3.5 ${color}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-foreground leading-tight">{label}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           ) : (
             /* ── Model unlock view ── */
             <div className="rounded-xl border border-border/50 overflow-hidden">
@@ -150,10 +229,7 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
             {contactEmail ? (
               <Button
                 size="lg"
-                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${isLimit
-                  ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-amber-500/25"
-                  : "shadow-primary/25"
-                }`}
+                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${ctaClass}`}
                 asChild
                 data-testid="button-contact-admin"
               >
@@ -165,10 +241,7 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
             ) : (
               <Button
                 size="lg"
-                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${isLimit
-                  ? "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-amber-500/25"
-                  : "shadow-primary/25"
-                }`}
+                className={`w-full font-bold h-12 text-base shadow-lg hover-elevate active-elevate-2 ${ctaClass}`}
                 onClick={() => onOpenChange(false)}
                 data-testid="button-contact-admin"
               >
