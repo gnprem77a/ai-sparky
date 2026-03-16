@@ -748,6 +748,29 @@ export default function ChatPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
         queryClient.invalidateQueries({ queryKey: ["/api/admin/stats/tokens"] });
+
+        /* ── Milestone celebrations ── */
+        const MILESTONES = [10, 25, 50, 100, 250, 500, 1000];
+        const MILESTONE_LABELS: Record<number, { title: string; description: string }> = {
+          10:   { title: "10 messages! 🔥",   description: "You're getting warmed up — just the beginning!" },
+          25:   { title: "25 messages! ⚡",    description: "Finding your rhythm with AI Sparky." },
+          50:   { title: "50 messages! 🎉",    description: "Halfway to 100 — you're on fire!" },
+          100:  { title: "100 messages! 👑",   description: "Power user unlocked. You're unstoppable." },
+          250:  { title: "250 messages! 💫",   description: "AI Sparky superfan status achieved." },
+          500:  { title: "500 messages! 🏆",   description: "Elite status. This is seriously impressive." },
+          1000: { title: "1,000 messages! ✨", description: "Legendary. You've mastered the art of AI chat." },
+        };
+        const prevCount = parseInt(localStorage.getItem("sparky-total-msgs") || "0", 10);
+        const newCount = prevCount + 1;
+        localStorage.setItem("sparky-total-msgs", String(newCount));
+        for (const m of MILESTONES) {
+          if (newCount >= m && !localStorage.getItem(`sparky-ms-${m}`)) {
+            localStorage.setItem(`sparky-ms-${m}`, "1");
+            const { title, description } = MILESTONE_LABELS[m];
+            toast({ title, description, duration: 6000 });
+            break;
+          }
+        }
       }
     } catch (err: unknown) {
       const error = err as Error;

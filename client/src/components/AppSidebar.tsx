@@ -155,6 +155,13 @@ export function AppSidebar({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const { data: monthlySummary } = useQuery<{ thisMonth: string; monthlyTokens: number; monthlyMessages: number; totalMessages: number; totalTokens: number }>({
+    queryKey: ["/api/analytics/monthly-summary"],
+    queryFn: () => fetch("/api/analytics/monthly-summary", { credentials: "include" }).then(r => r.json()),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: usage } = useQuery<UsageData>({
     queryKey: ["/api/settings/usage"],
   });
@@ -893,19 +900,42 @@ export function AppSidebar({
                       {user.username?.[0]?.toUpperCase() ?? "?"}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <p className="text-sm font-semibold text-foreground truncate">{user.username}</p>
                         {user.isAdmin && <Shield className="w-3 h-3 text-violet-500 flex-shrink-0" />}
+                        {isPro && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-gradient-to-r from-amber-400 to-amber-500 text-white shadow-sm flex-shrink-0">
+                            ✦ PRO
+                          </span>
+                        )}
                       </div>
-                      {isPro ? (
-                        <p className="text-[11px] text-amber-500 font-medium flex items-center gap-1 mt-0.5">
-                          <Crown className="w-2.5 h-2.5" /> Pro plan
-                        </p>
-                      ) : (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">Free plan</p>
-                      )}
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{isPro ? "Pro plan · Unlimited access" : "Free plan · 20 msgs/day"}</p>
                     </div>
                   </div>
+
+                  {/* Monthly usage for Pro users */}
+                  {isPro && monthlySummary && (
+                    <div className="mx-4 mb-3 p-3 rounded-xl bg-muted/30 border border-border/40">
+                      <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest mb-2">This month's usage</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] text-muted-foreground">Tokens</span>
+                        <span className="text-[11px] font-semibold text-foreground tabular-nums">
+                          {monthlySummary.monthlyTokens >= 1_000_000
+                            ? `${(monthlySummary.monthlyTokens / 1_000_000).toFixed(2)}M`
+                            : monthlySummary.monthlyTokens >= 1000
+                            ? `${(monthlySummary.monthlyTokens / 1000).toFixed(1)}K`
+                            : monthlySummary.monthlyTokens}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-1.5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all"
+                          style={{ width: `${Math.min(100, (monthlySummary.monthlyTokens / 2_200_000) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60">{monthlySummary.monthlyMessages} messages · {monthlySummary.totalTokens.toLocaleString()} tokens all-time</p>
+                    </div>
+                  )}
 
                   {/* Menu items */}
                   <div className="py-1">
@@ -989,14 +1019,13 @@ export function AppSidebar({
                   <div className="flex items-center gap-1.5">
                     <p className="text-xs font-semibold truncate">{user.username}</p>
                     {user.isAdmin && <Shield className="w-3 h-3 text-violet-500 flex-shrink-0" />}
+                    {isPro && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black bg-gradient-to-r from-amber-400 to-amber-500 text-white shadow-sm flex-shrink-0">
+                        ✦ PRO
+                      </span>
+                    )}
                   </div>
-                  {isPro ? (
-                    <p className="text-[10px] text-amber-500 font-medium flex items-center gap-1">
-                      <Crown className="w-2.5 h-2.5" /> Pro
-                    </p>
-                  ) : (
-                    <p className="text-[10px] text-muted-foreground">Free plan</p>
-                  )}
+                  <p className="text-[10px] text-muted-foreground">{isPro ? "Unlimited access" : "Free · 20 msgs/day"}</p>
                 </div>
                 <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0", profileMenuOpen && "rotate-180")} />
               </button>

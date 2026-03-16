@@ -856,6 +856,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(data);
   });
 
+  /* ── analytics: monthly summary (current month) ── */
+  app.get("/api/analytics/monthly-summary", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    const daily = await storage.getAnalyticsDaily(userId);
+    const thisMonth = new Date().toISOString().slice(0, 7); // "2026-03"
+    const monthRows = daily.filter(d => d.date.startsWith(thisMonth));
+    const monthlyMessages = monthRows.reduce((s, r) => s + r.messageCount, 0);
+    const monthlyTokens = monthRows.reduce((s, r) => s + r.tokenCount, 0);
+    const overview = await storage.getAnalyticsOverview(userId);
+    return res.json({
+      thisMonth,
+      monthlyMessages,
+      monthlyTokens,
+      totalMessages: overview.totalMessages,
+      totalTokens: overview.totalTokens,
+    });
+  });
+
   /* ── folders: list ── */
   app.get("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
     const folders = await storage.getFolders(req.session.userId!);

@@ -187,7 +187,7 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit" }: UpgradeMo
           </div>
 
           <p className="text-center text-[10px] text-muted-foreground/40">
-            Pro access is managed by your administrator
+            Pro access is managed by your administrator &nbsp;·&nbsp; 🔒 We never train on your conversations
           </p>
         </div>
       </DialogContent>

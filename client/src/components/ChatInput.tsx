@@ -719,7 +719,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         </div>
 
         <p className="text-center text-[11px] text-muted-foreground/30 mt-2.5 select-none">
-          AI can make mistakes. Always verify important information.
+          AI can make mistakes. Always verify important information. &nbsp;·&nbsp; 🔒 We never train on your conversations.
         </p>
       </div>
     </div>
