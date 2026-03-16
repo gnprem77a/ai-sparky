@@ -623,7 +623,16 @@ export default function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
     } catch (err: unknown) {
       const e = err as Error;
-      setError(e.message);
+      // Parse clean message out of "500: {\"error\":\"...\"}"-style throws
+      let displayError = e.message;
+      try {
+        const jsonStart = e.message.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(e.message.slice(jsonStart));
+          if (parsed?.error && typeof parsed.error === "string") displayError = parsed.error;
+        }
+      } catch { /* keep original */ }
+      setError(displayError);
       setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
     } finally {
       setIsGeneratingImage(false);
