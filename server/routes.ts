@@ -160,28 +160,25 @@ function scoreProvider(name: string, category: RoutingCategory): number {
       // Mistral excels at technical/code tasks
       if (n.includes("mistral")) return 100;
       if (n.includes("gpt"))     return 80;
-      if (n.includes("grok"))    return 60;
       if (n.includes("claude") || n.includes("haiku")) return 40;
       break;
     case "math":
-      // Grok reasoning model excels at math/logic
-      if (n.includes("grok") || n.includes("reasoning")) return 100;
+      // Mistral excels at math/logic
+      if (n.includes("reasoning")) return 100;
       if (n.includes("mistral")) return 80;
       if (n.includes("gpt"))     return 60;
-      if (n.includes("claude") || n.includes("haiku"))   return 40;
+      if (n.includes("claude") || n.includes("haiku")) return 40;
       break;
     case "creative":
       // Claude Haiku excels at creative and writing tasks
       if (n.includes("claude") || n.includes("haiku")) return 100;
       if (n.includes("gpt"))     return 80;
-      if (n.includes("grok"))    return 60;
       if (n.includes("mistral")) return 40;
       break;
     case "research":
       // GPT excels at knowledge, explanations, research
       if (n.includes("gpt"))     return 100;
       if (n.includes("claude") || n.includes("haiku")) return 80;
-      if (n.includes("grok"))    return 60;
       if (n.includes("mistral")) return 40;
       break;
     case "quick":
@@ -189,7 +186,6 @@ function scoreProvider(name: string, category: RoutingCategory): number {
       if (n.includes("claude") || n.includes("haiku")) return 100;
       if (n.includes("gpt"))     return 80;
       if (n.includes("mistral")) return 60;
-      if (n.includes("grok"))    return 40;
       break;
   }
   return 50; // neutral
