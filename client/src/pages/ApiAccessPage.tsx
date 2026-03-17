@@ -117,6 +117,7 @@ export default function ApiAccessPage() {
   const [newKeyReveal, setNewKeyReveal] = useState<string | null>(null);
   const [newKeyCopied, setNewKeyCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "history" | "pricing" | "webhooks" | "docs">("overview");
+  const [docsLang, setDocsLang] = useState<"curl" | "python" | "js" | "nodejs" | "php" | "ruby" | "go">("curl");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSaved, setWebhookSaved] = useState(false);
 
@@ -327,6 +328,127 @@ print("Balance remaining:", response.headers["X-Balance-Remaining"])`;
 const data = await response.json();
 console.log(data.content);
 console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
+
+  const nodeAxiosExample = `const axios = require("axios");
+// npm install axios
+
+const API_KEY = "${displayKey}";
+const BASE_URL = "${baseUrl}/api/v1/chat";
+
+async function chat(message) {
+  const response = await axios.post(
+    BASE_URL,
+    {
+      message,
+      model: "balanced",   // powerful | fast | creative | balanced
+      systemPrompt: "You are a helpful assistant."
+    },
+    {
+      headers: {
+        Authorization: \`Bearer \${API_KEY}\`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  console.log(response.data.content);
+  console.log("Balance:", response.headers["x-balance-remaining"]);
+  console.log("Request ID:", response.headers["x-request-id"]);
+}
+
+chat("Explain quantum computing in simple terms.");`;
+
+  const phpExample = `<?php
+$apiKey = "${displayKey}";
+$baseUrl = "${baseUrl}/api/v1/chat";
+
+$payload = json_encode([
+    "message"      => "Hello!",
+    "model"        => "balanced",   // powerful | fast | creative | balanced
+    "systemPrompt" => "You are a helpful assistant."
+]);
+
+$ch = curl_init($baseUrl);
+curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER     => [
+        "Authorization: Bearer $apiKey",
+        "Content-Type: application/json"
+    ],
+    CURLOPT_POSTFIELDS => $payload,
+]);
+
+$response   = curl_exec($ch);
+$httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+$result = json_decode($response, true);
+echo $result["content"] . PHP_EOL;`;
+
+  const rubyExample = `require "net/http"
+require "json"
+require "uri"
+
+API_KEY  = "${displayKey}"
+BASE_URL = "${baseUrl}/api/v1/chat"
+
+uri  = URI(BASE_URL)
+http = Net::HTTP.new(uri.host, uri.port)
+http.use_ssl = uri.scheme == "https"
+
+request = Net::HTTP::Post.new(uri.path)
+request["Authorization"] = "Bearer #{API_KEY}"
+request["Content-Type"]  = "application/json"
+request.body = JSON.generate(
+  message:      "Hello!",
+  model:        "balanced",   # powerful | fast | creative | balanced
+  systemPrompt: "You are a helpful assistant."
+)
+
+response = http.request(request)
+result   = JSON.parse(response.body)
+
+puts result["content"]
+puts "Balance: #{response["X-Balance-Remaining"]}"`;
+
+  const goExample = `package main
+
+import (
+  "bytes"
+  "encoding/json"
+  "fmt"
+  "io"
+  "net/http"
+)
+
+const (
+  APIKey  = "${displayKey}"
+  BaseURL = "${baseUrl}/api/v1/chat"
+)
+
+func main() {
+  payload, _ := json.Marshal(map[string]interface{}{
+    "message":      "Hello!",
+    "model":        "balanced", // powerful | fast | creative | balanced
+    "systemPrompt": "You are a helpful assistant.",
+  })
+
+  req, _ := http.NewRequest("POST", BaseURL, bytes.NewBuffer(payload))
+  req.Header.Set("Authorization", "Bearer "+APIKey)
+  req.Header.Set("Content-Type", "application/json")
+
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    panic(err)
+  }
+  defer resp.Body.Close()
+
+  body, _ := io.ReadAll(resp.Body)
+  fmt.Println(string(body))
+  fmt.Println("Balance:", resp.Header.Get("X-Balance-Remaining"))
+  fmt.Println("Request ID:", resp.Header.Get("X-Request-ID"))
+}`;
 
   const tabs = [
     { id: "overview" as const, label: "Overview", icon: BarChart2 },
@@ -756,57 +878,123 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
         {/* Docs Tab */}
         {activeTab === "docs" && (
           <div className="space-y-6">
+            {/* Base URL banner */}
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 flex items-center gap-4">
+              <Globe className="w-5 h-5 text-primary flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide mb-0.5">API Endpoint</p>
+                <code className="text-sm font-mono text-foreground break-all">{baseUrl}/api/v1/chat</code>
+              </div>
+            </div>
+
+            {/* Language picker + code examples */}
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div className="flex items-center gap-1 px-4 pt-4 pb-0 border-b border-border flex-wrap">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mr-2">Language</p>
+                {(["curl", "python", "js", "nodejs", "php", "ruby", "go"] as const).map((lang) => {
+                  const labels: Record<string, string> = { curl: "cURL", python: "Python", js: "JavaScript", nodejs: "Node.js", php: "PHP", ruby: "Ruby", go: "Go" };
+                  return (
+                    <button
+                      key={lang}
+                      onClick={() => setDocsLang(lang)}
+                      data-testid={`button-docs-lang-${lang}`}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-t-lg border-b-2 transition-all -mb-px",
+                        docsLang === lang
+                          ? "border-primary text-primary bg-primary/5"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {labels[lang]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="p-4 space-y-3">
+                {docsLang === "curl" && (
+                  <>
+                    <CodeBlock code={curlExample} language="cURL — basic" />
+                    <CodeBlock code={curlStreamExample} language="cURL — streaming (SSE)" />
+                  </>
+                )}
+                {docsLang === "python" && <CodeBlock code={pythonExample} language="Python — requests" />}
+                {docsLang === "js" && <CodeBlock code={jsExample} language="JavaScript — fetch (browser / Deno)" />}
+                {docsLang === "nodejs" && <CodeBlock code={nodeAxiosExample} language="Node.js — axios" />}
+                {docsLang === "php" && <CodeBlock code={phpExample} language="PHP — cURL" />}
+                {docsLang === "ruby" && <CodeBlock code={rubyExample} language="Ruby — net/http" />}
+                {docsLang === "go" && <CodeBlock code={goExample} language="Go — net/http" />}
+              </div>
+            </div>
+
+            {/* Request body reference */}
             <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
               <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-primary" /> Request Body
+                <Terminal className="w-4 h-4 text-primary" /> Request Body Fields
               </h2>
               <div className="space-y-2 text-xs">
                 {[
-                  { field: "message", type: "string", desc: "Single user message (alternative to messages array)" },
-                  { field: "messages", type: "array", desc: "Array of {role, content} objects for multi-turn" },
-                  { field: "model", type: "string", desc: "Model slug: powerful | fast | creative | balanced" },
-                  { field: "systemPrompt", type: "string?", desc: "Optional system instruction" },
-                  { field: "stream", type: "boolean?", desc: "Enable SSE streaming (default: false)" },
-                  { field: "maxTokens", type: "number?", desc: "Override max output tokens (capped per model)" },
-                ].map(({ field, type, desc }) => (
-                  <div key={field} className="flex gap-3 py-1.5 border-b border-border/40 last:border-0">
-                    <code className="font-mono text-primary w-28 flex-shrink-0">{field}</code>
-                    <code className="text-muted-foreground w-16 flex-shrink-0">{type}</code>
+                  { field: "message", type: "string", req: true,  desc: "Single user message (alternative to messages array)" },
+                  { field: "messages", type: "array",  req: false, desc: "Array of {role, content} objects for multi-turn conversations" },
+                  { field: "model",   type: "string", req: false, desc: "Model slug: powerful | fast | creative | balanced (default: balanced)" },
+                  { field: "systemPrompt", type: "string", req: false, desc: "Optional system instruction prepended to the conversation" },
+                  { field: "stream",  type: "boolean", req: false, desc: "Set true to enable SSE streaming (default: false)" },
+                  { field: "maxTokens", type: "number", req: false, desc: "Override max output tokens — capped per model" },
+                ].map(({ field, type, req, desc }) => (
+                  <div key={field} className="flex gap-3 py-1.5 border-b border-border/40 last:border-0 items-start">
+                    <code className="font-mono text-primary w-28 flex-shrink-0 mt-0.5">{field}</code>
+                    <div className="flex flex-col gap-0.5 w-20 flex-shrink-0">
+                      <code className="text-muted-foreground text-[11px]">{type}</code>
+                      <span className={cn("text-[10px] font-semibold", req ? "text-amber-500" : "text-muted-foreground/50")}>{req ? "required*" : "optional"}</span>
+                    </div>
                     <span className="text-muted-foreground">{desc}</span>
                   </div>
                 ))}
               </div>
+              <p className="text-[11px] text-muted-foreground">* Either <code className="font-mono text-primary">message</code> or <code className="font-mono text-primary">messages</code> must be provided.</p>
             </div>
 
+            {/* Response headers reference */}
             <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
               <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <Globe className="w-4 h-4 text-primary" /> Response Headers
               </h2>
               <div className="space-y-2 text-xs">
                 {[
-                  { header: "X-Balance-Remaining", desc: "Your remaining balance (e.g. $28.45)" },
-                  { header: "X-Cost-This-Request", desc: "Total cost of this request (e.g. $0.000125)" },
-                  { header: "X-Tokens-Input", desc: "Input tokens consumed" },
-                  { header: "X-Tokens-Output", desc: "Output tokens generated" },
-                  { header: "X-Rate-Limit-Remaining", desc: "Requests left in current minute window" },
-                  { header: "X-Rate-Limit-Reset", desc: "Unix timestamp when rate limit resets" },
+                  { header: "X-Request-ID",          desc: "Unique ID for this request — use for dispute or debug (e.g. req_a1b2c3d4e5f6)" },
+                  { header: "X-Balance-Remaining",   desc: "Your wallet balance after this request (e.g. $28.450000)" },
+                  { header: "X-Cost-This-Request",   desc: "Exact cost deducted for this request (e.g. $0.000125)" },
+                  { header: "X-Tokens-Input",        desc: "Input tokens consumed" },
+                  { header: "X-Tokens-Output",       desc: "Output tokens generated" },
+                  { header: "X-Rate-Limit-Remaining", desc: "Requests remaining in the current 60-second window" },
+                  { header: "X-Rate-Limit-Reset",    desc: "Unix timestamp (seconds) when the rate limit window resets" },
                 ].map(({ header, desc }) => (
-                  <div key={header} className="flex gap-3 py-1.5 border-b border-border/40 last:border-0">
-                    <code className="font-mono text-primary w-48 flex-shrink-0 text-[11px]">{header}</code>
+                  <div key={header} className="flex gap-3 py-1.5 border-b border-border/40 last:border-0 items-start">
+                    <code className="font-mono text-primary w-52 flex-shrink-0 text-[11px] mt-0.5">{header}</code>
                     <span className="text-muted-foreground">{desc}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-4">
-              <h2 className="font-semibold text-foreground flex items-center gap-2 px-1">
-                <Terminal className="w-4 h-4 text-primary" /> Examples
+            {/* Models quick-reference */}
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" /> Model Slugs
               </h2>
-              <CodeBlock code={curlExample} language="curl — basic" />
-              <CodeBlock code={curlStreamExample} language="curl — streaming" />
-              <CodeBlock code={pythonExample} language="python" />
-              <CodeBlock code={jsExample} language="javascript" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { slug: "balanced",  label: "Balanced",  hint: "Best value" },
+                  { slug: "fast",      label: "Fast",      hint: "Lowest cost" },
+                  { slug: "powerful",  label: "Powerful",  hint: "Highest quality" },
+                  { slug: "creative",  label: "Creative",  hint: "Creative tasks" },
+                ].map(({ slug, label, hint }) => (
+                  <div key={slug} className="rounded-xl border border-border bg-muted/20 p-3 space-y-1">
+                    <code className="text-xs font-mono text-primary font-bold">{slug}</code>
+                    <p className="text-xs text-foreground font-medium">{label}</p>
+                    <p className="text-[10px] text-muted-foreground">{hint}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
