@@ -13,7 +13,6 @@ const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const AuthPage = lazy(() => import("@/pages/AuthPage"));
 const AdminPage = lazy(() => import("@/pages/AdminPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
-const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
 const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
@@ -115,9 +114,6 @@ function AppInner() {
         </Route>
         <Route path="/profile">
           <ProfilePage />
-        </Route>
-        <Route path="/analytics">
-          <AnalyticsPage />
         </Route>
         <Route path="/gallery">
           <GalleryPage />

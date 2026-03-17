@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Globe, BarChart2 } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
@@ -154,13 +154,6 @@ export function AppSidebar({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
-
-  const { data: monthlySummary } = useQuery<{ thisMonth: string; monthlyTokens: number; monthlyMessages: number; totalMessages: number; totalTokens: number }>({
-    queryKey: ["/api/analytics/monthly-summary"],
-    queryFn: () => fetch("/api/analytics/monthly-summary", { credentials: "include" }).then(r => r.json()),
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
 
   const { data: usage } = useQuery<UsageData>({
     queryKey: ["/api/settings/usage"],
@@ -907,17 +900,6 @@ export function AppSidebar({
                       My Profile
                     </a>
 
-                    {user.apiEnabled && (
-                      <a
-                        href="/analytics"
-                        onClick={() => setProfileMenuOpen(false)}
-                        data-testid="button-sidebar-analytics"
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
-                      >
-                        <BarChart2 className="w-4 h-4 text-muted-foreground" />
-                        Usage Analytics
-                      </a>
-                    )}
 
                     {user.isAdmin && (
                       <a
