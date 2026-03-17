@@ -130,6 +130,8 @@ interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
   streamingModel?: string;
+  elapsedTime?: number;
+  selectedModel?: string;
   onRegenerate?: () => void;
   onRetryWith?: (model: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
@@ -386,7 +388,7 @@ const RETRY_MODELS = [
   { key: "creative", label: "Creative", desc: "Imaginative output",  color: "text-rose-400",   proOnly: true  },
 ];
 
-function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 0, selectedModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -733,17 +735,31 @@ function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, 
             </div>
           )}
           {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border/40 w-fit animate-fade-up shadow-sm">
-              <div className="flex items-end gap-[5px] h-4">
-                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
-                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
-                <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
-              </div>
-              <span className="text-[13px] text-muted-foreground/60 font-medium tracking-wide">Thinking</span>
-              {streamingModel && (
-                <span className="text-[11px] font-mono bg-primary/8 text-primary/70 px-2 py-0.5 rounded-md border border-primary/15">
-                  {getFriendlyModelLabel(streamingModel)}
+            <div className="flex flex-col gap-1.5 animate-fade-up">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border/40 w-fit shadow-sm">
+                <div className="flex items-end gap-[5px] h-4">
+                  <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
+                  <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
+                  <span className="typing-dot block w-[7px] h-[7px] rounded-full bg-primary/60" />
+                </div>
+                <span className="text-[13px] text-muted-foreground/60 font-medium tracking-wide">
+                  {selectedModel === "powerful" ? "Generating" : "Thinking"}
                 </span>
+                {streamingModel && (
+                  <span className="text-[11px] font-mono bg-primary/8 text-primary/70 px-2 py-0.5 rounded-md border border-primary/15">
+                    {getFriendlyModelLabel(streamingModel)}
+                  </span>
+                )}
+                {elapsedTime > 0 && (
+                  <span className="text-[11px] tabular-nums text-muted-foreground/40">
+                    {elapsedTime.toFixed(1)}s
+                  </span>
+                )}
+              </div>
+              {selectedModel === "powerful" && elapsedTime >= 6 && (
+                <p className="text-[11px] text-muted-foreground/40 px-1">
+                  Opus 4.6 is crafting a detailed response — complex tasks can take up to 40s
+                </p>
               )}
             </div>
           ) : (

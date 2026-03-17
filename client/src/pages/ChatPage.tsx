@@ -620,7 +620,14 @@ export default function ChatPage() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: historyForApi, model: isPro ? (modelOverride ?? model) : "fast", maxTokens: 4096, webSearch: webSearchMode }),
+        body: JSON.stringify({
+          messages: historyForApi,
+          model: isPro ? (modelOverride ?? model) : "fast",
+          maxTokens: isPro
+            ? ((modelOverride ?? model) === "powerful" ? 16000 : 8192)
+            : 2048,
+          webSearch: webSearchMode,
+        }),
         signal: controller.signal,
       });
 
@@ -1231,6 +1238,8 @@ export default function ChatPage() {
                       message={msg}
                       isStreaming={isStreaming && msg.id === streamingMessageId}
                       streamingModel={isStreaming && msg.id === streamingMessageId ? streamingModel ?? undefined : undefined}
+                      elapsedTime={isStreaming && msg.id === streamingMessageId ? elapsedTime : 0}
+                      selectedModel={isStreaming && msg.id === streamingMessageId ? model : undefined}
                       isLast={msg.id === lastAssistantMsg?.id}
                       conversationId={activeId ?? undefined}
                       assistantName={assistantName}

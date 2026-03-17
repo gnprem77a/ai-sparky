@@ -1148,7 +1148,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── chat (protected) ── */
   app.post("/api/chat", requireAuth as any, async (req: Request, res: Response) => {
-    const { messages, model = "auto", maxTokens = 4096, webSearch = false } = req.body;
+    const { messages, model = "auto", maxTokens: requestedTokens = 4096, webSearch = false } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "messages array is required" });
@@ -1158,6 +1158,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ error: "User not found" });
 
     const pro = isProActive(user);
+
+    /* ── Token cap: Pro up to 16 000, Free up to 2 048 ── */
+    const MAX_TOKENS_PRO  = 16000;
+    const MAX_TOKENS_FREE = 2048;
+    const maxTokens = pro
+      ? Math.min(requestedTokens, MAX_TOKENS_PRO)
+      : Math.min(requestedTokens, MAX_TOKENS_FREE);
 
     /* ── Free plan enforcement ── */
     let effectiveModel = model;
