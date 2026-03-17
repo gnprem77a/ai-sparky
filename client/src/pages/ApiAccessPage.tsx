@@ -187,8 +187,9 @@ export default function ApiAccessPage() {
 
   if (!user) { navigate("/auth"); return null; }
 
-  /* ── Free user: locked view ── */
-  if (!isPro) {
+  /* ── User has API access enabled by admin → go straight to dashboard ── */
+  /* ── Free user without API access: locked view ── */
+  if (!user.apiEnabled && !isPro) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center space-y-5">
@@ -233,7 +234,7 @@ export default function ApiAccessPage() {
     );
   }
 
-  /* ── Pro user, API not yet enabled ── */
+  /* ── Pro user, API not yet enabled by admin ── */
   if (!user.apiEnabled) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
