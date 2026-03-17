@@ -1,0 +1,120 @@
+Update the API access system so user balance works 
+as a single shared wallet across all AI models.
+
+REQUIREMENTS:
+
+1. Every user has one wallet balance in USD 
+   (example: $10, $30, $50)
+
+2. Admin can manually add balance to a user:
+   - Quick buttons: +$5, +$10, +$25, +$30, +$50
+   - Custom amount field
+   - Admin can also deduct balance with negative value
+   - Show current balance in red if below $5.00
+
+3. The system must NOT assign fixed token limits per model.
+   Instead every API call deducts cost automatically 
+   based on actual token usage and selected model.
+
+4. One shared wallet regardless of which model is used:
+   - Mistral-Large-3
+   - gpt-5.3-chat
+   - claude-haiku-prod2
+   - claude-opus-4.6
+   - Any future models added via admin panel
+
+5. Pricing calculation per request:
+   total_cost = (input_tokens × model_input_price) 
+              + (output_tokens × model_output_price)
+
+6. If user switches models continue deducting 
+   from same wallet automatically.
+
+   Example:
+   User has $30 balance
+   Uses Claude Haiku  → deduct real cost → $29.95 remaining
+   Then uses GPT-5.3  → deduct real cost → $29.87 remaining
+   Then uses Opus     → deduct real cost → $29.62 remaining
+   All from same wallet.
+
+7. Stop API access automatically when wallet reaches $0.00
+   Return error: 
+   {
+     "error": "Insufficient balance",
+     "balance_remaining": "$0.00",
+     "message": "Please contact admin to top up balance"
+   }
+
+8. Show live remaining balance:
+   - User dashboard: show balance with progress bar
+   - Admin panel: show balance per user in real time
+   - Warning banner to user when below $5.00 (red)
+   - Warning banner to user when below $10.00 (yellow)
+
+9. Store full usage log per API call:
+   - Timestamp
+   - Model used
+   - Input tokens
+   - Output tokens
+   - Input cost ($X.XXXXXX)
+   - Output cost ($X.XXXXXX)
+   - Total cost deducted ($X.XXXXXX)
+   - Endpoint called
+   - Success or failed
+
+10. SAFETY LIMITS (defaults):
+    - Rate limit: 30 requests per minute
+    - Max output tokens per request:
+      → Claude Opus 4.6: 32,000
+      → Claude Haiku:     4,096
+      → GPT-5.3:          8,192
+      → Mistral Large 3:  8,192
+    - Block if wallet below $0.01
+
+11. Admin can optionally override per user:
+    - Daily request cap (blank = unlimited)
+    - Monthly request cap (blank = unlimited)
+    - Custom rate limit (default 30/min)
+
+12. CORRECT MODEL PRICES (store in database):
+    Claude Haiku:
+    - Input:  $0.80 per 1M tokens
+    - Output: $4.00 per 1M tokens
+
+    Claude Opus 4.6:
+    - Input:  $5.00 per 1M tokens
+    - Output: $25.00 per 1M tokens
+
+    GPT-5.3:
+    - Input:  $2.00 per 1M tokens
+    - Output: $8.00 per 1M tokens
+
+    Mistral Large 3:
+    - Input:  $1.00 per 1M tokens
+    - Output: $3.00 per 1M tokens
+
+    Embed v4.0:    $0 (free, no deduction)
+    Cohere Rerank: $0 (free, no deduction)
+
+13. Balance deduction happens AFTER every 
+    successful API response only.
+
+14. If response fails → do NOT deduct balance.
+
+15. Future models added in admin panel must have:
+    - Input price per 1M tokens field
+    - Output price per 1M tokens field
+    - Same pricing engine applies automatically
+
+16. API RESPONSE HEADERS (include always):
+    - X-Balance-Remaining: $XX.XX
+    - X-Cost-This-Request: $X.XXXXXX
+    - X-Tokens-Input: number
+    - X-Tokens-Output: number
+    - X-Rate-Limit-Remaining: number
+    - X-Rate-Limit-Reset: timestamp
+
+17. API KEY FORMAT: sk-sparky-xxxxxxxxxxxxxxxxxxxxxxxx
+    - One key per user
+    - User can regenerate from API page
+    - Old key invalidated immediately

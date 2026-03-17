@@ -1960,20 +1960,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── External API: /api/v1/chat (API key auth, balance-based) ── */
 
-  // Pricing: $ per 1M tokens
+  // Default pricing per 1M tokens (fallback when provider has no custom price set)
   const API_PRICING: Record<string, { input: number; output: number }> = {
     powerful:  { input: 5.00,  output: 25.00 },
-    fast:      { input: 0.80,  output: 4.00  },
-    creative:  { input: 2.00,  output: 8.00  },
-    balanced:  { input: 1.00,  output: 3.00  },
+    fast:      { input: 1.00,  output: 5.00  },
+    creative:  { input: 3.00,  output: 15.00 },
+    balanced:  { input: 2.00,  output: 10.00 },
   };
-  const API_MAX_TOKENS: Record<string, number> = {
-    powerful: 32000,
-    fast:     4096,
-    creative: 8192,
-    balanced: 8192,
-  };
-  const API_RATE_LIMIT = 30; // per minute, fixed
+  // Hard cap: max 4000 output tokens per API request (all models)
+  const API_V1_MAX_TOKENS = 4000;
+  // Safety rate limit: 5 req/min per key
+  const API_RATE_LIMIT = 5;
   const apiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
   function checkApiV1RateLimit(apiKey: string): { allowed: boolean; remaining: number; resetAt: number } {
@@ -1991,9 +1988,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return { allowed: true, remaining: API_RATE_LIMIT - entry.count, resetAt: entry.resetAt };
   }
 
-  function computeCost(modelSlug: string, inputTokens: number, outputTokens: number): number {
-    const rates = API_PRICING[modelSlug] ?? API_PRICING.balanced;
-    return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+  // Compute cost using provider-specific prices when available, else fall back to defaults
+  function computeCost(
+    modelSlug: string,
+    inputTokens: number,
+    outputTokens: number,
+    providerInputPrice?: number | null,
+    providerOutputPrice?: number | null,
+  ): number {
+    const defaultRates = API_PRICING[modelSlug] ?? API_PRICING.balanced;
+    const inputRate  = providerInputPrice  ?? defaultRates.input;
+    const outputRate = providerOutputPrice ?? defaultRates.output;
+    return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
   }
 
   app.post("/api/v1/chat", async (req: Request, res: Response) => {
@@ -2062,7 +2068,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
     }));
 
-    const maxTokens = Math.min(reqMaxTokens ?? API_MAX_TOKENS[modelSlug], API_MAX_TOKENS[modelSlug]);
+    // Capture per-provider prices (from first matched provider if available)
+    const primaryProvider = selectedProviders[0];
+    const providerInputPrice  = primaryProvider?.inputPricePerMillion  ?? null;
+    const providerOutputPrice = primaryProvider?.outputPricePerMillion ?? null;
+
+    // Hard cap at API_V1_MAX_TOKENS (4000); user can request less
+    const maxTokens = Math.min(reqMaxTokens ?? API_V1_MAX_TOKENS, API_V1_MAX_TOKENS);
     const messagesJson = JSON.stringify(messages);
     const endpoint = "/api/v1/chat";
 
@@ -2094,7 +2106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
           messages, systemPrompt: systemPrompt ?? undefined, maxTokens, useTools: false, res,
         });
-        const cost = computeCost(modelSlug, inputTokens, outputTokens);
+        const cost = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
         const updatedUser = await storage.adjustApiBalance(user.id, -cost);
         const balanceAfter = updatedUser?.apiBalance ?? 0;
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);
@@ -2114,7 +2126,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Estimate tokens (rough: 1 token ≈ 4 chars)
         const inputTokens = Math.ceil(userPrompt.length / 4);
         const outputTokens = Math.ceil(text.length / 4);
-        const cost = computeCost(modelSlug, inputTokens, outputTokens);
+        const cost = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
         const updatedUser = await storage.adjustApiBalance(user.id, -cost);
         const balanceAfter = updatedUser?.apiBalance ?? 0;
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);

@@ -122,6 +122,8 @@ export const aiProviders = pgTable("ai_providers", {
   priority: integer("priority").notNull().default(100),
   bodyTemplate: text("body_template"),
   responsePath: text("response_path"),
+  inputPricePerMillion: real("input_price_per_million"),
+  outputPricePerMillion: real("output_price_per_million"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
