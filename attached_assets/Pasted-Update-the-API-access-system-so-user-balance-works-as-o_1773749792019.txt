@@ -1,0 +1,159 @@
+Update the API access system so user balance works as one shared wallet across all AI models and API access is production-safe.
+
+REQUIREMENTS:
+
+1. Every user has one wallet balance in USD:
+- examples: $10, $30, $50
+
+2. Admin can manually manage balance:
+- Quick buttons: +$5, +$10, +$25, +$30, +$50
+- Custom amount field
+- Allow negative values for deduction
+- Show current balance:
+  - red if below $5.00
+  - yellow if below $10.00
+
+3. Do NOT assign fixed token limits per model.
+Every API request must deduct cost automatically based on actual token usage and selected model.
+
+4. One shared wallet across all models:
+- Mistral-Large-3
+- gpt-5.3-chat
+- claude-haiku-prod2
+- claude-opus-4.6
+- any future models added in admin panel
+
+5. Pricing formula:
+total_cost =
+(input_tokens / 1,000,000 × model_input_price)
++
+(output_tokens / 1,000,000 × model_output_price)
+
+6. Same wallet continues across model switching.
+
+7. Automatically stop API access when balance <= 0:
+Return:
+{
+  "error": "Insufficient balance",
+  "balance_remaining": "$0.00",
+  "message": "Please contact admin to top up balance"
+}
+
+8. Show live balance:
+USER DASHBOARD:
+- current balance
+- progress bar
+- warning banner below $10 yellow
+- warning banner below $5 red
+
+ADMIN PANEL:
+- real-time balance per user
+- balance history
+
+9. Full usage log for every request:
+- timestamp
+- model used
+- input tokens
+- output tokens
+- input cost
+- output cost
+- total cost
+- endpoint
+- success / failed
+- request id
+
+10. SAFETY LIMITS:
+Default:
+- rate limit 30 requests/minute
+
+Max output tokens:
+- Claude Opus 4.6 = 32000
+- Claude Haiku = 4096
+- GPT-5.3 = 8192
+- Mistral Large 3 = 8192
+
+Block request if balance below $0.01
+
+11. Admin optional override:
+- daily cap
+- monthly cap
+- custom rate limit
+
+12. MODEL PRICES stored in database:
+
+Claude Haiku:
+input 0.80 / 1M
+output 4.00 / 1M
+
+Claude Opus 4.6:
+input 5.00 / 1M
+output 25.00 / 1M
+
+GPT-5.3:
+input 2.00 / 1M
+output 8.00 / 1M
+
+Mistral Large 3:
+input 1.00 / 1M
+output 3.00 / 1M
+
+Embed v4.0:
+input 0
+output 0
+
+Cohere Rerank:
+input 0
+output 0
+
+13. Deduct balance only AFTER successful API response.
+
+14. If request fails:
+- no deduction
+- log failure
+
+15. Future models in admin panel must support:
+- input price field
+- output price field
+- max output token field
+- automatic same pricing engine
+
+16. API response headers always include:
+- X-Balance-Remaining
+- X-Cost-This-Request
+- X-Tokens-Input
+- X-Tokens-Output
+- X-Rate-Limit-Remaining
+- X-Rate-Limit-Reset
+
+17. API key system:
+Format:
+sk-sparky-xxxxxxxxxxxxxxxxxxxxxxxx
+
+- one active key per user
+- regenerate key button
+- old key invalid immediately
+
+18. API section visibility:
+When admin grants API access:
+- API section automatically appears in user dashboard/sidebar
+- hidden for users without API access
+
+19. User API page must show:
+- current API key
+- endpoint URL
+- supported models
+- current balance
+- usage logs
+- pricing info
+- curl example
+- regenerate key button
+
+20. Security:
+- API key hashed in database
+- never expose provider keys to frontend
+- all provider calls go through backend only
+
+21. Prevent race condition:
+If multiple requests happen simultaneously:
+- lock wallet deduction transaction
+- prevent negative balance bug

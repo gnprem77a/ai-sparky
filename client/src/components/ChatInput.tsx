@@ -279,6 +279,34 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; }
   };
 
+  /* smart paste: large text → attachment */
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    const THRESHOLD = 500;
+    if (text.length < THRESHOLD) return;
+    e.preventDefault();
+
+    const maxFiles = isPro ? 5 : 2;
+    if (attachments.length >= maxFiles) return;
+
+    const looksLikeCode =
+      /^\s*(import |export |function |class |const |let |var |def |return |if\s*\(|for\s*\(|while\s*\(|#include|package |public |private |async )/.test(text) ||
+      (text.includes("{") && text.includes("}") && text.includes(";")) ||
+      text.includes("=>") ||
+      /\n[ \t]{2,}\S/.test(text);
+
+    const fileName = looksLikeCode ? "pasted-code.txt" : "pasted-text.txt";
+    const attachment: Attachment = {
+      id: `paste-${Date.now()}`,
+      name: fileName,
+      type: "file",
+      mimeType: "text/plain",
+      size: text.length,
+      data: text,
+    };
+    setAttachments(prev => [...prev, attachment].slice(0, maxFiles));
+  }, [attachments.length, isPro]);
+
   /* drag-drop */
   const handleDragOver  = (e: DragEvent) => { e.preventDefault(); setIsDragOver(true); };
   const handleDragLeave = (e: DragEvent) => { e.preventDefault(); setIsDragOver(false); };
@@ -427,6 +455,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={isDragOver ? "Drop to attach…" : ROTATING_HINTS[hintIndex]}
             disabled={disabled}
             rows={1}
