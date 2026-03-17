@@ -4,7 +4,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, BLUESMINDS_MODEL_ID, getModel, getProvi
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
-import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail } from "./lib/email";
+import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail, welcomeEmail } from "./lib/email";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
@@ -464,6 +464,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
     req.session.userId = finalUser.id;
+
+    // Send welcome email (fire-and-forget — never block registration)
+    if (user.email) {
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl)).catch(() => {});
+    }
+
     return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
   });
 

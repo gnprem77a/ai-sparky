@@ -142,6 +142,106 @@ export function proWelcomeEmail(username: string): string {
   `;
 }
 
+export function welcomeEmail(username: string, appUrl: string): string {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+    <body style="margin:0;padding:0;background:#f5f3ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;padding:40px 16px;">
+        <tr><td align="center">
+          <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(109,40,217,0.10);">
+
+            <!-- Purple top bar -->
+            <tr>
+              <td style="height:5px;background:linear-gradient(90deg,#7c3aed,#6d28d9,#4f46e5);"></td>
+            </tr>
+
+            <!-- Header -->
+            <tr>
+              <td style="background:linear-gradient(135deg,#ede9fe 0%,#ddd6fe 50%,#e0e7ff 100%);padding:44px 44px 36px;text-align:center;border-bottom:1px solid #ddd6fe;">
+                <div style="display:inline-block;width:72px;height:72px;background:linear-gradient(135deg,#7c3aed,#6d28d9);border-radius:20px;margin-bottom:20px;box-shadow:0 8px 28px rgba(109,40,217,0.35);line-height:72px;font-size:32px;">✨</div>
+                <h1 style="margin:0 0 10px;font-size:30px;font-weight:800;color:#1e1b4b;letter-spacing:-0.5px;">Welcome to AI Sparky!</h1>
+                <p style="margin:0;color:#5b21b6;font-size:16px;">Hi <strong>${username}</strong> — your account is ready 🎉</p>
+              </td>
+            </tr>
+
+            <!-- Body -->
+            <tr>
+              <td style="padding:40px 44px 32px;">
+                <p style="margin:0 0 28px;color:#374151;font-size:15px;line-height:1.7;">
+                  We're glad you're here. AI Sparky is your personal AI assistant — designed to help you write, research, think, and create. Here's what's waiting for you:
+                </p>
+
+                <!-- Features -->
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                  <tr>
+                    <td style="padding:14px 16px;background:#faf5ff;border:1px solid #ede9fe;border-radius:12px;width:47%;vertical-align:top;">
+                      <p style="margin:0 0 4px;font-weight:700;color:#1e1b4b;font-size:14px;">💬 Smart Conversations</p>
+                      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">Context-aware AI that remembers your conversation thread</p>
+                    </td>
+                    <td style="width:16px;"></td>
+                    <td style="padding:14px 16px;background:#faf5ff;border:1px solid #ede9fe;border-radius:12px;width:47%;vertical-align:top;">
+                      <p style="margin:0 0 4px;font-weight:700;color:#1e1b4b;font-size:14px;">📁 Organize by Folders</p>
+                      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">Keep your chats tidy with folders and custom names</p>
+                    </td>
+                  </tr>
+                  <tr><td colspan="3" style="height:12px;"></td></tr>
+                  <tr>
+                    <td style="padding:14px 16px;background:#faf5ff;border:1px solid #ede9fe;border-radius:12px;vertical-align:top;">
+                      <p style="margin:0 0 4px;font-weight:700;color:#1e1b4b;font-size:14px;">📎 File Uploads</p>
+                      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">Attach documents and images — drag &amp; drop supported</p>
+                    </td>
+                    <td></td>
+                    <td style="padding:14px 16px;background:#faf5ff;border:1px solid #ede9fe;border-radius:12px;vertical-align:top;">
+                      <p style="margin:0 0 4px;font-weight:700;color:#1e1b4b;font-size:14px;">⚡ Multiple AI Models</p>
+                      <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">Choose Fast, Balanced, Creative or Powerful</p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Privacy note -->
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:32px;">
+                  <p style="margin:0;color:#166534;font-size:13px;line-height:1.6;">
+                    🔒 <strong>Your privacy is our priority.</strong> We never train AI models on your conversations. Your data is yours — always encrypted, never shared.
+                  </p>
+                </div>
+
+                <!-- CTA Button -->
+                <div style="text-align:center;margin-bottom:8px;">
+                  <a href="${appUrl}"
+                    style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#ffffff;font-weight:700;font-size:16px;padding:15px 44px;border-radius:14px;text-decoration:none;box-shadow:0 4px 16px rgba(109,40,217,0.35);letter-spacing:0.2px;">
+                    Start your first chat →
+                  </a>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="padding:20px 44px 28px;border-top:1px solid #f3f4f6;text-align:center;">
+                <p style="margin:0 0 6px;color:#9ca3af;font-size:12px;">
+                  You're receiving this because you just created an account on AI Sparky.
+                </p>
+                <p style="margin:0;color:#9ca3af;font-size:12px;">
+                  Questions? Just reply to this email — we're happy to help.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Bottom purple bar -->
+            <tr>
+              <td style="height:4px;background:linear-gradient(90deg,#4f46e5,#6d28d9,#7c3aed);"></td>
+            </tr>
+
+          </table>
+        </td></tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
 export function forgotPasswordEmail(username: string, resetUrl: string): string {
   return `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
