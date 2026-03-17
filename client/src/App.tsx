@@ -20,6 +20,10 @@ const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 const ApiAccessPage = lazy(() => import("@/pages/ApiAccessPage"));
 const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage"));
 const VerifyEmailPage = lazy(() => import("@/pages/VerifyEmailPage"));
+const AboutPage = lazy(() => import("@/pages/AboutPage"));
+const ContactPage = lazy(() => import("@/pages/ContactPage"));
+const PrivacyPage = lazy(() => import("@/pages/PrivacyPage"));
+const TermsPage = lazy(() => import("@/pages/TermsPage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -59,6 +63,19 @@ function AppInner() {
         <VerifyEmailPage />
       </Suspense>
     );
+  }
+
+  if (location === "/about") {
+    return <Suspense fallback={null}><AboutPage /></Suspense>;
+  }
+  if (location === "/contact") {
+    return <Suspense fallback={null}><ContactPage /></Suspense>;
+  }
+  if (location === "/privacy") {
+    return <Suspense fallback={null}><PrivacyPage /></Suspense>;
+  }
+  if (location === "/terms") {
+    return <Suspense fallback={null}><TermsPage /></Suspense>;
   }
 
   if (location.startsWith("/share/")) {
