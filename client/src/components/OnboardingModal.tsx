@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Brain, Globe, Paperclip, BookOpen, Zap, Crown, ArrowRight, Check, Sparkles, Mic, Pin, LayoutList,
+  Brain, Globe, Paperclip, BookOpen, Zap, Crown, ArrowRight, Check, Sparkles, Mic, Pin, LayoutList, ClipboardPaste,
 } from "lucide-react";
 
 const STARTER_PROMPTS = [
@@ -63,7 +63,7 @@ function buildSteps(onStartWithPrompt?: (prompt: string) => void, onFinish?: () 
       subtitle: "Work smarter with every conversation",
       desc: "A few extras that make a big difference:",
       bullets: [
-        { icon: Pin, label: "Pin messages", desc: "Hover any reply → pin icon to bookmark it for later" },
+        { icon: ClipboardPaste, label: "Smart Paste", desc: "Paste 500+ characters and it auto-converts to a file attachment" },
         { icon: Mic, label: "Voice input", desc: "Tap the mic in the chat bar to dictate your message" },
         { icon: LayoutList, label: "Prompt library", desc: "Save favourite prompts and re-use them instantly" },
       ],
@@ -101,7 +101,7 @@ function buildSteps(onStartWithPrompt?: (prompt: string) => void, onFinish?: () 
   ];
 }
 
-const STORAGE_KEY = "onboarding-complete-v1";
+const STORAGE_KEY = "onboarding-complete-v2";
 
 export function OnboardingModal({ onStartWithPrompt }: OnboardingModalProps) {
   const [open, setOpen] = useState(false);
@@ -134,6 +134,7 @@ export function OnboardingModal({ onStartWithPrompt }: OnboardingModalProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) finish(); }}>
       <DialogContent className="sm:max-w-[460px] p-0 overflow-hidden border-none shadow-2xl gap-0">
+        <DialogTitle className="sr-only">Welcome tour</DialogTitle>
         {/* Progress bar */}
         <div className="h-1 bg-muted w-full">
           <div

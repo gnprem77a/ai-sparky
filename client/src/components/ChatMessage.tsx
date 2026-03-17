@@ -642,7 +642,15 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
                         </div>
                       )}
                     </div>
-                    <div className={cn("absolute -left-20 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                    <div className={cn("absolute -left-[120px] top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                      <button
+                        onClick={handleCopyResponse}
+                        data-testid={`button-copy-user-${message.id}`}
+                        title="Copy message"
+                        className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 transition-all"
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
                       <button
                         onClick={handleTogglePin}
                         data-testid={`button-pin-message-${message.id}`}

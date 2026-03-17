@@ -13,7 +13,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -59,6 +59,7 @@ export default function ChatPage() {
   const [, navigate] = useLocation();
   const { setOpenMobile, isMobile, openMobile } = useSidebar();
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [localAutoScroll, setLocalAutoScroll] = useState(true);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
@@ -241,6 +242,7 @@ export default function ChatPage() {
   const assistantName = userSettings?.assistantName ?? "Assistant";
   const autoScroll = userSettings?.autoScroll ?? true;
   const autoTitle = userSettings?.autoTitle ?? true;
+  useEffect(() => { setLocalAutoScroll(autoScroll); }, [autoScroll]);
   const showTokenUsage = userSettings?.showTokenUsage ?? false;
   const notificationSound = userSettings?.notificationSound ?? false;
 
@@ -328,8 +330,8 @@ export default function ChatPage() {
 
   /* ── Auto-scroll ── */
   useEffect(() => {
-    if (autoScroll && isAtBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isStreaming, autoScroll, isAtBottom]);
+    if (localAutoScroll && isAtBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, isStreaming, localAutoScroll, isAtBottom]);
 
   /* ── Track scroll position for "scroll to bottom" button ── */
   useEffect(() => {
@@ -1053,12 +1055,16 @@ export default function ChatPage() {
                       <MoreHorizontal className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="w-52">
                     <DropdownMenuItem onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }} className="gap-2 cursor-pointer">
                       <Search className="w-3.5 h-3.5" /> Search in chat
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setPinnedOpen(true)} className="gap-2 cursor-pointer">
                       <Pin className="w-3.5 h-3.5" /> Pinned messages
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setLocalAutoScroll(v => !v)} className="gap-2 cursor-pointer">
+                      <ArrowDownToLine className={cn("w-3.5 h-3.5", localAutoScroll && "text-primary")} />
+                      Auto-scroll {localAutoScroll ? "on" : "off"}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleExport} className="gap-2 cursor-pointer">
                       <Download className="w-3.5 h-3.5" /> Download Markdown
@@ -1163,6 +1169,16 @@ export default function ChatPage() {
             <Button
               size="icon"
               variant="ghost"
+              onClick={() => setLocalAutoScroll(v => !v)}
+              data-testid="button-toggle-autoscroll"
+              title={localAutoScroll ? "Auto-scroll on — click to disable" : "Auto-scroll off — click to enable"}
+              className={cn("hidden sm:flex h-9 w-9", localAutoScroll ? "text-primary bg-primary/10" : "text-muted-foreground")}
+            >
+              <ArrowDownToLine className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={toggleTheme}
               data-testid="button-toggle-theme"
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -1258,7 +1274,7 @@ export default function ChatPage() {
                   <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
                 </div>
               ) : messages.length === 0 ? (
-                <EmptyState onSuggest={(text) => { setInput(text); }} />
+                <EmptyState onSuggest={(text) => { setInput(text); }} userName={user?.username} />
               ) : (
                 <div className="max-w-3xl mx-auto py-6">
                   {messages.map((msg) => (
@@ -1487,11 +1503,12 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
+function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void; userName?: string }) {
   const { t } = useLanguage();
   const greeting = getGreeting();
+  const personalName = userName ? `, ${userName.charAt(0).toUpperCase() + userName.slice(1)}` : "";
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-full py-10 px-6 overflow-hidden">
+    <div className="relative flex flex-col items-center justify-center min-h-full py-10 px-4 sm:px-6 overflow-hidden">
       {/* Ambient glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-primary/8 rounded-full blur-[100px] pointer-events-none -z-10" />
 
@@ -1500,8 +1517,8 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-3xl scale-[2] -z-10" />
       </div>
 
-      <p className="text-xs font-semibold text-primary/60 uppercase tracking-widest mb-1">{greeting}</p>
-      <h1 className="text-[2rem] font-black tracking-tight text-foreground mb-2 text-center">
+      <p className="text-xs font-semibold text-primary/60 uppercase tracking-widest mb-1">{greeting}{personalName}</p>
+      <h1 className="text-[1.8rem] sm:text-[2rem] font-black tracking-tight text-foreground mb-2 text-center">
         {t("chat.empty.title")}
       </h1>
       <p className="text-muted-foreground/70 text-sm mb-7 text-center max-w-[340px] leading-relaxed">
