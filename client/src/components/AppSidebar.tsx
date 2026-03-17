@@ -166,6 +166,13 @@ export function AppSidebar({
     queryKey: ["/api/settings/usage"],
   });
 
+  interface MonthlyUsage { isPro: boolean; used: number; limit: number; resetAt: string | null; warnAt: number; blocked: boolean; }
+  const { data: monthlyUsage } = useQuery<MonthlyUsage>({
+    queryKey: ["/api/usage"],
+    enabled: !!user && (user?.plan === "pro"),
+    refetchInterval: 60_000,
+  });
+
   const { data: folders = [] } = useQuery<FolderType[]>({
     queryKey: ["/api/folders"],
   });
@@ -789,6 +796,45 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="px-3 py-3 space-y-1">
+        {/* Monthly token usage bar for Pro users */}
+        {monthlyUsage && isPro && user && (
+          (() => {
+            const pct = Math.min(100, (monthlyUsage.used / monthlyUsage.limit) * 100);
+            const isWarn    = monthlyUsage.used >= monthlyUsage.warnAt;
+            const isBlocked = monthlyUsage.blocked;
+            const resetDate = monthlyUsage.resetAt ? new Date(monthlyUsage.resetAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+            const usedK  = (monthlyUsage.used / 1000).toFixed(0);
+            const limitK = (monthlyUsage.limit / 1_000_000).toFixed(1);
+            const barColor = isBlocked ? "from-red-500 to-red-600" : isWarn ? "from-orange-500 to-amber-500" : "from-violet-500 to-purple-500";
+            const borderColor = isBlocked ? "border-red-500/20" : isWarn ? "border-amber-500/20" : "border-violet-500/15";
+            const bgColor = isBlocked ? "bg-red-500/5" : isWarn ? "bg-amber-500/5" : "bg-violet-500/5";
+            const textColor = isBlocked ? "text-red-400" : isWarn ? "text-amber-400" : "text-violet-400";
+            return (
+              <div className={`mb-1 px-1 py-2.5 rounded-xl ${bgColor} border ${borderColor} space-y-2`}>
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-1.5">
+                    <Crown className={`w-3 h-3 ${textColor}`} />
+                    <span className={`text-[11px] font-semibold ${textColor}`}>Monthly tokens</span>
+                  </div>
+                  <span className={`text-[11px] font-bold tabular-nums ${textColor}`}>
+                    {usedK}K / {limitK}M
+                  </span>
+                </div>
+                <div className="mx-1 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                  <div className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                </div>
+                {isBlocked ? (
+                  <p className={`text-[10px] font-medium px-1 ${textColor}`}>Limit reached · Resets {resetDate}</p>
+                ) : isWarn ? (
+                  <p className={`text-[10px] font-medium px-1 ${textColor}`}>90%+ used · Resets {resetDate}</p>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground/50 px-1">Resets {resetDate}</p>
+                )}
+              </div>
+            );
+          })()
+        )}
+
         {/* Usage bar for free users */}
         {usage && !isPro && user && (
           <div className="mb-1 px-1 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/15 space-y-2">

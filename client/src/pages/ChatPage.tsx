@@ -624,8 +624,8 @@ export default function ChatPage() {
           messages: historyForApi,
           model: isPro ? (modelOverride ?? model) : "fast",
           maxTokens: isPro
-            ? ((modelOverride ?? model) === "powerful" ? 16000 : 8192)
-            : 2048,
+            ? ((modelOverride ?? model) === "powerful" ? 32000 : (modelOverride ?? model) === "fast" ? 4096 : 8192)
+            : 4096,
           webSearch: webSearchMode,
         }),
         signal: controller.signal,
@@ -633,6 +633,15 @@ export default function ChatPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Request failed" }));
+        if (errorData.monthlyLimitReached) {
+          toast({ title: "Monthly token limit reached", description: errorData.error || "Your Pro monthly output limit has been reached. It resets on your billing date.", variant: "destructive" });
+          queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+          setIsStreaming(false);
+          setStreamingModel(null);
+          setStreamingMessageId(null);
+          setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
+          return;
+        }
         throw new Error(errorData.error || "Request failed");
       }
 
@@ -666,7 +675,16 @@ export default function ChatPage() {
           const data = line.slice(6);
           try {
             const parsed = JSON.parse(data);
-            if (parsed.error || parsed.limitReached) {
+            if (parsed.error || parsed.limitReached || parsed.monthlyLimitReached) {
+              if (parsed.monthlyLimitReached) {
+                toast({ title: "Monthly token limit reached", description: parsed.error || "Your Pro monthly output limit has been reached. It will reset on your billing date.", variant: "destructive" });
+                queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+                setIsStreaming(false);
+                setStreamingModel(null);
+                setStreamingMessageId(null);
+                setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
+                return;
+              }
               if (parsed.limitReached || (parsed.error && String(parsed.error).includes("Daily message limit"))) {
                 setUpgradeReason("limit");
                 setShowUpgradeModal(true);
@@ -700,6 +718,15 @@ export default function ChatPage() {
                 setMessages((prev) =>
                   prev.map((m) => m.id === assistantMsgId ? { ...m, searching: undefined } : m)
                 );
+              }
+              /* Refresh Pro monthly usage bar */
+              if (parsed.monthlyTokensUsed !== undefined) {
+                queryClient.invalidateQueries({ queryKey: ["/api/usage"] });
+              }
+              /* 90% warning toast */
+              if (parsed.monthlyWarn && !sessionStorage.getItem("monthlyWarnToasted")) {
+                sessionStorage.setItem("monthlyWarnToasted", "1");
+                toast({ title: "Token budget at 90%", description: `You've used ${(parsed.monthlyTokensUsed / 1000).toFixed(0)}K / 2,200K output tokens this month.`, variant: "destructive" });
               }
             }
             if (parsed.modelUsed) {

@@ -723,6 +723,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  /* ── Pro monthly token usage ── */
+  app.get("/api/usage", requireAuth as any, async (req: Request, res: Response) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "User not found" });
+    const pro = isProActive(user);
+    const PRO_MONTHLY_LIMIT = 2_200_000;
+    const now = new Date();
+    let resetAt = user.monthlyTokensResetAt;
+    let used    = user.monthlyOutputTokens ?? 0;
+    if (pro && resetAt && now >= resetAt) {
+      /* period elapsed — show 0 until next chat triggers reset */
+      used = 0;
+    }
+    return res.json({
+      isPro: pro,
+      used,
+      limit: PRO_MONTHLY_LIMIT,
+      resetAt: resetAt?.toISOString() ?? null,
+      warnAt: Math.floor(PRO_MONTHLY_LIMIT * 0.9),
+      blocked: pro && used >= PRO_MONTHLY_LIMIT,
+    });
+  });
+
   /* ── conversations: pin/unpin ── */
   app.patch("/api/conversations/:id/pin", requireAuth as any, async (req: Request, res: Response) => {
     const conv = await storage.getConversation(req.params.id as string);
@@ -732,8 +755,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(updated);
   });
 
-  /* ── conversations: generate share link ── */
+  /* ── conversations: generate share link (Pro only) ── */
   app.post("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Conversation sharing requires a Pro plan.", proRequired: true });
     const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const token = conv.shareToken ?? crypto.randomUUID();
@@ -741,8 +766,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ shareToken: token, shareUrl: `/share/${token}` });
   });
 
-  /* ── conversations: remove share link ── */
+  /* ── conversations: remove share link (Pro only) ── */
   app.delete("/api/conversations/:id/share", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Conversation sharing requires a Pro plan.", proRequired: true });
     const conv = await storage.getConversation(req.params.id as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     await storage.updateConversation(conv.id, { shareToken: null as any });
@@ -828,58 +855,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(prompts);
   });
 
-  /* ── prompts: create ── */
+  /* ── prompts: create (Pro only) ── */
   app.post("/api/prompts", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Saving prompts requires a Pro plan.", proRequired: true });
     const { title = "", content } = req.body;
     if (!content) return res.status(400).json({ error: "content is required" });
     const prompt = await storage.createSavedPrompt(req.session.userId!, title, content);
     return res.status(201).json(prompt);
   });
 
-  /* ── prompts: delete ── */
+  /* ── prompts: delete (Pro only) ── */
   app.delete("/api/prompts/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Managing prompts requires a Pro plan.", proRequired: true });
     await storage.deleteSavedPrompt(req.params.id as string);
     return res.json({ ok: true });
   });
 
-  /* ── analytics: overview ── */
+  /* ── analytics helper: Pro-only guard ── */
+  async function requireProAnalytics(req: Request, res: Response): Promise<boolean> {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) {
+      res.status(403).json({ error: "Analytics requires a Pro plan.", proRequired: true });
+      return false;
+    }
+    return true;
+  }
+
+  /* ── analytics: overview (Pro only) ── */
   app.get("/api/analytics/overview", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsOverview(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: daily ── */
+  /* ── analytics: daily (Pro only) ── */
   app.get("/api/analytics/daily", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsDaily(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: models ── */
+  /* ── analytics: models (Pro only) ── */
   app.get("/api/analytics/models", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsModels(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: peak hours ── */
+  /* ── analytics: peak hours (Pro only) ── */
   app.get("/api/analytics/peak-hours", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsPeakHours(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: estimated cost ── */
+  /* ── analytics: estimated cost (Pro only) ── */
   app.get("/api/analytics/cost", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsCost(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: top conversations ── */
+  /* ── analytics: top conversations (Pro only) ── */
   app.get("/api/analytics/top-conversations", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const data = await storage.getAnalyticsTopConversations(req.session.userId!);
     return res.json(data);
   });
 
-  /* ── analytics: monthly summary (current month) ── */
+  /* ── analytics: monthly summary (Pro only) ── */
   app.get("/api/analytics/monthly-summary", requireAuth as any, async (req: Request, res: Response) => {
+    if (!await requireProAnalytics(req, res)) return;
     const userId = req.session.userId!;
     const daily = await storage.getAnalyticsDaily(userId);
     const thisMonth = new Date().toISOString().slice(0, 7); // "2026-03"
@@ -1159,12 +1207,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const pro = isProActive(user);
 
-    /* ── Token cap: Pro up to 16 000, Free up to 2 048 ── */
-    const MAX_TOKENS_PRO  = 16000;
-    const MAX_TOKENS_FREE = 2048;
+    /* ── Pro monthly token budget check ── */
+    if (pro) {
+      const now = new Date();
+      let resetAt = user.monthlyTokensResetAt;
+      let used    = user.monthlyOutputTokens ?? 0;
+      if (!resetAt) {
+        /* first Pro activation — set reset 30 days from now */
+        resetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const { db: dbConn } = await import("./db");
+        await dbConn.execute(
+          (await import("drizzle-orm")).sql`UPDATE users SET monthly_tokens_reset_at=${resetAt}, monthly_output_tokens=0 WHERE id=${user.id}`
+        );
+        used = 0;
+      } else if (now >= resetAt) {
+        /* reset period elapsed — clear counter */
+        const nextReset = new Date(resetAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const { db: dbConn } = await import("./db");
+        await dbConn.execute(
+          (await import("drizzle-orm")).sql`UPDATE users SET monthly_tokens_reset_at=${nextReset}, monthly_output_tokens=0 WHERE id=${user.id}`
+        );
+        used = 0;
+      }
+      const PRO_MONTHLY_LIMIT = 2_200_000;
+      if (used >= PRO_MONTHLY_LIMIT) {
+        return res.status(429).json({
+          error: `Monthly token limit reached (${PRO_MONTHLY_LIMIT.toLocaleString()} output tokens). Resets on ${resetAt!.toLocaleDateString()}.`,
+          monthlyLimitReached: true,
+          resetAt: resetAt!.toISOString(),
+        });
+      }
+    }
+
+    /* ── Model-specific token limits (server-authoritative, ignore client value) ── */
+    const MODEL_TOKEN_LIMITS: Record<string, number> = {
+      powerful:  32000,
+      balanced:   8192,
+      creative:   8192,
+      auto:       8192,
+      fast:       4096,
+    };
     const maxTokens = pro
-      ? Math.min(requestedTokens, MAX_TOKENS_PRO)
-      : Math.min(requestedTokens, MAX_TOKENS_FREE);
+      ? (MODEL_TOKEN_LIMITS[model] ?? 8192)
+      : 4096; /* free users always get Fast/4096 */
 
     /* ── Free plan enforcement ── */
     let effectiveModel = model;
@@ -1216,22 +1301,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     /* ── load system prompt ── */
     const settings = await storage.getUserSettings(user.id);
     const nowBlock = `Current date and time: ${new Date().toLocaleString("en-US", { timeZone: "UTC", dateStyle: "full", timeStyle: "long" })} (UTC). When the user asks for the current time, date, or day, use this information to answer directly.`;
-    let systemPrompt: string | undefined = settings.systemPrompt?.trim() || undefined;
-    if (settings.activePromptId) {
-      const prompts = await storage.getSavedPrompts(user.id);
-      const active = prompts.find((p) => p.id === settings.activePromptId);
-      if (active) systemPrompt = active.content;
+    /* Free plan: no custom system prompt, no memory, no custom instructions */
+    let systemPrompt: string | undefined = undefined;
+    if (pro) {
+      systemPrompt = settings.systemPrompt?.trim() || undefined;
+      if (settings.activePromptId) {
+        const prompts = await storage.getSavedPrompts(user.id);
+        const active = prompts.find((p) => p.id === settings.activePromptId);
+        if (active) systemPrompt = active.content;
+      }
     }
     systemPrompt = systemPrompt ? `${nowBlock}\n\n${systemPrompt}` : nowBlock;
 
-    const customInstructions = settings.customInstructions?.trim();
-    if (customInstructions) {
-      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${customInstructions}` : customInstructions;
-    }
-    const memories = await storage.getMemories(user.id);
-    if (memories.length > 0) {
-      const memBlock = `Remembered facts about the user:\n${memories.map((m) => `- ${m.content}`).join("\n")}`;
-      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memBlock}` : memBlock;
+    if (pro) {
+      const customInstructions = settings.customInstructions?.trim();
+      if (customInstructions) {
+        systemPrompt = `${systemPrompt}\n\n${customInstructions}`;
+      }
+      const memories = await storage.getMemories(user.id);
+      if (memories.length > 0) {
+        const memBlock = `Remembered facts about the user:\n${memories.map((m) => `- ${m.content}`).join("\n")}`;
+        systemPrompt = `${systemPrompt}\n\n${memBlock}`;
+      }
     }
 
     if (settings.responseLanguage) {
@@ -1240,7 +1331,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);
-    const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-6);
+    /* ── Context window: Free=6, Pro=20 ── */
+    const contextWindow = pro ? 20 : 6;
+    const recentMessages: RawMessage[] = (messages as RawMessage[]).slice(-contextWindow);
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -1317,7 +1410,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (usedModelName) {
         res.write(`data: ${JSON.stringify({ modelUsed: usedModelName })}\n\n`);
       }
-      res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
+
+      /* ── Monthly token accounting for Pro ── */
+      if (pro && outputTokens && outputTokens > 0) {
+        const { db: dbConn } = await import("./db");
+        await dbConn.execute(
+          (await import("drizzle-orm")).sql`UPDATE users SET monthly_output_tokens = COALESCE(monthly_output_tokens,0) + ${outputTokens} WHERE id=${user.id}`
+        );
+        const freshUser = await storage.getUser(user.id);
+        const newUsed = freshUser?.monthlyOutputTokens ?? 0;
+        const PRO_MONTHLY_LIMIT = 2_200_000;
+        const warnAt = Math.floor(PRO_MONTHLY_LIMIT * 0.9);
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources, monthlyTokensUsed: newUsed, monthlyTokensLimit: PRO_MONTHLY_LIMIT, monthlyWarn: newUsed >= warnAt })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
+      }
       res.end();
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
@@ -1327,8 +1434,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  /* ── messages: pin/unpin ── */
+  /* ── messages: pin/unpin (Pro only) ── */
   app.patch("/api/conversations/:convId/messages/:msgId/pin", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Pinning messages requires a Pro plan.", proRequired: true });
     const conv = await storage.getConversation(req.params.convId as string);
     if (!conv || conv.userId !== req.session.userId) return res.status(404).json({ error: "Not found" });
     const { isPinned } = req.body;
@@ -1342,8 +1451,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(result);
   });
 
-  /* ── folders: create ── */
+  /* ── folders: create (Pro only) ── */
   app.post("/api/folders", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Folders require a Pro plan.", proRequired: true });
     const { name, color = "default" } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: "name is required" });
     const folder = await storage.createFolder(req.session.userId!, name.trim(), color);
@@ -1371,16 +1482,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(memories);
   });
 
-  /* ── memories: create ── */
+  /* ── memories: create (Pro only) ── */
   app.post("/api/memories", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Memory requires a Pro plan.", proRequired: true });
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: "content is required" });
     const mem = await storage.createMemory(req.session.userId!, content.trim());
     return res.status(201).json(mem);
   });
 
-  /* ── memories: delete ── */
+  /* ── memories: delete (Pro only) ── */
   app.delete("/api/memories/:id", requireAuth as any, async (req: Request, res: Response) => {
+    const u = await storage.getUser(req.session.userId!);
+    if (!u || !isProActive(u)) return res.status(403).json({ error: "Memory requires a Pro plan.", proRequired: true });
     await storage.deleteMemory(req.params.id as string);
     return res.json({ ok: true });
   });
@@ -1532,6 +1647,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/kb", requireAuth, async (req, res) => {
     const userId = req.session.userId!;
+    const u = await storage.getUser(userId);
+    const pro = u ? isProActive(u) : false;
+    const kbLimit = pro ? 10 : 1;
+    const existingKbs = await storage.getKnowledgeBases(userId);
+    if (existingKbs.length >= kbLimit) {
+      return res.status(403).json({
+        error: pro
+          ? `Knowledge base limit reached (${kbLimit} max on Pro).`
+          : `Free plan allows only ${kbLimit} knowledge base. Upgrade to Pro for up to 10.`,
+        proRequired: !pro,
+      });
+    }
     const { name, description = "" } = req.body as { name: string; description?: string };
     if (!name?.trim()) return res.status(400).json({ error: "Name required" });
     const kb = await storage.createKnowledgeBase(userId, name.trim(), description.trim());
@@ -1609,6 +1736,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { id } = req.params as { id: string };
     const kb = await storage.getKnowledgeBase(id);
     if (!kb || kb.userId !== userId) return res.status(404).json({ error: "Not found" });
+
+    /* ── Document limit per KB ── */
+    const u = await storage.getUser(userId);
+    const pro = u ? isProActive(u) : false;
+    const docLimit = pro ? 50 : 5;
+    const existingDocs = await storage.getKbDocuments(id);
+    if (existingDocs.length >= docLimit) {
+      return res.status(403).json({
+        error: pro
+          ? `Document limit reached (${docLimit} per KB on Pro).`
+          : `Free plan allows ${docLimit} documents per KB. Upgrade to Pro for up to 50.`,
+        proRequired: !pro,
+      });
+    }
 
     const { name, content } = req.body as { name: string; content: string };
     if (!name?.trim() || !content?.trim()) return res.status(400).json({ error: "Name and content required" });

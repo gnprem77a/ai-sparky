@@ -6,6 +6,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe, Cloud, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import type { Message, ToolCall } from "@/lib/chat-storage";
 import { BADGE_STYLE, getFriendlyModelLabel } from "@/components/ModelSelector";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -390,6 +391,7 @@ const RETRY_MODELS = [
 
 function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 0, selectedModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -525,6 +527,10 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
   };
 
   const handleToggleSpeech = () => {
+    if (!isPro) {
+      toast({ title: "Pro feature", description: "Voice output (Read aloud) is available on the Pro plan.", variant: "destructive" });
+      return;
+    }
     if (isSpeaking) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);

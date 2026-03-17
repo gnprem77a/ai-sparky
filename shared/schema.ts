@@ -24,6 +24,8 @@ export const users = pgTable("users", {
   apiRateLimitPerMin: integer("api_rate_limit_per_min"),
   isFlagged: boolean("is_flagged").notNull().default(false),
   flagReason: text("flag_reason"),
+  monthlyOutputTokens: integer("monthly_output_tokens").notNull().default(0),
+  monthlyTokensResetAt: timestamp("monthly_tokens_reset_at"),
 });
 
 export const conversations = pgTable("conversations", {

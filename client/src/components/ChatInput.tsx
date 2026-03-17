@@ -226,7 +226,23 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   /* process raw files */
   const processFiles = useCallback(async (files: FileList | File[]) => {
     setIsProcessing(true);
-    const arr = Array.from(files).slice(0, 5);
+    const maxFiles   = isPro ? 5 : 2;
+    const maxSizeMB  = isPro ? 25 : 5;
+    const maxSizeB   = maxSizeMB * 1024 * 1024;
+
+    const incoming = Array.from(files);
+    const slots    = maxFiles - attachments.length;
+    if (slots <= 0) {
+      setIsProcessing(false);
+      return;
+    }
+    const arr = incoming.slice(0, slots).filter(f => {
+      if (f.size > maxSizeB) {
+        alert(`"${f.name}" exceeds the ${maxSizeMB}MB file size limit${!isPro ? " on the Free plan" : ""}.`);
+        return false;
+      }
+      return true;
+    });
     try {
       const results = await Promise.all(arr.map(async (file) => {
         if (file.type === "application/pdf") {
@@ -251,7 +267,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
         }
         return readFileAsAttachment(file);
       }));
-      setAttachments(prev => [...prev, ...results].slice(0, 5));
+      setAttachments(prev => [...prev, ...results].slice(0, maxFiles));
     } catch (e) {
       console.error("file read error", e);
     } finally {
