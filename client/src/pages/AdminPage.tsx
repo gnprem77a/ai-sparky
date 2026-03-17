@@ -9,7 +9,7 @@ import {
   Users, ShieldCheck, Crown, UserCircle, Calendar,
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
-  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff,
+  ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -1082,6 +1082,7 @@ export default function AdminPage() {
   const [userSort, setUserSort] = useState<"name" | "plan" | "tokens" | "joined">("joined");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "api" | "providers" | "broadcast">("overview");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -1274,7 +1275,7 @@ export default function AdminPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border/60 bg-card/60 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-6 pt-4 pb-0 flex items-center gap-4">
           <button
             onClick={() => navigate("/")}
             data-testid="button-back-home"
@@ -1292,27 +1293,59 @@ export default function AdminPage() {
             Signed in as <span className="font-semibold text-foreground">{user.username}</span>
           </div>
         </div>
+        {/* Tab navigation */}
+        <nav className="max-w-5xl mx-auto px-6 flex items-center gap-0 mt-3 overflow-x-auto no-scrollbar">
+          {([
+            { id: "overview", label: "Overview", icon: BarChart2 },
+            { id: "users",    label: "Users",    icon: Users,     badge: users.length > 0 ? users.length : undefined },
+            { id: "api",      label: "API Access", icon: Key },
+            { id: "providers", label: "Providers", icon: Server },
+            { id: "broadcast", label: "Broadcast", icon: Megaphone },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              data-testid={`tab-admin-${tab.id}`}
+              className={cn(
+                "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex-shrink-0",
+                activeTab === tab.id
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+              )}
+            >
+              <tab.icon className="w-3.5 h-3.5" />
+              {tab.label}
+              {tab.badge !== undefined && (
+                <span className="ml-1 text-[10px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {stats.map((stat) => (
-            <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
-              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", stat.bg)}>
-                <stat.icon className={cn("w-4.5 h-4.5", stat.color)} style={{ width: 18, height: 18 }} />
+        {/* Stats — Overview tab */}
+        {activeTab === "overview" && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
+                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", stat.bg)}>
+                  <stat.icon className={cn("w-4.5 h-4.5", stat.color)} style={{ width: 18, height: 18 }} />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-foreground">{stat.value}</p>
+                  <p className="text-[11px] text-muted-foreground font-medium leading-tight">{stat.label}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xl font-bold text-foreground">{stat.value}</p>
-                <p className="text-[11px] text-muted-foreground font-medium leading-tight">{stat.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* Broadcast Message Section */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {/* Broadcast tab */}
+        {activeTab === "broadcast" && <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Megaphone className="w-4 h-4 text-primary" />
@@ -1358,13 +1391,13 @@ export default function AdminPage() {
               </div>
             )}
           </div>
-        </div>
+        </div>}
 
-        {/* AI Providers Section */}
-        <ProvidersSection />
+        {/* Providers tab */}
+        {activeTab === "providers" && <ProvidersSection />}
 
-        {/* Token Usage Section */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {/* Token Usage — Overview tab */}
+        {activeTab === "overview" && <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-primary" />
@@ -1414,10 +1447,10 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* Plan Features Reference */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Plan Features Reference — Overview tab */}
+        {activeTab === "overview" && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[
             {
               title: "Free Plan",
@@ -1464,10 +1497,10 @@ export default function AdminPage() {
               </ul>
             </div>
           ))}
-        </div>
+        </div>}
 
-        {/* Users table */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {/* Users table — Users tab */}
+        {activeTab === "users" && <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between gap-3 flex-wrap">
             <h2 className="font-semibold text-foreground flex-shrink-0">All Users</h2>
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1701,9 +1734,10 @@ export default function AdminPage() {
               })}
             </div>
           )}
-        </div>
-        {/* API Keys Section */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        </div>}
+
+        {/* API Access — API tab */}
+        {activeTab === "api" && <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <Key className="w-4 h-4 text-emerald-500" />
             <h2 className="font-semibold text-foreground">API Access</h2>
@@ -2008,10 +2042,10 @@ export default function AdminPage() {
               );
             })}
           </div>
-        </div>
+        </div>}
 
-        {/* ── Feature Activity ── */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden" data-testid="section-feature-activity">
+        {/* Feature Activity — Overview tab */}
+        {activeTab === "overview" && <div className="rounded-2xl border border-border bg-card overflow-hidden" data-testid="section-feature-activity">
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <Activity className="w-4 h-4 text-sky-500" />
             <h2 className="font-semibold text-foreground">Feature Activity</h2>
@@ -2048,10 +2082,10 @@ export default function AdminPage() {
               })}
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── Abuse / Flagged Users ── */}
-        {(() => {
+        {/* Flagged Users — Users tab */}
+        {activeTab === "users" && (() => {
           const flaggedUsers = users.filter(u => u.isFlagged);
           return (
             <div className="rounded-2xl border border-destructive/30 bg-card overflow-hidden" data-testid="section-flagged-users">
