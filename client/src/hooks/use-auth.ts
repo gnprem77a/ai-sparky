@@ -25,13 +25,13 @@ export function useAuth() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: (data: { username: string; password: string }) =>
+    mutationFn: (data: { email: string; password: string }) =>
       apiRequest("POST", "/api/auth/login", data).then((r) => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }),
   });
 
   const registerMutation = useMutation({
-    mutationFn: (data: { username: string; password: string }) =>
+    mutationFn: (data: { email: string; password: string }) =>
       apiRequest("POST", "/api/auth/register", data).then((r) => r.json()),
     onSuccess: () => {
       sessionStorage.setItem("justRegistered", "1");

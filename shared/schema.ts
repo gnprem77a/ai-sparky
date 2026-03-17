@@ -13,7 +13,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   apiKey: text("api_key"),
   apiEnabled: boolean("api_enabled").notNull().default(false),
-  email: text("email"),
+  email: text("email").unique(),
   apiDailyLimit: integer("api_daily_limit"),
   apiDailyCount: integer("api_daily_count").notNull().default(0),
   apiDailyResetAt: timestamp("api_daily_reset_at"),
@@ -234,10 +234,12 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
+export const insertUserSchema = createInsertSchema(users)
+  .pick({ password: true })
+  .extend({
+    email: z.string().email("Please enter a valid email address"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+  });
 
 export const insertBroadcastSchema = createInsertSchema(broadcasts).omit({
   id: true,
@@ -251,7 +253,11 @@ export type AiProvider = typeof aiProviders.$inferSelect;
 export const insertStudyNoteSchema = createInsertSchema(studyNotes).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStudyOutputSchema = createInsertSchema(studyOutputs).omit({ id: true, createdAt: true });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertUser = {
+  username: string;
+  email: string | null;
+  password: string;
+};
 export type User = typeof users.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;

@@ -435,16 +435,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── auth: register ── */
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Username and password are required." });
-    const { username, password } = parsed.data;
+    if (!parsed.success) {
+      const first = parsed.error.errors[0]?.message;
+      return res.status(400).json({ error: first || "Email and password are required." });
+    }
+    const { email, password } = parsed.data;
+    const normalizedEmail = email.toLowerCase().trim();
 
-    const existing = await storage.getUserByUsername(username);
-    if (existing) return res.status(409).json({ error: "Username already taken." });
+    const existingEmail = await storage.getUserByEmail(normalizedEmail);
+    if (existingEmail) return res.status(409).json({ error: "An account with this email already exists." });
+
+    // Auto-generate a unique username from the email prefix
+    const base = normalizedEmail.split("@")[0].replace(/[^a-z0-9_]/g, "_").slice(0, 20) || "user";
+    let username = base;
+    let suffix = 2;
+    while (await storage.getUserByUsername(username)) {
+      username = `${base}${suffix++}`;
+    }
 
     const hashed = await bcrypt.hash(password, 12);
     const allUsers = await storage.getAllUsers();
     const isFirstUser = allUsers.length === 0;
-    const user = await storage.createUser({ username, password: hashed });
+    const user = await storage.createUser({ username, email: normalizedEmail, password: hashed });
     if (isFirstUser) {
       await storage.setAdmin(user.id, true);
       await storage.setPlan(user.id, "pro", null);
@@ -457,15 +469,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── auth: login ── */
   app.post("/api/auth/login", async (req: Request, res: Response) => {
-    const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Username and password are required." });
-    const { username, password } = parsed.data;
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
 
-    const user = await storage.getUserByUsername(username);
-    if (!user) return res.status(401).json({ error: "Invalid username or password." });
+    // Primary: look up by email; fallback to username for legacy accounts
+    const user =
+      (await storage.getUserByEmail(email.toLowerCase().trim())) ??
+      (await storage.getUserByUsername(email.trim()));
+
+    if (!user) return res.status(401).json({ error: "Invalid email or password." });
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: "Invalid username or password." });
+    if (!valid) return res.status(401).json({ error: "Invalid email or password." });
 
     req.session.userId = user.id;
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });

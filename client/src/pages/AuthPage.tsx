@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 
 const schema = z.object({
-  username: z.string().min(3, "At least 3 characters").max(32, "At most 32 characters"),
+  email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "At least 6 characters"),
 });
 type FormData = z.infer<typeof schema>;
@@ -36,7 +36,7 @@ export default function AuthPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { email: "", password: "" },
   });
 
   const forgotForm = useForm<ForgotData>({
@@ -193,27 +193,30 @@ export default function AuthPage() {
               {/* Form */}
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="username">
-                    Username
+                  <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="email">
+                    Email address
                   </label>
-                  <input
-                    id="username"
-                    type="text"
-                    autoComplete="username"
-                    data-testid="input-username"
-                    placeholder="your_username"
-                    {...form.register("username")}
-                    className={cn(
-                      "w-full px-3.5 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
-                      "placeholder:text-muted-foreground/50 text-foreground",
-                      "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
-                      form.formState.errors.username
-                        ? "border-destructive/60"
-                        : "border-border hover:border-border/80"
-                    )}
-                  />
-                  {form.formState.errors.username && (
-                    <p className="text-xs text-destructive mt-1">{form.formState.errors.username.message}</p>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                    <input
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      data-testid="input-email"
+                      placeholder="you@example.com"
+                      {...form.register("email")}
+                      className={cn(
+                        "w-full pl-9 pr-3.5 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
+                        "placeholder:text-muted-foreground/50 text-foreground",
+                        "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                        form.formState.errors.email
+                          ? "border-destructive/60"
+                          : "border-border hover:border-border/80"
+                      )}
+                    />
+                  </div>
+                  {form.formState.errors.email && (
+                    <p className="text-xs text-destructive mt-1">{form.formState.errors.email.message}</p>
                   )}
                 </div>
 
