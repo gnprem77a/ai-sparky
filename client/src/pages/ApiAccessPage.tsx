@@ -114,6 +114,8 @@ export default function ApiAccessPage() {
   const { toast } = useToast();
   const [revealed, setRevealed] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
+  const [newKeyReveal, setNewKeyReveal] = useState<string | null>(null);
+  const [newKeyCopied, setNewKeyCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "history" | "pricing" | "webhooks" | "docs">("overview");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSaved, setWebhookSaved] = useState(false);
@@ -138,9 +140,13 @@ export default function ApiAccessPage() {
 
   const regenerateMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/me/api-key/regenerate").then((r) => r.json()),
-    onSuccess: () => {
+    onSuccess: (responseData: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/me/api-key"] });
-      setRevealed(true);
+      if (responseData?.apiKey && responseData?.oneTimeReveal) {
+        setNewKeyReveal(responseData.apiKey);
+        setNewKeyCopied(false);
+      }
+      setRevealed(false);
     },
   });
 
@@ -271,23 +277,25 @@ export default function ApiAccessPage() {
   /* ── Pro user with API access ── */
   const baseUrl = window.location.origin;
   const apiKey = data?.apiKey ?? "";
-  const maskedKey = apiKey ? apiKey.slice(0, 12) + "•".repeat(Math.max(0, apiKey.length - 16)) + apiKey.slice(-4) : "Loading...";
+  // API key is stored masked for security (full key shown one-time on generation only)
+  const maskedKey = apiKey || "Loading...";
   const balance = data?.balance ?? 0;
   const balanceLow = balance > 0 && balance < 10;
 
+  const displayKey = newKeyReveal || "<your-api-key>";
   const curlExample = `curl -X POST ${baseUrl}/api/v1/chat \\
-  -H "Authorization: Bearer ${apiKey || "<your-api-key>"}" \\
+  -H "Authorization: Bearer ${displayKey}" \\
   -H "Content-Type: application/json" \\
   -d '{"message": "Hello!", "model": "balanced"}'`;
 
   const curlStreamExample = `curl -X POST ${baseUrl}/api/v1/chat \\
-  -H "Authorization: Bearer ${apiKey || "<your-api-key>"}" \\
+  -H "Authorization: Bearer ${displayKey}" \\
   -H "Content-Type: application/json" \\
   -d '{"message": "Write a short story", "model": "powerful", "stream": true}'`;
 
   const pythonExample = `import requests
 
-API_KEY = "${apiKey || "<your-api-key>"}"
+API_KEY = "${displayKey}"
 BASE_URL = "${baseUrl}/api/v1/chat"
 
 response = requests.post(
@@ -306,7 +314,7 @@ print("Balance remaining:", response.headers["X-Balance-Remaining"])`;
   const jsExample = `const response = await fetch("${baseUrl}/api/v1/chat", {
   method: "POST",
   headers: {
-    "Authorization": "Bearer ${apiKey || "<your-api-key>"}",
+    "Authorization": "Bearer ${displayKey}",
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
@@ -364,18 +372,47 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
           ) : (
             <div className="flex items-center gap-2">
               <div className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border font-mono text-sm text-foreground overflow-hidden">
-                <span className="flex-1 truncate" data-testid="text-api-key">{revealed ? apiKey : maskedKey}</span>
+                <span className="flex-1 truncate" data-testid="text-api-key">{maskedKey}</span>
               </div>
-              <button onClick={() => setRevealed(!revealed)} title={revealed ? "Hide" : "Reveal"} className="p-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0" data-testid="button-toggle-reveal">
-                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
               <button
-                onClick={() => { if (!apiKey) return; navigator.clipboard.writeText(apiKey); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
-                className={cn("p-3 rounded-xl border transition-all flex-shrink-0", keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
+                onClick={() => { navigator.clipboard.writeText(newKeyReveal ?? ""); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
+                disabled={!newKeyReveal}
+                title={newKeyReveal ? "Copy full key" : "Regenerate your key to copy it"}
+                className={cn("p-3 rounded-xl border transition-all flex-shrink-0", !newKeyReveal ? "border-border/40 text-muted-foreground/30 cursor-not-allowed" : keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
                 data-testid="button-copy-key"
               >
                 {keyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
+            </div>
+          )}
+
+          {/* One-time reveal banner shown immediately after key generation/regeneration */}
+          {newKeyReveal && (
+            <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-green-500/10 border border-green-500/30 text-xs">
+              <div className="flex items-start gap-2">
+                <span className="text-green-500 font-bold flex-shrink-0 mt-0.5">✓</span>
+                <span className="text-green-700 dark:text-green-400 font-semibold">New key generated — copy it now. It will not be shown again.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-2 rounded-lg bg-background border border-green-500/30 font-mono text-green-700 dark:text-green-300 overflow-x-auto whitespace-nowrap text-[11px]" data-testid="text-new-api-key">
+                  {newKeyReveal}
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(newKeyReveal); setNewKeyCopied(true); setTimeout(() => setNewKeyCopied(false), 3000); }}
+                  className={cn("p-2 rounded-lg border transition-all flex-shrink-0", newKeyCopied ? "border-green-500/40 bg-green-500/15 text-green-600" : "border-green-500/30 text-green-600 hover:bg-green-500/15")}
+                  data-testid="button-copy-new-key"
+                >
+                  {newKeyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => setNewKeyReveal(null)}
+                  className="p-2 rounded-lg border border-green-500/20 text-green-600/60 hover:text-green-600 hover:bg-green-500/10 transition-all flex-shrink-0"
+                  data-testid="button-dismiss-new-key"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
 

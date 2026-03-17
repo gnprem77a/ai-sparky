@@ -260,13 +260,14 @@ interface ProviderFormData {
   priority: number;
   inputPricePerMillion: string;
   outputPricePerMillion: string;
+  maxOutputTokens: string;
 }
 
 const EMPTY_FORM: ProviderFormData = {
   name: "", providerType: "openai", apiUrl: "", apiKey: "", modelName: "",
   headers: "", httpMethod: "POST", authStyle: "bearer", authHeaderName: "", streamMode: "none",
   bodyTemplate: "", responsePath: "", isEnabled: true, priority: 100,
-  inputPricePerMillion: "", outputPricePerMillion: "",
+  inputPricePerMillion: "", outputPricePerMillion: "", maxOutputTokens: "",
 };
 
 const HTTP_METHODS = ["POST", "GET", "PUT", "PATCH", "DELETE"];
@@ -422,6 +423,7 @@ function ProviderFormModal({
           priority: editing.priority,
           inputPricePerMillion: (editing as any).inputPricePerMillion != null ? String((editing as any).inputPricePerMillion) : "",
           outputPricePerMillion: (editing as any).outputPricePerMillion != null ? String((editing as any).outputPricePerMillion) : "",
+          maxOutputTokens: (editing as any).maxOutputTokens != null ? String((editing as any).maxOutputTokens) : "",
         }
       : EMPTY_FORM
   );
@@ -679,6 +681,20 @@ function ProviderFormModal({
             </Field>
           </div>
 
+          {/* Max output tokens override */}
+          <Field label="Max Output Tokens (optional — leave blank for platform default)">
+            <input
+              type="number"
+              step="1"
+              min="1"
+              value={form.maxOutputTokens}
+              onChange={(e) => set("maxOutputTokens", e.target.value)}
+              placeholder="e.g. 32768"
+              className={inputClass}
+              data-testid="input-provider-max-output-tokens"
+            />
+          </Field>
+
           {/* Advanced */}
           <button
             onClick={() => setShowAdvanced((s) => !s)}
@@ -861,6 +877,7 @@ function ProvidersSection() {
       priority: typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100,
       inputPricePerMillion: data.inputPricePerMillion !== "" ? parseFloat(data.inputPricePerMillion) : null,
       outputPricePerMillion: data.outputPricePerMillion !== "" ? parseFloat(data.outputPricePerMillion) : null,
+      maxOutputTokens: data.maxOutputTokens !== "" ? parseInt(data.maxOutputTokens, 10) : null,
     }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setShowForm(false); setEditingProvider(null); },
   });
@@ -878,6 +895,9 @@ function ProvidersSection() {
           : undefined,
         outputPricePerMillion: data.outputPricePerMillion !== undefined
           ? (data.outputPricePerMillion !== "" ? parseFloat(data.outputPricePerMillion as string) : null)
+          : undefined,
+        maxOutputTokens: data.maxOutputTokens !== undefined
+          ? (data.maxOutputTokens !== "" ? parseInt(data.maxOutputTokens as string, 10) : null)
           : undefined,
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setEditingProvider(null); setShowForm(false); },

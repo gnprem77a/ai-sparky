@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   monthlyOutputTokens: integer("monthly_output_tokens").notNull().default(0),
   monthlyTokensResetAt: timestamp("monthly_tokens_reset_at"),
   apiBalance: real("api_balance").notNull().default(0),
+  apiKeyHash: text("api_key_hash"),
 });
 
 export const conversations = pgTable("conversations", {
@@ -124,6 +125,7 @@ export const aiProviders = pgTable("ai_providers", {
   responsePath: text("response_path"),
   inputPricePerMillion: real("input_price_per_million"),
   outputPricePerMillion: real("output_price_per_million"),
+  maxOutputTokens: integer("max_output_tokens"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -188,6 +190,7 @@ export const apiLogs = pgTable("api_logs", {
   inputCost: real("input_cost"),
   outputCost: real("output_cost"),
   success: boolean("success").notNull().default(true),
+  requestId: text("request_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 export type ApiLog = typeof apiLogs.$inferSelect;

@@ -1,3 +1,14 @@
+import { createHash } from "crypto";
+
+function hashApiKey(rawKey: string): string {
+  return createHash("sha256").update(rawKey).digest("hex");
+}
+
+function maskApiKey(rawKey: string): string {
+  if (rawKey.length <= 16) return rawKey;
+  return rawKey.slice(0, 14) + "•".repeat(8) + rawKey.slice(-4);
+}
+
 import {
   type User, type InsertUser, users,
   type Conversation, conversations,
@@ -22,20 +33,21 @@ import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByApiKey(apiKey: string): Promise<User | undefined>;
+  getUserByApiKey(rawKey: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<User | undefined>;
   setPlan(id: string, plan: "free" | "pro", expiresAt: Date | null): Promise<User | undefined>;
   updatePassword(id: string, hashedPassword: string): Promise<void>;
-  setApiKey(id: string, apiKey: string | null): Promise<User | undefined>;
+  setApiKey(id: string, rawKey: string | null): Promise<{ user: User; maskedKey: string } | undefined>;
   setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
   setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined>;
   incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }>;
-  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean }): Promise<ApiLog>;
+  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; requestId?: string }): Promise<ApiLog>;
   getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
   adjustApiBalance(id: string, delta: number): Promise<User | undefined>;
+  deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number }>;
   getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }>;
 
   getConversations(userId: string): Promise<Conversation[]>;
@@ -141,9 +153,21 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByApiKey(apiKey: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.apiKey, apiKey));
-    return user;
+  async getUserByApiKey(rawKey: string): Promise<User | undefined> {
+    const hash = hashApiKey(rawKey);
+    // Primary: lookup by hash (secure, new system)
+    const [byHash] = await db.select().from(users).where(eq(users.apiKeyHash, hash));
+    if (byHash) return byHash;
+    // Fallback: plaintext lookup for keys that predate hashing, then migrate on the fly
+    const [byPlain] = await db.select().from(users).where(eq(users.apiKey, rawKey));
+    if (byPlain) {
+      // Migrate: store hash + masked display, clear raw key
+      await db.update(users).set({
+        apiKeyHash: hash,
+        apiKey: maskApiKey(rawKey),
+      }).where(eq(users.id, byPlain.id));
+    }
+    return byPlain;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -173,9 +197,15 @@ export class DatabaseStorage implements IStorage {
     await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
   }
 
-  async setApiKey(id: string, apiKey: string | null): Promise<User | undefined> {
-    const [user] = await db.update(users).set({ apiKey }).where(eq(users.id, id)).returning();
-    return user;
+  async setApiKey(id: string, rawKey: string | null): Promise<{ user: User; maskedKey: string } | undefined> {
+    if (rawKey === null) {
+      const [user] = await db.update(users).set({ apiKey: null, apiKeyHash: null }).where(eq(users.id, id)).returning();
+      return user ? { user, maskedKey: "" } : undefined;
+    }
+    const hash = hashApiKey(rawKey);
+    const masked = maskApiKey(rawKey);
+    const [user] = await db.update(users).set({ apiKey: masked, apiKeyHash: hash }).where(eq(users.id, id)).returning();
+    return user ? { user, maskedKey: masked } : undefined;
   }
 
   async setApiEnabled(id: string, enabled: boolean): Promise<User | undefined> {
@@ -223,7 +253,7 @@ export class DatabaseStorage implements IStorage {
     return { allowed: true, dailyUsed: dailyCount + 1, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount + 1, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: null };
   }
 
-  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean }): Promise<ApiLog> {
+  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; requestId?: string }): Promise<ApiLog> {
     const [log] = await db.insert(apiLogs).values({ ...data, success: data.success ?? true }).returning();
     return log;
   }
@@ -238,6 +268,23 @@ export class DatabaseStorage implements IStorage {
     const newBalance = Math.max(0, (user.apiBalance ?? 0) + delta);
     const [updated] = await db.update(users).set({ apiBalance: newBalance }).where(eq(users.id, id)).returning();
     return updated;
+  }
+
+  // Atomically deducts cost from wallet. Prevents race conditions and negative balance.
+  // Returns { success: false } if insufficient balance without touching the balance.
+  async deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number }> {
+    const rounded = Math.round(cost * 1_000_000) / 1_000_000;
+    const result = await db.execute(drizzleSql`
+      UPDATE users
+      SET api_balance = ROUND(CAST(api_balance - ${rounded} AS NUMERIC), 6)::REAL
+      WHERE id = ${id} AND api_balance >= ${rounded}
+      RETURNING api_balance
+    `);
+    if (result.rows.length === 0) {
+      const [u] = await db.select({ bal: users.apiBalance }).from(users).where(eq(users.id, id));
+      return { success: false, newBalance: u?.bal ?? 0 };
+    }
+    return { success: true, newBalance: (result.rows[0] as any).api_balance ?? 0 };
   }
 
   async getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }> {
