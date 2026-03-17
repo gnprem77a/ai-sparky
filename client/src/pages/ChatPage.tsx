@@ -1481,13 +1481,34 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         </div>
       </div>
 
+      {/* Model lineup */}
+      <div className="w-full max-w-2xl mb-5">
+        <p className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-2.5">Available Models</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { icon: "👑", label: "Powerful",  model: "Claude Opus 4.6",  color: "text-amber-400",   bg: "bg-amber-500/8  border-amber-500/20" },
+            { icon: "⚖️", label: "Balanced",  model: "Mistral Large 3",  color: "text-violet-400",  bg: "bg-violet-500/8 border-violet-500/20" },
+            { icon: "🎨", label: "Creative",  model: "GPT 5.3",          color: "text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/20" },
+            { icon: "⚡", label: "Fast",      model: "Claude Haiku",     color: "text-blue-400",    bg: "bg-blue-500/8   border-blue-500/20" },
+          ].map((f) => (
+            <div key={f.label} className={cn("flex flex-col gap-1 px-3 py-2.5 rounded-xl border", f.bg)}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">{f.icon}</span>
+                <span className={cn("text-[11px] font-bold", f.color)}>{f.label}</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground/70 leading-tight">{f.model}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Feature highlights */}
       <div className="w-full max-w-2xl mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
-          { icon: "👑", label: "Claude Opus 4.6", desc: "Anthropic's most powerful AI" },
           { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
-          { icon: "🎤", label: "Voice Chat", desc: "Talk instead of type" },
-          { icon: "📎", label: "File Uploads", desc: "Share images & PDFs" },
+          { icon: "🔍", label: "Cohere Rerank",  desc: "Smarter KB search results" },
+          { icon: "🎤", label: "Voice Chat",     desc: "Talk instead of type" },
+          { icon: "📎", label: "File Uploads",   desc: "Share images & PDFs" },
         ].map((f) => (
           <div key={f.label} className="flex flex-col items-center text-center gap-1 px-3 py-3 rounded-xl border border-border/40 bg-muted/20">
             <span className="text-xl">{f.icon}</span>

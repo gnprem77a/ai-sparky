@@ -7,7 +7,7 @@ import "katex/dist/katex.min.css";
 import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe, Cloud, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message, ToolCall } from "@/lib/chat-storage";
-import { BADGE_STYLE } from "@/components/ModelSelector";
+import { BADGE_STYLE, getFriendlyModelLabel } from "@/components/ModelSelector";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import Papa from "papaparse";
@@ -742,7 +742,7 @@ function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, 
               <span className="text-[13px] text-muted-foreground/60 font-medium tracking-wide">Thinking</span>
               {streamingModel && (
                 <span className="text-[11px] font-mono bg-primary/8 text-primary/70 px-2 py-0.5 rounded-md border border-primary/15">
-                  {streamingModel}
+                  {getFriendlyModelLabel(streamingModel)}
                 </span>
               )}
             </div>
@@ -1171,6 +1171,7 @@ function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, 
             {message.modelUsed && (() => {
               const style = BADGE_STYLE[message.modelUsed];
               if (!style) return null;
+              const label = getFriendlyModelLabel(message.modelUsed);
               return (
                 <span
                   data-testid="badge-model-used"
@@ -1179,7 +1180,7 @@ function ChatMessageInner({ message, isStreaming, streamingModel, onRegenerate, 
                     style.bg, style.color
                   )}
                 >
-                  {message.modelUsed}
+                  {label}
                 </span>
               );
             })()}

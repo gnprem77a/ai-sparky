@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, getProviderPatterns, type ModelDefinition } from "../shared/models";
+import { MODEL_REGISTRY, FALLBACK_MODEL, BLUESMINDS_MODEL_ID, getModel, getProviderPatterns, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
@@ -157,35 +157,39 @@ function scoreProvider(name: string, category: RoutingCategory): number {
   const n = name.toLowerCase();
   switch (category) {
     case "coding":
-      // Mistral excels at technical/code tasks
-      if (n.includes("mistral")) return 100;
-      if (n.includes("gpt"))     return 80;
+      // Mistral Large 3 excels at technical/code tasks
+      if (n.includes("mistral"))                        return 100;
+      if (n.includes("gpt"))                            return 80;
+      if (n.includes("opus"))                           return 60;
       if (n.includes("claude") || n.includes("haiku")) return 40;
       break;
     case "math":
       // Mistral excels at math/logic
-      if (n.includes("reasoning")) return 100;
-      if (n.includes("mistral")) return 80;
-      if (n.includes("gpt"))     return 60;
+      if (n.includes("mistral"))                        return 100;
+      if (n.includes("gpt"))                            return 70;
+      if (n.includes("opus"))                           return 60;
       if (n.includes("claude") || n.includes("haiku")) return 40;
       break;
     case "creative":
-      // Claude Haiku excels at creative and writing tasks
-      if (n.includes("claude") || n.includes("haiku")) return 100;
-      if (n.includes("gpt"))     return 80;
-      if (n.includes("mistral")) return 40;
+      // GPT 5.3 excels at creative writing; Opus is a strong second
+      if (n.includes("gpt"))                            return 100;
+      if (n.includes("opus"))                           return 80;
+      if (n.includes("claude") || n.includes("haiku")) return 60;
+      if (n.includes("mistral"))                        return 40;
       break;
     case "research":
-      // GPT excels at knowledge, explanations, research
-      if (n.includes("gpt"))     return 100;
-      if (n.includes("claude") || n.includes("haiku")) return 80;
-      if (n.includes("mistral")) return 40;
+      // GPT excels at knowledge, explanations, research; Opus second
+      if (n.includes("gpt"))                            return 100;
+      if (n.includes("opus"))                           return 80;
+      if (n.includes("claude") || n.includes("haiku")) return 60;
+      if (n.includes("mistral"))                        return 40;
       break;
     case "quick":
-      // Claude Haiku is fastest for short responses
-      if (n.includes("claude") || n.includes("haiku")) return 100;
-      if (n.includes("gpt"))     return 80;
-      if (n.includes("mistral")) return 60;
+      // Haiku is fastest for short responses
+      if (n.includes("haiku"))                          return 100;
+      if (n.includes("claude"))                         return 80;
+      if (n.includes("gpt"))                            return 60;
+      if (n.includes("mistral"))                        return 50;
       break;
   }
   return 50; // neutral
@@ -1393,7 +1397,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .join("\n\n");
     try {
       const summary = await callAPI(
-        FALLBACK_MODEL.apiModelId,
+        BLUESMINDS_MODEL_ID,
         "You are a concise summarizer. Respond ONLY with bullet points — no intro, no conclusion.",
         `Summarize this conversation as 3–5 clear bullet points. Each bullet should capture a key topic, question answered, or decision made.\n\n${conversationText}`,
         600,
@@ -1419,7 +1423,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .join("\n\n");
     try {
       const text = await callAPI(
-        FALLBACK_MODEL.apiModelId,
+        BLUESMINDS_MODEL_ID,
         "You generate short follow-up questions. Respond ONLY with a JSON array of exactly 3 strings. No explanation, no markdown, just valid JSON like: [\"Question 1?\",\"Question 2?\",\"Question 3?\"]",
         `Based on this conversation, suggest 3 short follow-up questions the user might ask next. Keep each under 60 characters.\n\n${recent}`,
         150,
@@ -1752,7 +1756,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Fall back to direct Bluesminds call (proven to work)
       if (!answer) {
-        answer = await callAPI(FALLBACK_MODEL.apiModelId, kbSystemPrompt, kbUserPrompt, 1000);
+        answer = await callAPI(BLUESMINDS_MODEL_ID, kbSystemPrompt, kbUserPrompt, 1000);
       }
 
       if (!answer) throw new Error("Empty response from AI");

@@ -1,4 +1,4 @@
-import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown } from "lucide-react";
+import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown, Search } from "lucide-react";
 import { MODEL_REGISTRY } from "@shared/models";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ export const MODELS: ModelOption[] = [
     id: "auto",
     friendlyName: "Auto",
     exactName: "Auto",
-    description: "Best model selected for you",
+    description: "Best model auto-selected per query",
     badgeLabel: "Auto",
     icon: <Sparkles className="w-4 h-4" />,
     iconBg: "bg-cyan-500/10",
@@ -32,7 +32,7 @@ export const MODELS: ModelOption[] = [
   },
   {
     id: "powerful",
-    friendlyName: MODEL_REGISTRY.powerful.friendlyName,
+    friendlyName: "Powerful",
     exactName: MODEL_REGISTRY.powerful.exactName,
     description: MODEL_REGISTRY.powerful.description,
     badgeLabel: MODEL_REGISTRY.powerful.badgeLabel,
@@ -45,7 +45,7 @@ export const MODELS: ModelOption[] = [
   },
   {
     id: "balanced",
-    friendlyName: MODEL_REGISTRY.balanced.friendlyName,
+    friendlyName: "Balanced",
     exactName: MODEL_REGISTRY.balanced.exactName,
     description: MODEL_REGISTRY.balanced.description,
     badgeLabel: MODEL_REGISTRY.balanced.badgeLabel,
@@ -56,7 +56,7 @@ export const MODELS: ModelOption[] = [
   },
   {
     id: "creative",
-    friendlyName: MODEL_REGISTRY.creative.friendlyName,
+    friendlyName: "Creative",
     exactName: MODEL_REGISTRY.creative.exactName,
     description: MODEL_REGISTRY.creative.description,
     badgeLabel: MODEL_REGISTRY.creative.badgeLabel,
@@ -67,7 +67,7 @@ export const MODELS: ModelOption[] = [
   },
   {
     id: "fast",
-    friendlyName: MODEL_REGISTRY.fast.friendlyName,
+    friendlyName: "Fast",
     exactName: MODEL_REGISTRY.fast.exactName,
     description: MODEL_REGISTRY.fast.description,
     badgeLabel: MODEL_REGISTRY.fast.badgeLabel,
@@ -78,30 +78,63 @@ export const MODELS: ModelOption[] = [
   },
 ];
 
-/** Badge styles keyed by badgeLabel or raw model name (what the server sends back). */
+/**
+ * Badge styles keyed by badgeLabel OR raw model name/ID returned by providers.
+ * Covers all models currently configured as providers.
+ */
 export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
-  // Friendly labels (MODEL_REGISTRY.*.badgeLabel)
-  "Opus 4.6":    { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "Sonnet 4.6":  { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "Haiku":       { color: "text-blue-400",    bg: "bg-blue-500/10"    },
-  "Auto":        { color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
-  // Raw Anthropic model IDs (what providers return as modelName)
-  "claude-opus-4-6":      { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "claude-opus-4.6":      { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "claude-sonnet-4-6":    { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "claude-sonnet-4.6":    { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "claude-3-5-haiku-20241022": { color: "text-blue-400", bg: "bg-blue-500/10" },
-  "claude-haiku-3-5":     { color: "text-blue-400",    bg: "bg-blue-500/10"    },
-  "claude-haiku-prod2":   { color: "text-blue-400",    bg: "bg-blue-500/10"    },
-  // Computed from MODEL_REGISTRY (keeps these in sync)
-  [MODEL_REGISTRY.balanced.badgeLabel]: { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+  // ── Friendly badge labels ──────────────────────────────────────
+  "Opus 4.6":   { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "Mistral L3": { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+  "GPT 5.3":    { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  "Haiku":      { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+  "Auto":       { color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
+
+  // ── Raw Anthropic / Azure model names ─────────────────────────
+  "claude-opus-1715":          { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-opus-4-6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-opus-4.6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-haiku-prod2":        { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+  "claude-3-5-haiku-20241022": { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+  "claude-haiku-3-5":          { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+
+  // ── Raw Mistral model IDs ──────────────────────────────────────
+  "Mistral-Large-3":           { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+  "mistral-large-3":           { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+  "mistral-large":             { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+
+  // ── Raw GPT model IDs ─────────────────────────────────────────
+  "gpt-5.3-chat":              { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  "gpt-5.3":                   { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+
+  // ── Computed from MODEL_REGISTRY (stays in sync) ──────────────
   [MODEL_REGISTRY.powerful.badgeLabel]: { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  [MODEL_REGISTRY.balanced.badgeLabel]: { color: "text-violet-400",  bg: "bg-violet-500/10"  },
   [MODEL_REGISTRY.creative.badgeLabel]: { color: "text-emerald-400", bg: "bg-emerald-500/10" },
   [MODEL_REGISTRY.fast.badgeLabel]:     { color: "text-blue-400",    bg: "bg-blue-500/10"    },
 };
 
 /** @deprecated use BADGE_STYLE */
 export const MODEL_USED_STYLES = BADGE_STYLE;
+
+/**
+ * Maps a raw provider modelName (as returned by the server) to a short, friendly label
+ * shown in chat message badges. Falls back to the raw string trimmed to 20 chars.
+ */
+const RAW_TO_FRIENDLY: Record<string, string> = {
+  "claude-opus-1715":    "Opus 4.6",
+  "claude-opus-4-6":     "Opus 4.6",
+  "claude-opus-4.6":     "Opus 4.6",
+  "claude-haiku-prod2":  "Haiku",
+  "Mistral-Large-3":     "Mistral L3",
+  "mistral-large-3":     "Mistral L3",
+  "gpt-5.3-chat":        "GPT 5.3",
+  "gpt-5.3":             "GPT 5.3",
+};
+
+export function getFriendlyModelLabel(raw: string): string {
+  return RAW_TO_FRIENDLY[raw] ?? (raw.length > 20 ? raw.slice(0, 20) + "…" : raw);
+}
 
 interface ModelSelectorDropdownProps {
   selectedId: ModelId;
@@ -112,7 +145,7 @@ interface ModelSelectorDropdownProps {
 
 export function ModelSelectorDropdown({ selectedId, onSelect, isPro, onClose }: ModelSelectorDropdownProps) {
   return (
-    <div className="absolute bottom-full mb-2 left-0 z-50 w-72 rounded-xl border border-border bg-popover shadow-2xl overflow-hidden py-1.5">
+    <div className="absolute bottom-full mb-2 left-0 z-50 w-[300px] rounded-xl border border-border bg-popover shadow-2xl overflow-hidden py-1.5">
       {MODELS.map((m) => {
         const locked = m.proOnly && !isPro;
         const active = m.id === selectedId;
@@ -135,7 +168,7 @@ export function ModelSelectorDropdown({ selectedId, onSelect, isPro, onClose }: 
             )}
           >
             {m.isFeatured && (
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
             )}
             <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg)}>
               <span className={m.iconColor}>{m.icon}</span>
@@ -159,11 +192,20 @@ export function ModelSelectorDropdown({ selectedId, onSelect, isPro, onClose }: 
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate">{m.exactName}</p>
+              <p className="text-[11px] text-muted-foreground truncate">{m.exactName} · {m.description}</p>
             </div>
           </button>
         );
       })}
+
+      {/* KB-only models note */}
+      <div className="mx-2 mt-1 px-3 py-2 rounded-lg bg-muted/30 border border-border/40 flex items-start gap-2">
+        <Search className="w-3 h-3 text-muted-foreground/60 mt-0.5 flex-shrink-0" />
+        <p className="text-[10px] text-muted-foreground/60 leading-snug">
+          <span className="font-semibold text-muted-foreground/80">Cohere Rerank</span> &amp; <span className="font-semibold text-muted-foreground/80">Embed v4</span> power your Knowledge Base search automatically.
+        </p>
+      </div>
+
       {!isPro && (
         <div className="mx-2 mt-1 mb-0.5 px-3 py-2 rounded-lg bg-amber-500/8 border border-amber-500/15">
           <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
