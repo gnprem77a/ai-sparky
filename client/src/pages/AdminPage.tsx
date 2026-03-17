@@ -1086,7 +1086,7 @@ export default function AdminPage() {
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
   const [apiSettingsOpenId, setApiSettingsOpenId] = useState<string | null>(null);
-  const [apiSettingsForms, setApiSettingsForms] = useState<Record<string, { email: string; apiDailyLimit: string; apiMonthlyLimit: string; apiWebhookUrl: string; apiRateLimitPerMin: string }>>({});
+  const [apiSettingsForms, setApiSettingsForms] = useState<Record<string, { apiDailyLimit: string; apiMonthlyLimit: string; apiRateLimitPerMin: string }>>({});
 
   const broadcastMutation = useMutation({
     mutationFn: (message: string) =>
@@ -1715,10 +1715,8 @@ export default function AdminPage() {
               const isGenerated = generatedKey?.userId === u.id;
               const settingsOpen = apiSettingsOpenId === u.id;
               const settingsForm = apiSettingsForms[u.id] ?? {
-                email: u.email ?? "",
                 apiDailyLimit: u.apiDailyLimit != null ? String(u.apiDailyLimit) : "",
                 apiMonthlyLimit: u.apiMonthlyLimit != null ? String(u.apiMonthlyLimit) : "",
-                apiWebhookUrl: u.apiWebhookUrl ?? "",
                 apiRateLimitPerMin: u.apiRateLimitPerMin != null ? String(u.apiRateLimitPerMin) : "",
               };
               const setForm = (field: string, value: string) =>
@@ -1754,7 +1752,7 @@ export default function AdminPage() {
                         {u.apiEnabled && (
                           <span className={cn(
                             "text-[10px] font-mono font-semibold",
-                            (u.apiBalance ?? 0) < 5 ? "text-red-500" : (u.apiBalance ?? 0) < 10 ? "text-amber-500" : "text-emerald-500"
+                            (u.apiBalance ?? 0) === 0 ? "text-red-500" : (u.apiBalance ?? 0) <= 5 ? "text-amber-500" : "text-emerald-500"
                           )} data-testid={`text-balance-${u.id}`}>
                             ${(u.apiBalance ?? 0).toFixed(2)}
                           </span>
@@ -1804,7 +1802,10 @@ export default function AdminPage() {
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm(`Generate${u.apiEnabled ? "/regenerate" : ""} API key for "${u.username}"?`)) {
+                            const msg = u.apiEnabled
+                              ? `Are you sure? Old API key will stop working immediately.`
+                              : `Generate API key for "${u.username}"?`;
+                            if (confirm(msg)) {
                               generateApiKeyMutation.mutate(u.id);
                             }
                           }}
@@ -1818,7 +1819,7 @@ export default function AdminPage() {
                         {u.apiEnabled && (
                           <button
                             onClick={() => {
-                              if (confirm(`Revoke API access for "${u.username}"?`)) {
+                              if (confirm(`Are you sure? This will disable API access for this user.`)) {
                                 revokeApiKeyMutation.mutate(u.id);
                                 if (generatedKey?.userId === u.id) setGeneratedKey(null);
                               }
@@ -1839,18 +1840,7 @@ export default function AdminPage() {
                   {settingsOpen && (
                     <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">API Settings for {u.username}</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">Notification Email</label>
-                          <input
-                            type="email"
-                            value={settingsForm.email}
-                            onChange={(e) => setForm("email", e.target.value)}
-                            placeholder="user@example.com"
-                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                            data-testid={`input-api-email-${u.id}`}
-                          />
-                        </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Rate Limit (req/min)</label>
                           <input
@@ -1858,7 +1848,7 @@ export default function AdminPage() {
                             min="1"
                             value={settingsForm.apiRateLimitPerMin}
                             onChange={(e) => setForm("apiRateLimitPerMin", e.target.value)}
-                            placeholder="e.g. 10 (blank = unlimited)"
+                            placeholder="30 (default)"
                             className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
                             data-testid={`input-rate-limit-${u.id}`}
                           />
@@ -1870,7 +1860,7 @@ export default function AdminPage() {
                             min="1"
                             value={settingsForm.apiDailyLimit}
                             onChange={(e) => setForm("apiDailyLimit", e.target.value)}
-                            placeholder="e.g. 100 (blank = unlimited)"
+                            placeholder="blank = use balance limit only"
                             className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
                             data-testid={`input-daily-limit-${u.id}`}
                           />
@@ -1882,20 +1872,9 @@ export default function AdminPage() {
                             min="1"
                             value={settingsForm.apiMonthlyLimit}
                             onChange={(e) => setForm("apiMonthlyLimit", e.target.value)}
-                            placeholder="e.g. 1000 (blank = unlimited)"
+                            placeholder="blank = use balance limit only"
                             className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
                             data-testid={`input-monthly-limit-${u.id}`}
-                          />
-                        </div>
-                        <div className="space-y-1 sm:col-span-2">
-                          <label className="text-xs text-muted-foreground">Webhook URL (receives event notifications)</label>
-                          <input
-                            type="url"
-                            value={settingsForm.apiWebhookUrl}
-                            onChange={(e) => setForm("apiWebhookUrl", e.target.value)}
-                            placeholder="https://your-server.com/webhook"
-                            className="w-full px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                            data-testid={`input-webhook-url-${u.id}`}
                           />
                         </div>
                       </div>
@@ -1904,7 +1883,7 @@ export default function AdminPage() {
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Balance Management</span>
-                          <span className={cn("text-xs font-mono font-bold ml-auto", (u.apiBalance ?? 0) < 5 ? "text-red-500" : (u.apiBalance ?? 0) < 10 ? "text-amber-500" : "text-emerald-500")}>
+                          <span className={cn("text-xs font-mono font-bold ml-auto", (u.apiBalance ?? 0) === 0 ? "text-red-500" : (u.apiBalance ?? 0) <= 5 ? "text-amber-500" : "text-emerald-500")}>
                             ${(u.apiBalance ?? 0).toFixed(2)} current
                           </span>
                         </div>
