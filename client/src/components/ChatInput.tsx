@@ -92,10 +92,11 @@ interface ChatInputProps {
   isWebSearch?: boolean;
   onToggleWebSearch?: () => void;
   onUpgradeClick?: () => void;
+  externalFiles?: FileList | File[] | null;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick, externalFiles }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -274,6 +275,18 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
       setIsProcessing(false);
     }
   }, []);
+
+  /* process files dropped from outside (full-page drag-and-drop) */
+  useEffect(() => {
+    if (!externalFiles || externalFiles.length === 0) return;
+    const list = externalFiles instanceof FileList ? externalFiles : (() => {
+      const dt = new DataTransfer();
+      (externalFiles as File[]).forEach(f => dt.items.add(f));
+      return dt.files;
+    })();
+    processFiles(list);
+    setTimeout(() => textareaRef.current?.focus(), 100);
+  }, [externalFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; }

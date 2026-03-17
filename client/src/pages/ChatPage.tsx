@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
+import { GlobalSearchModal } from "@/components/GlobalSearchModal";
 import { SettingsModal } from "@/components/SettingsModal";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { SecondaryChat } from "@/components/SecondaryChat";
@@ -13,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -64,6 +65,10 @@ export default function ChatPage() {
   const [splitView, setSplitView] = useState(() => {
     return localStorage.getItem("chat-split-view") === "true";
   });
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState<File[] | null>(null);
+  const dragCounterRef = useRef(0);
 
   /* ── Swipe gestures state ── */
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -395,8 +400,14 @@ export default function ChatPage() {
           setTimeout(() => searchInputRef.current?.focus(), 50);
         }
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setGlobalSearchOpen(true);
+      }
       if (e.key === "Escape") {
-        if (searchOpen) {
+        if (globalSearchOpen) {
+          setGlobalSearchOpen(false);
+        } else if (searchOpen) {
           setSearchOpen(false);
           setSearchQuery("");
         } else if (isStreaming) {
@@ -406,7 +417,7 @@ export default function ChatPage() {
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [isStreaming, searchOpen, messages.length]);
+  }, [isStreaming, searchOpen, globalSearchOpen, messages.length]);
 
   /* ── Update search match count whenever query or messages change ── */
   useEffect(() => {
@@ -1173,6 +1184,9 @@ ${messagesHtml}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuItem onClick={() => setGlobalSearchOpen(true)} className="gap-2 cursor-pointer">
+                      <Search className="w-3.5 h-3.5 text-primary/60" /> Search all chats
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 50); }} className="gap-2 cursor-pointer">
                       <Search className="w-3.5 h-3.5" /> Search in chat
                     </DropdownMenuItem>
@@ -1306,9 +1320,19 @@ ${messagesHtml}
             <Button
               size="icon"
               variant="ghost"
+              onClick={() => setGlobalSearchOpen(true)}
+              data-testid="button-global-search"
+              title="Search all conversations (⌘K)"
+              className="hidden sm:flex h-9 w-9 text-muted-foreground"
+            >
+              <Search className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={handleNewChat}
               data-testid="button-new-chat-header"
-              title="New chat (Ctrl+K)"
+              title="New chat"
               className="h-9 w-9 text-muted-foreground"
             >
               <Plus className="w-4 h-4" />
@@ -1351,7 +1375,28 @@ ${messagesHtml}
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Primary Chat */}
-          <div className={cn("flex-1 flex flex-col min-w-0 relative", splitView && "border-r border-border/40")}>
+          <div
+            className={cn("flex-1 flex flex-col min-w-0 relative", splitView && "border-r border-border/40")}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              if (Array.from(e.dataTransfer.items).some(i => i.kind === "file")) {
+                dragCounterRef.current += 1;
+                setIsDraggingOver(true);
+              }
+            }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+            onDragLeave={() => {
+              dragCounterRef.current -= 1;
+              if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setIsDraggingOver(false); }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              dragCounterRef.current = 0;
+              setIsDraggingOver(false);
+              const files = Array.from(e.dataTransfer.files);
+              if (files.length > 0) setDroppedFiles(files);
+            }}
+          >
             {/* Search bar */}
             {searchOpen && (
               <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 py-1.5 flex items-center gap-2 no-print">
@@ -1504,7 +1549,19 @@ ${messagesHtml}
               </div>
             )}
 
-            {/* Input */}
+            {/* Full-page drag-and-drop overlay */}
+            {isDraggingOver && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm border-2 border-dashed border-primary/50 rounded-none pointer-events-none animate-in fade-in duration-150">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Upload className="w-8 h-8 text-primary/70" />
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-semibold text-foreground/80">Drop files to attach</p>
+                  <p className="text-sm text-muted-foreground/60 mt-1">Images, PDFs, text files and more</p>
+                </div>
+              </div>
+            )}
+
             <div className="flex-shrink-0" data-testid="chat-input-area">
               <ChatInput
                 value={input}
@@ -1523,6 +1580,7 @@ ${messagesHtml}
                   setUpgradeReason("model");
                   setShowUpgradeModal(true);
                 }}
+                externalFiles={droppedFiles}
               />
             </div>
           </div>
@@ -1538,6 +1596,11 @@ ${messagesHtml}
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      <GlobalSearchModal
+        open={globalSearchOpen}
+        onOpenChange={setGlobalSearchOpen}
+        onNavigate={(convId) => { setActiveId(convId); setGlobalSearchOpen(false); }}
+      />
       <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
       {user && <OnboardingModal onStartWithPrompt={(prompt) => setInput(prompt)} />}
       {showAssistantNameModal && (
