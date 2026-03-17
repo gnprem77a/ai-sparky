@@ -445,7 +445,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const allUsers = await storage.getAllUsers();
     const isFirstUser = allUsers.length === 0;
     const user = await storage.createUser({ username, password: hashed });
-    if (isFirstUser) await storage.setAdmin(user.id, true);
+    if (isFirstUser) {
+      await storage.setAdmin(user.id, true);
+      await storage.setPlan(user.id, "pro", null);
+      await storage.setApiEnabled(user.id, true);
+    }
     const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
     req.session.userId = finalUser.id;
     return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
@@ -1022,8 +1026,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/admin/users/:id/admin", requireAdmin as any, async (req: Request, res: Response) => {
     const id = req.params.id as string;
     if (id === req.session.userId) return res.status(400).json({ error: "Cannot change your own admin status." });
-    const user = await storage.setAdmin(id, Boolean(req.body.isAdmin));
+    const isAdmin = Boolean(req.body.isAdmin);
+    const user = await storage.setAdmin(id, isAdmin);
     if (!user) return res.status(404).json({ error: "User not found" });
+    if (isAdmin) {
+      await storage.setPlan(id, "pro", null);
+      await storage.setApiEnabled(id, true);
+    }
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
   });
 
