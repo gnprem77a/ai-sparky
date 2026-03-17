@@ -4,7 +4,7 @@ import { MODEL_REGISTRY, FALLBACK_MODEL, BLUESMINDS_MODEL_ID, getModel, getProvi
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
-import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail, welcomeEmail } from "./lib/email";
+import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail, welcomeEmail, verificationEmail, passwordChangedEmail, testEmail, encryptSmtpPassword, decryptSmtpPassword } from "./lib/email";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
@@ -465,13 +465,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
     req.session.userId = finalUser.id;
 
-    // Send welcome email (fire-and-forget — never block registration)
+    // Send verification + welcome email (fire-and-forget)
     if (user.email) {
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
-      sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl)).catch(() => {});
+      if (!isFirstUser) {
+        // Send verification email
+        await storage.deleteEmailVerificationTokensByUser(user.id);
+        const verToken = randomBytes(32).toString("hex");
+        const verExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await storage.createEmailVerificationToken(user.id, verToken, verExpires);
+        const verifyUrl = `${appUrl}/verify-email?token=${verToken}`;
+        sendEmail(user.email, "Verify your email — AI Sparky", verificationEmail(user.username, verifyUrl), "verification").catch(() => {});
+      } else {
+        // First user (admin) is auto-verified, send welcome
+        await storage.markEmailVerified(user.id);
+        sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl), "welcome").catch(() => {});
+      }
     }
 
     return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
+  });
+
+  /* ── auth: verify email ── */
+  app.post("/api/auth/verify-email", async (req: Request, res: Response) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Token is required." });
+    const record = await storage.getEmailVerificationToken(token);
+    if (!record) return res.status(400).json({ error: "Invalid or expired verification link." });
+    if (new Date() > record.expiresAt) {
+      await storage.deleteEmailVerificationToken(token);
+      return res.status(400).json({ error: "This verification link has expired. Please request a new one." });
+    }
+    await storage.markEmailVerified(record.userId);
+    await storage.deleteEmailVerificationToken(token);
+    // Send welcome email after successful verification
+    const user = await storage.getUser(record.userId);
+    if (user?.email) {
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl), "welcome").catch(() => {});
+    }
+    return res.json({ ok: true });
+  });
+
+  /* ── auth: resend verification email ── */
+  app.post("/api/auth/resend-verification", requireAuth as any, async (req: Request, res: Response) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.emailVerified) return res.status(400).json({ error: "Email is already verified." });
+    if (!user.email) return res.status(400).json({ error: "No email address on file." });
+    if (!(await emailConfigured())) return res.status(503).json({ error: "Email service is not configured." });
+    await storage.deleteEmailVerificationTokensByUser(user.id);
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await storage.createEmailVerificationToken(user.id, token, expiresAt);
+    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const verifyUrl = `${appUrl}/verify-email?token=${token}`;
+    await sendEmail(user.email, "Verify your email — AI Sparky", verificationEmail(user.username, verifyUrl), "verification");
+    return res.json({ ok: true });
   });
 
   /* ── auth: login ── */
@@ -506,7 +556,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.session.userId) return res.status(401).json({ error: "Not logged in" });
     const user = await storage.getUser(req.session.userId);
     if (!user) { req.session.destroy(() => {}); return res.status(401).json({ error: "User not found" }); }
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt, createdAt: user.createdAt, apiEnabled: user.apiEnabled });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt, createdAt: user.createdAt, apiEnabled: user.apiEnabled, emailVerified: user.emailVerified, email: user.email });
   });
 
   /* ── auth: change password ── */
@@ -526,25 +576,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
-  /* ── auth: forgot password ── */
+  /* ── auth: forgot password (rate-limited: 5 req/hour per IP) ── */
+  const forgotPwRateMap = new Map<string, { count: number; resetAt: number }>();
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    const ip = (req.ip ?? req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/, "");
+    const now = Date.now();
+    const entry = forgotPwRateMap.get(ip);
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= 5) return res.status(429).json({ error: "Too many requests. Please wait before trying again." });
+      entry.count++;
+    } else {
+      forgotPwRateMap.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    }
+
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required." });
-    const allUsers = await storage.getAllUsers();
-    const user = allUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
-    if (!user) return res.json({ ok: true });
-    if (!emailConfigured()) return res.status(503).json({ error: "Email service is not configured. Contact the administrator." });
+    const user = await storage.getUserByEmail(email.toLowerCase().trim());
+    if (!user) return res.json({ ok: true }); // Don't leak existence
+    if (!(await emailConfigured())) return res.status(503).json({ error: "Email service is not configured. Contact the administrator." });
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
     await storage.deletePasswordResetTokensByUser(user.id);
     await storage.createPasswordResetToken(user.id, token, expiresAt);
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-    try {
-      await sendEmail(user.email!, "Reset your password", forgotPasswordEmail(user.username, resetUrl));
-    } catch {
-      return res.status(502).json({ error: "Failed to send reset email. Please try again later." });
-    }
+    const sent = await sendEmail(user.email!, "Reset your password — AI Sparky", forgotPasswordEmail(user.username, resetUrl), "forgot_password");
+    if (!sent) return res.status(502).json({ error: "Failed to send reset email. Please try again later." });
     return res.json({ ok: true });
   });
 
@@ -562,6 +619,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const hashed = await bcrypt.hash(newPassword, 12);
     await storage.updatePassword(record.userId, hashed);
     await storage.deletePasswordResetToken(token);
+    // Send password-changed confirmation email
+    const user = await storage.getUser(record.userId);
+    if (user?.email) {
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      sendEmail(user.email, "Your password was changed — AI Sparky", passwordChangedEmail(user.username, appUrl), "password_changed").catch(() => {});
+    }
     return res.json({ ok: true });
   });
 
@@ -1075,7 +1138,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.setPlan(id, plan, expiry);
     if (!user) return res.status(404).json({ error: "User not found" });
     if (user.email) {
-      sendEmail(user.email, `Your plan has been updated to ${plan === "pro" ? "Pro ✨" : "Free"}`, planChangedEmail(user.username, plan)).catch(() => {});
+      sendEmail(user.email, `Your plan has been updated to ${plan === "pro" ? "Pro ✨" : "Free"}`, planChangedEmail(user.username, plan), "plan_changed").catch(() => {});
     }
     return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
   });
@@ -1090,7 +1153,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.setApiEnabled(id, true);
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     if (target.email) {
-      sendEmail(target.email, "API Access Granted", apiAccessGrantedEmail(target.username, baseUrl)).catch(() => {});
+      sendEmail(target.email, "API Access Granted — AI Sparky", apiAccessGrantedEmail(target.username, baseUrl), "api_access_granted").catch(() => {});
     }
     if (target.apiWebhookUrl) {
       fireWebhook(target.apiWebhookUrl, "api.access.granted", { username: target.username });
@@ -1106,7 +1169,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.setApiKey(id, null);
     await storage.setApiEnabled(id, false);
     if (target.email) {
-      sendEmail(target.email, "API Access Revoked", apiAccessRevokedEmail(target.username)).catch(() => {});
+      sendEmail(target.email, "API Access Revoked — AI Sparky", apiAccessRevokedEmail(target.username), "api_access_revoked").catch(() => {});
     }
     if (target.apiWebhookUrl) {
       fireWebhook(target.apiWebhookUrl, "api.access.revoked", { username: target.username });
@@ -1318,6 +1381,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) return res.status(400).json({ error: "Invalid broadcast data" });
     const broadcast = await storage.createBroadcast(parsed.data);
     return res.status(201).json(broadcast);
+  });
+
+  /* ── admin: SMTP config ── */
+  app.get("/api/admin/smtp-config", requireAdmin as any, async (_req: Request, res: Response) => {
+    const cfg = await storage.getSmtpConfig();
+    if (!cfg) return res.json({ host: "", port: 465, username: "", fromEmail: "", fromName: "AI Sparky", secure: true, isEnabled: false });
+    // Never expose the raw password to the frontend
+    return res.json({
+      host: cfg.host,
+      port: cfg.port,
+      username: cfg.username,
+      fromEmail: cfg.fromEmail,
+      fromName: cfg.fromName,
+      secure: cfg.secure,
+      isEnabled: cfg.isEnabled,
+      hasPassword: !!cfg.passwordEnc,
+    });
+  });
+
+  app.put("/api/admin/smtp-config", requireAdmin as any, async (req: Request, res: Response) => {
+    const { host, port, username, password, fromEmail, fromName, secure, isEnabled } = req.body;
+    const update: Record<string, any> = { host, port: Number(port), username, fromEmail, fromName, secure: Boolean(secure), isEnabled: Boolean(isEnabled) };
+    if (password) update.passwordEnc = encryptSmtpPassword(password);
+    await storage.saveSmtpConfig(update);
+    return res.json({ ok: true });
+  });
+
+  app.post("/api/admin/smtp-config/test", requireAdmin as any, async (req: Request, res: Response) => {
+    const { toEmail, toName } = req.body;
+    if (!toEmail) return res.status(400).json({ error: "Recipient email is required." });
+    if (!(await emailConfigured())) return res.status(503).json({ error: "SMTP is not configured or not enabled." });
+    const sent = await sendEmail(toEmail, "SMTP Test — AI Sparky", testEmail(toName ?? toEmail), "test");
+    if (!sent) return res.status(502).json({ error: "Failed to send test email. Check SMTP settings and try again." });
+    return res.json({ ok: true });
+  });
+
+  /* ── admin: email logs ── */
+  app.get("/api/admin/email-logs", requireAdmin as any, async (req: Request, res: Response) => {
+    const limit = Math.min(parseInt(req.query.limit as string ?? "200"), 500);
+    const logs = await storage.getEmailLogs(limit);
+    return res.json(logs);
   });
 
   /* ── chat (protected) ── */

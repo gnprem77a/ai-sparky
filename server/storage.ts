@@ -25,6 +25,9 @@ import {
   knowledgeBases, kbDocuments, kbChunks,
   type ApiLog, apiLogs,
   type PasswordResetToken, passwordResetTokens,
+  type EmailVerificationToken, emailVerificationTokens,
+  type EmailLog, emailLogs,
+  type SmtpConfig, smtpConfig,
   featureEvents,
 } from "@shared/schema";
 import { db } from "./db";
@@ -141,6 +144,18 @@ export interface IStorage {
   getFeatureStatsByDay(feature: string, days?: number): Promise<{ date: string; count: number }[]>;
   flagUser(id: string, reason: string): Promise<void>;
   unflagUser(id: string): Promise<void>;
+  markEmailVerified(userId: string): Promise<void>;
+
+  createEmailVerificationToken(userId: string, token: string, expiresAt: Date): Promise<EmailVerificationToken>;
+  getEmailVerificationToken(token: string): Promise<EmailVerificationToken | undefined>;
+  deleteEmailVerificationToken(token: string): Promise<void>;
+  deleteEmailVerificationTokensByUser(userId: string): Promise<void>;
+
+  createEmailLog(data: { recipient: string; subject: string; templateType: string; status: string; errorMessage?: string }): Promise<EmailLog>;
+  getEmailLogs(limit?: number): Promise<EmailLog[]>;
+
+  getSmtpConfig(): Promise<SmtpConfig | undefined>;
+  saveSmtpConfig(data: Partial<Omit<SmtpConfig, "id" | "updatedAt">>): Promise<SmtpConfig>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -932,6 +947,58 @@ export class DatabaseStorage implements IStorage {
 
   async unflagUser(id: string): Promise<void> {
     await db.update(users).set({ isFlagged: false, flagReason: null }).where(eq(users.id, id));
+  }
+
+  async markEmailVerified(userId: string): Promise<void> {
+    await db.update(users).set({ emailVerified: true }).where(eq(users.id, userId));
+  }
+
+  async createEmailVerificationToken(userId: string, token: string, expiresAt: Date): Promise<EmailVerificationToken> {
+    const [row] = await db.insert(emailVerificationTokens).values({ userId, token, expiresAt }).returning();
+    return row;
+  }
+
+  async getEmailVerificationToken(token: string): Promise<EmailVerificationToken | undefined> {
+    const [row] = await db.select().from(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
+    return row;
+  }
+
+  async deleteEmailVerificationToken(token: string): Promise<void> {
+    await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.token, token));
+  }
+
+  async deleteEmailVerificationTokensByUser(userId: string): Promise<void> {
+    await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
+  }
+
+  async createEmailLog(data: { recipient: string; subject: string; templateType: string; status: string; errorMessage?: string }): Promise<EmailLog> {
+    const [row] = await db.insert(emailLogs).values(data).returning();
+    return row;
+  }
+
+  async getEmailLogs(limit = 100): Promise<EmailLog[]> {
+    return db.select().from(emailLogs).orderBy(desc(emailLogs.createdAt)).limit(limit);
+  }
+
+  async getSmtpConfig(): Promise<SmtpConfig | undefined> {
+    const [row] = await db.select().from(smtpConfig).where(eq(smtpConfig.id, 1));
+    return row;
+  }
+
+  async saveSmtpConfig(data: Partial<Omit<SmtpConfig, "id" | "updatedAt">>): Promise<SmtpConfig> {
+    const existing = await this.getSmtpConfig();
+    if (existing) {
+      const [row] = await db.update(smtpConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(smtpConfig.id, 1))
+        .returning();
+      return row;
+    } else {
+      const [row] = await db.insert(smtpConfig)
+        .values({ id: 1, ...data, updatedAt: new Date() } as any)
+        .returning();
+      return row;
+    }
   }
 }
 

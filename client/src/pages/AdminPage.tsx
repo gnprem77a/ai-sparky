@@ -10,6 +10,7 @@ import {
   ChevronDown, X, Check, Zap, DollarSign, ArrowDownUp, Megaphone, Send, Search as SearchIcon,
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
   ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff, BarChart2,
+  Mail, FlaskConical, CheckCircle, XCircle, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -854,6 +855,386 @@ function ProviderFormModal({
 }
 
 
+interface SmtpFormData {
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  fromEmail: string;
+  fromName: string;
+  secure: boolean;
+  isEnabled: boolean;
+}
+
+interface EmailLogEntry {
+  id: number;
+  recipient: string;
+  subject: string;
+  templateType: string;
+  status: string;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+function EmailSection() {
+  const { toast } = useToast();
+  const [form, setForm] = useState<SmtpFormData>({
+    host: "", port: "465", username: "", password: "", fromEmail: "", fromName: "AI Sparky", secure: true, isEnabled: false,
+  });
+  const [testEmail, setTestEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [logsExpanded, setLogsExpanded] = useState(false);
+
+  const { data: smtpConfig, isLoading: configLoading, refetch: refetchConfig } = useQuery<any>({
+    queryKey: ["/api/admin/smtp-config"],
+    queryFn: () => fetch("/api/admin/smtp-config", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const { data: emailLogs = [], isLoading: logsLoading, refetch: refetchLogs } = useQuery<EmailLogEntry[]>({
+    queryKey: ["/api/admin/email-logs"],
+    queryFn: () => fetch("/api/admin/email-logs", { credentials: "include" }).then(r => r.json()),
+    enabled: logsExpanded,
+  });
+
+  useEffect(() => {
+    if (smtpConfig) {
+      setForm(f => ({
+        ...f,
+        host: smtpConfig.host ?? "",
+        port: String(smtpConfig.port ?? 465),
+        username: smtpConfig.username ?? "",
+        fromEmail: smtpConfig.fromEmail ?? "",
+        fromName: smtpConfig.fromName ?? "AI Sparky",
+        secure: smtpConfig.secure ?? true,
+        isEnabled: smtpConfig.isEnabled ?? false,
+        password: "",
+      }));
+      if (smtpConfig.username && !testEmail) setTestEmail(smtpConfig.fromEmail ?? smtpConfig.username ?? "");
+    }
+  }, [smtpConfig]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await apiRequest("PUT", "/api/admin/smtp-config", {
+        host: form.host,
+        port: parseInt(form.port),
+        username: form.username,
+        password: form.password || undefined,
+        fromEmail: form.fromEmail,
+        fromName: form.fromName,
+        secure: form.secure,
+        isEnabled: form.isEnabled,
+      });
+      if (res.ok) {
+        toast({ title: "SMTP settings saved", description: "Configuration updated successfully." });
+        setForm(f => ({ ...f, password: "" }));
+        refetchConfig();
+      } else {
+        const d = await res.json();
+        toast({ title: "Save failed", description: d.error, variant: "destructive" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!testEmail) return;
+    setTesting(true);
+    try {
+      const res = await apiRequest("POST", "/api/admin/smtp-config/test", { toEmail: testEmail, toName: "Admin" });
+      if (res.ok) {
+        toast({ title: "Test email sent!", description: `Check the inbox for ${testEmail}` });
+        setLogsExpanded(true);
+        setTimeout(() => refetchLogs(), 2000);
+      } else {
+        const d = await res.json();
+        toast({ title: "Test failed", description: d.error, variant: "destructive" });
+      }
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const templateLabel: Record<string, string> = {
+    verification: "Email Verification",
+    welcome: "Welcome",
+    forgot_password: "Forgot Password",
+    password_changed: "Password Changed",
+    api_access_granted: "API Access Granted",
+    api_access_revoked: "API Access Revoked",
+    plan_changed: "Plan Changed",
+    test: "Test Email",
+    generic: "Generic",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* SMTP Config Card */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Mail className="w-3.5 h-3.5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground text-sm">SMTP Configuration</h2>
+              <p className="text-xs text-muted-foreground">Namecheap Private Email or any SMTP provider</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={cn("text-xs px-2 py-1 rounded-full font-medium", form.isEnabled ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground")}>
+              {form.isEnabled ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+        </div>
+
+        {configLoading ? (
+          <div className="px-6 py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="p-6 space-y-5">
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable SMTP</p>
+                <p className="text-xs text-muted-foreground">When enabled, the app sends transactional emails using this configuration</p>
+              </div>
+              <button
+                onClick={() => setForm(f => ({ ...f, isEnabled: !f.isEnabled }))}
+                data-testid="toggle-smtp-enabled"
+                className={cn(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                  form.isEnabled ? "bg-primary" : "bg-muted-foreground/30"
+                )}
+              >
+                <span className={cn("inline-block h-4 w-4 rounded-full bg-white shadow transition-transform", form.isEnabled ? "translate-x-6" : "translate-x-1")} />
+              </button>
+            </div>
+
+            {/* Form grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Host</label>
+                <input
+                  value={form.host}
+                  onChange={e => setForm(f => ({ ...f, host: e.target.value }))}
+                  placeholder="mail.privateemail.com"
+                  data-testid="input-smtp-host"
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Port</label>
+                <div className="flex gap-2">
+                  <input
+                    value={form.port}
+                    onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
+                    placeholder="465"
+                    data-testid="input-smtp-port"
+                    className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <div className="flex gap-1">
+                    {[["465", "SSL"], ["587", "TLS"]].map(([p, label]) => (
+                      <button
+                        key={p}
+                        onClick={() => setForm(f => ({ ...f, port: p, secure: p === "465" }))}
+                        data-testid={`button-port-${p}`}
+                        className={cn("px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors", form.port === p ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted")}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Security</label>
+                <div className="flex gap-2 pt-0.5">
+                  {[["SSL/TLS (port 465)", true], ["STARTTLS (port 587)", false]].map(([label, val]) => (
+                    <button
+                      key={String(val)}
+                      onClick={() => setForm(f => ({ ...f, secure: Boolean(val) }))}
+                      className={cn("flex-1 px-2 py-2 rounded-lg text-xs font-medium border transition-colors", form.secure === Boolean(val) ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted")}
+                    >
+                      {label as string}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">SMTP Username</label>
+                <input
+                  value={form.username}
+                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                  placeholder="noreply@aisparky.dev"
+                  data-testid="input-smtp-username"
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Password {smtpConfig?.hasPassword && <span className="text-green-600 dark:text-green-400 normal-case font-normal">(saved)</span>}
+                </label>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder={smtpConfig?.hasPassword ? "Leave blank to keep current" : "Enter password"}
+                  data-testid="input-smtp-password"
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sender Email</label>
+                <input
+                  value={form.fromEmail}
+                  onChange={e => setForm(f => ({ ...f, fromEmail: e.target.value }))}
+                  placeholder="noreply@aisparky.dev"
+                  data-testid="input-smtp-from-email"
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Sender Display Name</label>
+                <input
+                  value={form.fromName}
+                  onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
+                  placeholder="AI Sparky"
+                  data-testid="input-smtp-from-name"
+                  className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                data-testid="button-save-smtp"
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Save settings
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Test email card */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+            <FlaskConical className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground text-sm">Send Test Email</h2>
+            <p className="text-xs text-muted-foreground">Verify your SMTP connection works before going live</p>
+          </div>
+        </div>
+        <div className="p-6 flex gap-3 items-end">
+          <div className="flex-1 space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recipient email</label>
+            <input
+              value={testEmail}
+              onChange={e => setTestEmail(e.target.value)}
+              placeholder="you@example.com"
+              data-testid="input-test-email"
+              className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <button
+            onClick={handleTest}
+            disabled={testing || !testEmail}
+            data-testid="button-send-test"
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+          >
+            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Send test
+          </button>
+        </div>
+      </div>
+
+      {/* Email Logs */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <button
+          onClick={() => { setLogsExpanded(e => !e); if (!logsExpanded) refetchLogs(); }}
+          data-testid="button-toggle-logs"
+          className="w-full px-6 py-4 flex items-center justify-between border-b border-border hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Activity className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="text-left">
+              <h2 className="font-semibold text-foreground text-sm">Email Logs</h2>
+              <p className="text-xs text-muted-foreground">Most recent 200 email delivery events</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={e => { e.stopPropagation(); refetchLogs(); }} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Refresh">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            {logsExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </div>
+        </button>
+
+        {logsExpanded && (
+          logsLoading ? (
+            <div className="px-6 py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : emailLogs.length === 0 ? (
+            <div className="px-6 py-8 text-center text-sm text-muted-foreground">No email logs yet. Emails will appear here once SMTP is configured and emails are sent.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Recipient</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Subject</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {emailLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-muted/20 transition-colors" data-testid={`row-emaillog-${log.id}`}>
+                      <td className="px-4 py-2.5">
+                        {log.status === "sent" ? (
+                          <span className="flex items-center gap-1 text-green-600 dark:text-green-400 text-xs font-medium">
+                            <CheckCircle className="w-3.5 h-3.5" /> Sent
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-red-600 dark:text-red-400 text-xs font-medium" title={log.errorMessage ?? ""}>
+                            <XCircle className="w-3.5 h-3.5" /> Failed
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-foreground font-medium text-xs truncate max-w-[160px]">{log.recipient}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                          {templateLabel[log.templateType] ?? log.templateType}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground text-xs truncate max-w-[200px]">{log.subject}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground text-xs whitespace-nowrap">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function ProvidersSection() {
   const [showForm, setShowForm] = useState(false);
   const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
@@ -1082,7 +1463,7 @@ export default function AdminPage() {
   const [userSort, setUserSort] = useState<"name" | "plan" | "tokens" | "joined">("joined");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "api" | "providers" | "broadcast">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "api" | "providers" | "broadcast" | "email">("overview");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -1301,6 +1682,7 @@ export default function AdminPage() {
             { id: "api",      label: "API Access", icon: Key },
             { id: "providers", label: "Providers", icon: Server },
             { id: "broadcast", label: "Broadcast", icon: Megaphone },
+            { id: "email",    label: "Email", icon: Mail },
           ] as const).map((tab) => (
             <button
               key={tab.id}
@@ -1395,6 +1777,7 @@ export default function AdminPage() {
 
         {/* Providers tab */}
         {activeTab === "providers" && <ProvidersSection />}
+        {activeTab === "email" && <EmailSection />}
 
         {/* Token Usage — Overview tab */}
         {activeTab === "overview" && <div className="rounded-2xl border border-border bg-card overflow-hidden">

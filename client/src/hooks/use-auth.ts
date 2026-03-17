@@ -4,11 +4,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 export interface AuthUser {
   id: string;
   username: string;
+  email: string | null;
   isAdmin: boolean;
   plan: "free" | "pro";
   planExpiresAt: string | null;
   createdAt: string | null;
   apiEnabled: boolean;
+  emailVerified: boolean;
 }
 
 export function useAuth() {

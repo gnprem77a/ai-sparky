@@ -28,6 +28,7 @@ export const users = pgTable("users", {
   monthlyTokensResetAt: timestamp("monthly_tokens_reset_at"),
   apiBalance: real("api_balance").notNull().default(0),
   apiKeyHash: text("api_key_hash"),
+  emailVerified: boolean("email_verified").notNull().default(false),
 });
 
 export const conversations = pgTable("conversations", {
@@ -233,6 +234,43 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 });
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+
+export const emailLogs = pgTable("email_logs", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  recipient: text("recipient").notNull(),
+  subject: text("subject").notNull(),
+  templateType: text("template_type").notNull(),
+  status: text("status").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type EmailLog = typeof emailLogs.$inferSelect;
+
+export const smtpConfig = pgTable("smtp_config", {
+  id: integer("id").primaryKey().default(1),
+  host: text("host").notNull().default(""),
+  port: integer("port").notNull().default(465),
+  username: text("username").notNull().default(""),
+  passwordEnc: text("password_enc").notNull().default(""),
+  fromEmail: text("from_email").notNull().default(""),
+  fromName: text("from_name").notNull().default("AI Sparky"),
+  secure: boolean("secure").notNull().default(true),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export type SmtpConfig = typeof smtpConfig.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users)
   .pick({ password: true })

@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine, Upload } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine, Upload, MailCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,6 +121,26 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
+
+  /* ── Email verification banner ── */
+  const [verifyBannerDismissed, setVerifyBannerDismissed] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/resend-verification");
+      if (res.ok) {
+        toast({ title: "Verification email sent!", description: "Check your inbox and click the link to verify your email." });
+        setVerifyBannerDismissed(true);
+      } else {
+        const d = await res.json();
+        toast({ title: "Could not send email", description: d.error, variant: "destructive" });
+      }
+    } finally {
+      setResendingVerification(false);
+    }
+  };
 
   /* ── Broadcast state ── */
   const [broadcast, setBroadcast] = useState<Broadcast | null>(null);
@@ -1349,6 +1369,37 @@ ${messagesHtml}
             </Button>
           </div>
         </header>
+
+        {/* Email Verification Banner */}
+        {user && user.email && !user.emailVerified && !verifyBannerDismissed && (
+          <div className="flex-shrink-0 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 no-print" data-testid="banner-email-verification">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <MailCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <p className="text-sm text-foreground font-medium truncate">
+                Please verify your email address.{" "}
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resendingVerification}
+                  className="underline text-amber-600 dark:text-amber-400 hover:opacity-80 disabled:opacity-50 cursor-pointer"
+                  data-testid="button-resend-verification"
+                >
+                  {resendingVerification ? "Sending…" : "Resend verification email"}
+                </button>
+              </p>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 rounded-full hover:bg-amber-500/20 flex-shrink-0"
+              onClick={() => setVerifyBannerDismissed(true)}
+              data-testid="button-dismiss-verification-banner"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Broadcast Banner */}
         {broadcast && !broadcastDismissed && (

@@ -19,6 +19,7 @@ const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePa
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 const ApiAccessPage = lazy(() => import("@/pages/ApiAccessPage"));
 const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage"));
+const VerifyEmailPage = lazy(() => import("@/pages/VerifyEmailPage"));
 
 (function initTheme() {
   const stored = localStorage.getItem("theme");
@@ -48,6 +49,14 @@ function AppInner() {
     return (
       <Suspense fallback={null}>
         <ResetPasswordPage />
+      </Suspense>
+    );
+  }
+
+  if (location.startsWith("/verify-email")) {
+    return (
+      <Suspense fallback={null}>
+        <VerifyEmailPage />
       </Suspense>
     );
   }
