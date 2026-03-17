@@ -1,0 +1,109 @@
+Implement API access dollar balance system with the following rules:
+
+WHO GETS API ACCESS:
+- Only Pro users can request API access
+- API access is NOT automatic — admin manually enables it per user
+- Free users see the API page but everything is locked 
+  with "Upgrade to Pro" message
+- Pro users without API access see "Request API Access" 
+  button that notifies admin
+
+BALANCE SYSTEM:
+- Admin manually adds dollar balance to user account
+- Balance is shown as $ (e.g. $30.00)
+- Balance never expires
+- Balance is deducted based on actual token usage per model
+- Show dollar balance on API access page
+- Warn user when balance drops below $5.00
+- Block API calls when balance reaches $0.00
+
+DEDUCTION RATES PER MODEL:
+
+Claude Opus 4.6:
+- Input:  $5.00 per 1M tokens
+- Output: $25.00 per 1M tokens
+
+Claude Haiku:
+- Input:  $0.80 per 1M tokens
+- Output: $4.00 per 1M tokens
+
+GPT-5.3:
+- Input:  $2.00 per 1M tokens
+- Output: $8.00 per 1M tokens
+
+Mistral Large 3:
+- Input:  $1.00 per 1M tokens
+- Output: $3.00 per 1M tokens
+
+Embed v4.0:    FREE (no balance deduction)
+Cohere Rerank: FREE (no balance deduction)
+
+RATE LIMITS:
+- 30 requests per minute
+- If rate limit hit: return 429 with Retry-After header
+- If balance exhausted: return 402 with balance in response
+
+TOKEN LIMITS PER REQUEST:
+- Claude Opus 4.6:  32,000 max output tokens
+- Claude Haiku:     4,096 max output tokens
+- GPT-5.3:          8,192 max output tokens
+- Mistral Large 3:  8,192 max output tokens
+
+FEATURES AVAILABLE VIA API:
+- Chat completions: YES
+- Web search: YES
+- File/vision input: YES
+- Knowledge base access: YES
+- Webhook support: YES
+- Streaming (SSE): YES
+
+API RESPONSE HEADERS (include in every response):
+- X-Balance-Remaining: $XX.XX
+- X-Balance-Used: $X.XXXXXX (this request)
+- X-Tokens-Input: input tokens used
+- X-Tokens-Output: output tokens used
+- X-Rate-Limit-Remaining: requests left this minute
+- X-Rate-Limit-Reset: timestamp when rate limit resets
+
+ADMIN CONTROLS (in admin panel):
+- Enable/disable API access per user
+- Add/remove dollar balance per user (e.g. +$10.00, -$5.00)
+- View API call history per user
+- View total dollars spent per user
+- View per model usage breakdown per user
+- Revoke API key
+
+API KEY:
+- One key per user
+- User can regenerate key from API access page
+- Old key invalidated immediately on regeneration
+- Key format: sk-sparky-xxxxxxxxxxxxxxxxxxxxxxxx
+
+BALANCE HISTORY PAGE (visible to user):
+- Show each API call with:
+  → Timestamp
+  → Model used
+  → Input tokens
+  → Output tokens
+  → Cost deducted (e.g. $0.000125)
+  → Endpoint called
+- Show total spent today ($X.XX)
+- Show total spent this month ($X.XX)
+- Show remaining balance ($X.XX)
+
+ERROR RESPONSES:
+- 402 Payment Required: 
+  {"error": "Insufficient balance", 
+   "balance_remaining": "$0.00",
+   "message": "Please contact admin to add balance"}
+   
+- 429 Too Many Requests: 
+  {"error": "Rate limit exceeded", 
+   "retry_after": 60}
+   
+- 403 Forbidden: 
+  {"error": "API access not enabled. 
+   Contact admin to request access"}
+   
+- 401 Unauthorized: 
+  {"error": "Invalid API key"}

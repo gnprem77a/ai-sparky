@@ -1,0 +1,95 @@
+FREE PLAN
+- Messages per day: 20
+- Resets: Daily at midnight
+- Models available: Fast only
+- Max output tokens: 4,096
+- Context window: Last 6 messages
+- File uploads per message: 2
+- Max file size: 5MB
+- Knowledge bases: 1
+- KB documents per KB: 5
+- Web search: YES
+- Voice input: YES
+- Voice output: NO
+- File uploads: YES
+- Conversation sharing: NO
+- Prompt library: YES (view only, no save)
+- Memory: NO
+- API access: NO
+- Folders & tags: NO
+- Pinned messages: NO
+- Analytics: NO
+- Custom system prompt: NO
+
+PRO PLAN
+- Monthly output token limit: 2,200,000
+- Resets: Every 30 days from signup date
+- Models available: All 5 modes (Auto, Fast, Balanced, Powerful, Creative)
+- Powerful mode model: Claude Opus 4.6 ONLY
+- Max output tokens:
+    → Powerful mode: 32,000
+    → All other modes: 8,192
+- Context window: Last 20 messages
+- File uploads per message: 5
+- Max file size: 25MB
+- Knowledge bases: 10
+- KB documents per KB: 50
+- Web search: YES
+- Voice input: YES
+- Voice output: YES
+- File uploads: YES
+- Conversation sharing: YES
+- Prompt library: YES (full CRUD)
+- Memory: YES
+- API access: YES
+- Folders & tags: YES
+- Pinned messages: YES
+- Analytics: YES
+- Custom system prompt: YES
+- Token usage progress bar: YES (show X / 2,200,000 tokens used)
+- Warning at 90% usage: YES (notify user)
+- Block at 100%: YES (until monthly reset)
+
+PRO API ACCESS
+- Who can access: Pro users only
+- Daily request limit: 500
+- Monthly request limit: 10,000
+- Rate limit: 30 requests per minute
+- Max output tokens per request: 32,000
+- Web search: YES
+- File/vision input: YES
+- Knowledge base access: YES
+- Webhook support: YES
+- When daily limit hit: Return 429 with reset time in header
+- When monthly limit hit: Return 429 with billing reset date in header
+- Free users: Show API page but locked with "Upgrade to Pro" message
+
+MODEL SPECIFIC SETTINGS
+- Auto mode: 
+    → Tokens: 8,192
+    → Available: Free NO, Pro YES
+
+- Fast mode (Haiku):
+    → Tokens: 4,096
+    → Available: Free YES, Pro YES
+
+- Balanced mode (Mistral):
+    → Tokens: 8,192
+    → Available: Free NO, Pro YES
+
+- Powerful mode (Claude Opus 4.6):
+    → Tokens: 32,000
+    → Available: Free NO, Pro YES (ONLY)
+
+- Creative mode:
+    → Tokens: 8,192
+    → Available: Free NO, Pro YES
+
+BLOCKING RULES
+- Free user hits 20 messages → block until midnight
+- Pro user hits 2.2M tokens → block until billing reset date
+- Pro API hits 500 daily requests → block until midnight
+- Pro API hits 10,000 monthly requests → block until billing reset date
+- Free user tries Pro feature → show "Upgrade to Pro" prompt
+- Downgrade Pro → Free → revoke API key immediately
+- Token counting: count OUTPUT tokens only toward the 2.2M limit
