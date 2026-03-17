@@ -1012,6 +1012,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       apiMonthlyLimit: u.apiMonthlyLimit ?? null,
       apiWebhookUrl: u.apiWebhookUrl ?? null,
       apiRateLimitPerMin: u.apiRateLimitPerMin ?? null,
+      apiBalance: u.apiBalance ?? 0,
       isFlagged: u.isFlagged,
       flagReason: u.flagReason ?? null,
     })));
@@ -1097,6 +1098,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(user);
   });
 
+  /* ── admin: adjust user API balance ── */
+  app.patch("/api/admin/users/:id/balance", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const { delta } = req.body as { delta?: number };
+    if (typeof delta !== "number" || isNaN(delta)) return res.status(400).json({ error: "delta (number) required" });
+    const user = await storage.adjustApiBalance(id, delta);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ balance: user.apiBalance });
+  });
+
+  /* ── admin: get user API logs ── */
+  app.get("/api/admin/users/:id/api-logs", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const limit = Math.min(parseInt(req.query.limit as string ?? "100"), 500);
+    const logs = await storage.getApiLogs(id, limit);
+    const stats = await storage.getApiStats(id);
+    return res.json({ logs, stats });
+  });
+
   /* ── admin: flag / unflag user ── */
   app.patch("/api/admin/users/:id/flag", requireAdmin as any, async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
@@ -1131,6 +1151,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const dailyUsed = (!user.apiDailyResetAt || user.apiDailyResetAt < today) ? 0 : (user.apiDailyCount ?? 0);
     const monthlyUsed = (!user.apiMonthlyResetAt || user.apiMonthlyResetAt < monthStart) ? 0 : (user.apiMonthlyCount ?? 0);
+    const stats = await storage.getApiStats(userId);
     return res.json({
       apiKey: user.apiKey,
       apiEnabled: user.apiEnabled,
@@ -1140,7 +1161,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       monthlyLimit: user.apiMonthlyLimit ?? null,
       rateLimitPerMin: user.apiRateLimitPerMin ?? null,
       webhookUrl: user.apiWebhookUrl ?? null,
+      balance: user.apiBalance ?? 0,
+      totalSpent: stats.totalSpent,
+      todaySpent: stats.todaySpent,
+      monthSpent: stats.monthSpent,
+      byModel: stats.byModel,
     });
+  });
+
+  /* ── user: request API access (Pro only) ── */
+  app.post("/api/me/api-access/request", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.plan !== "pro") return res.status(403).json({ error: "Pro plan required to request API access" });
+    if (user.apiEnabled) return res.json({ ok: true, already: true });
+    const admins = (await storage.getAllUsers()).filter((u) => u.isAdmin && u.email);
+    for (const admin of admins) {
+      if (admin.email) {
+        sendEmail(admin.email, `API Access Request from ${user.username}`,
+          `<p><strong>${user.username}</strong> (Pro) has requested API access.</p><p>Log in to the admin panel to enable it for them.</p>`);
+      }
+    }
+    return res.json({ ok: true });
   });
 
   /* ── user: regenerate own API key ── */
@@ -1915,35 +1958,78 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  /* ── External API: /api/v1/chat (API key auth) ── */
+  /* ── External API: /api/v1/chat (API key auth, balance-based) ── */
+
+  // Pricing: $ per 1M tokens
+  const API_PRICING: Record<string, { input: number; output: number }> = {
+    powerful:  { input: 5.00,  output: 25.00 },
+    fast:      { input: 0.80,  output: 4.00  },
+    creative:  { input: 2.00,  output: 8.00  },
+    balanced:  { input: 1.00,  output: 3.00  },
+  };
+  const API_MAX_TOKENS: Record<string, number> = {
+    powerful: 32000,
+    fast:     4096,
+    creative: 8192,
+    balanced: 8192,
+  };
+  const API_RATE_LIMIT = 30; // per minute, fixed
+  const apiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+  function checkApiV1RateLimit(apiKey: string): { allowed: boolean; remaining: number; resetAt: number } {
+    const now = Date.now();
+    const windowMs = 60_000;
+    const entry = apiRateLimitMap.get(apiKey);
+    if (!entry || now > entry.resetAt) {
+      apiRateLimitMap.set(apiKey, { count: 1, resetAt: now + windowMs });
+      return { allowed: true, remaining: API_RATE_LIMIT - 1, resetAt: now + windowMs };
+    }
+    if (entry.count >= API_RATE_LIMIT) {
+      return { allowed: false, remaining: 0, resetAt: entry.resetAt };
+    }
+    entry.count++;
+    return { allowed: true, remaining: API_RATE_LIMIT - entry.count, resetAt: entry.resetAt };
+  }
+
+  function computeCost(modelSlug: string, inputTokens: number, outputTokens: number): number {
+    const rates = API_PRICING[modelSlug] ?? API_PRICING.balanced;
+    return (inputTokens / 1_000_000) * rates.input + (outputTokens / 1_000_000) * rates.output;
+  }
+
   app.post("/api/v1/chat", async (req: Request, res: Response) => {
     const authHeader = req.headers["authorization"] as string | undefined;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>" });
+      return res.status(401).json({ error: "Invalid API key" });
     }
     const apiKey = authHeader.slice(7).trim();
     const user = await storage.getUserByApiKey(apiKey);
-    if (!user || !user.apiEnabled) {
-      return res.status(401).json({ error: "Invalid or disabled API key" });
+
+    if (!user) return res.status(401).json({ error: "Invalid API key" });
+    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled. Contact admin to request access" });
+
+    // Rate limit (hard 30/min)
+    const rl = checkApiV1RateLimit(apiKey);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", "60");
+      res.setHeader("X-Rate-Limit-Remaining", "0");
+      res.setHeader("X-Rate-Limit-Reset", String(Math.ceil(rl.resetAt / 1000)));
+      return res.status(429).json({ error: "Rate limit exceeded", retry_after: 60 });
     }
 
-    // Rate limiting
-    if (!checkRateLimit(apiKey, user.apiRateLimitPerMin ?? null)) {
-      if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.rate_limited", { username: user.username });
-      return res.status(429).json({ error: `Rate limit exceeded. Max ${user.apiRateLimitPerMin} requests per minute.` });
+    // Balance check
+    const currentBalance = user.apiBalance ?? 0;
+    if (currentBalance <= 0) {
+      return res.status(402).json({
+        error: "Insufficient balance",
+        balance_remaining: `$${currentBalance.toFixed(2)}`,
+        message: "Please contact admin to add balance",
+      });
     }
 
-    // Daily/monthly usage check
-    const usage = await storage.incrementApiUsage(user.id);
-    if (!usage.allowed) {
-      const limitType = usage.limitType!;
-      const limit = limitType === "daily" ? usage.dailyLimit! : usage.monthlyLimit!;
-      if (user.email) sendEmail(user.email, `API ${limitType === "daily" ? "Daily" : "Monthly"} Limit Reached`, apiLimitReachedEmail(user.username, limitType, limit));
-      if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, `api.limit.${limitType}`, { username: user.username, limit, limitType });
-      return res.status(429).json({ error: `${limitType === "daily" ? "Daily" : "Monthly"} request limit of ${limit} reached.` });
-    }
+    const { messages: rawMessages, message, model: modelParam, systemPrompt, stream: wantStream, maxTokens: reqMaxTokens } = req.body;
 
-    const { messages: rawMessages, message, model, systemPrompt, stream: wantStream, maxTokens } = req.body;
+    // Normalize model slug
+    const modelSlug: string = ["powerful", "fast", "creative", "balanced"].includes(modelParam) ? modelParam : "balanced";
 
     let messages: { role: string; content: string }[] = [];
     if (Array.isArray(rawMessages) && rawMessages.length > 0) {
@@ -1954,31 +2040,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "Provide 'message' (string) or 'messages' (array)" });
     }
 
+    // Resolve providers for the requested model
     const dbProviders = await storage.getActiveProviders();
-    const claudeProviders = dbProviders.filter((p) => p.providerType === "anthropic");
-    if (claudeProviders.length === 0) {
-      return res.status(503).json({ error: "No Claude (Anthropic) providers are configured and active." });
-    }
-    const providerConfigs: ProviderConfig[] = claudeProviders.map((p) => ({
-      id: p.id,
-      name: p.name,
-      providerType: p.providerType,
-      apiUrl: p.apiUrl ?? null,
-      apiKey: p.apiKey ?? null,
-      modelName: p.modelName,
-      headers: p.headers ?? null,
-      httpMethod: p.httpMethod ?? "POST",
+    const patterns = getProviderPatterns(modelSlug as any);
+    let selectedProviders = dbProviders.filter((p) =>
+      p.isEnabled && p.isActive &&
+      patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat))
+    );
+    // Fallback: use any active provider
+    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled && p.isActive);
+    if (selectedProviders.length === 0) return res.status(503).json({ error: "No active AI providers configured" });
+
+    const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
       authStyle: (p.authStyle ?? "bearer") as ProviderConfig["authStyle"],
       authHeaderName: p.authHeaderName ?? null,
       streamMode: (p.streamMode ?? "none") as ProviderConfig["streamMode"],
-      bodyTemplate: p.bodyTemplate ?? null,
-      responsePath: p.responsePath ?? null,
-      isActive: p.isActive,
-      isEnabled: p.isEnabled,
-      priority: p.priority,
+      bodyTemplate: p.bodyTemplate ?? null, responsePath: p.responsePath ?? null,
+      isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
     }));
 
+    const maxTokens = Math.min(reqMaxTokens ?? API_MAX_TOKENS[modelSlug], API_MAX_TOKENS[modelSlug]);
     const messagesJson = JSON.stringify(messages);
+    const endpoint = "/api/v1/chat";
+
+    // Helper: set standard response headers
+    const setBalanceHeaders = (inputTok: number, outputTok: number, balanceAfter: number, cost: number) => {
+      res.setHeader("X-Balance-Remaining", `$${balanceAfter.toFixed(2)}`);
+      res.setHeader("X-Balance-Used", `$${cost.toFixed(6)}`);
+      res.setHeader("X-Tokens-Input", String(inputTok));
+      res.setHeader("X-Tokens-Output", String(outputTok));
+      res.setHeader("X-Rate-Limit-Remaining", String(rl.remaining));
+      res.setHeader("X-Rate-Limit-Reset", String(Math.ceil(rl.resetAt / 1000)));
+    };
+
+    // Also track daily/monthly call counts
+    const usage = await storage.incrementApiUsage(user.id);
+    if (!usage.allowed) {
+      const limitType = usage.limitType!;
+      const limit = limitType === "daily" ? usage.dailyLimit! : usage.monthlyLimit!;
+      if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, `api.limit.${limitType}`, { username: user.username, limit, limitType });
+      return res.status(429).json({ error: `${limitType === "daily" ? "Daily" : "Monthly"} request limit of ${limit} reached.` });
+    }
 
     if (wantStream === true) {
       res.setHeader("Content-Type", "text/event-stream");
@@ -1987,15 +2092,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.flushHeaders();
       try {
         const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
-          messages,
-          systemPrompt: systemPrompt ?? undefined,
-          maxTokens: maxTokens ?? 2048,
-          useTools: false,
-          res,
+          messages, systemPrompt: systemPrompt ?? undefined, maxTokens, useTools: false, res,
         });
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens });
-        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, stream: true });
-        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, dailyUsed: usage.dailyUsed, monthlyUsed: usage.monthlyUsed })}\n\n`);
+        const cost = computeCost(modelSlug, inputTokens, outputTokens);
+        const updatedUser = await storage.adjustApiBalance(user.id, -cost);
+        const balanceAfter = updatedUser?.apiBalance ?? 0;
+        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: cost });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, cost, model: modelSlug, stream: true });
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost })}\n\n`);
         res.end();
       } catch (err: any) {
         res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
@@ -2004,13 +2109,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } else {
       try {
         const sysPrompt = systemPrompt ?? "";
-        const userPrompt = messages
-          .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
-          .join("\n");
-        const text = await generateText(providerConfigs, sysPrompt, userPrompt, maxTokens ?? 2048);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens: 0, outputTokens: 0 });
-        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, stream: false });
-        return res.json({ content: text, model: model ?? "claude", dailyUsed: usage.dailyUsed, monthlyUsed: usage.monthlyUsed });
+        const userPrompt = messages.map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`).join("\n");
+        const text = await generateText(providerConfigs, sysPrompt, userPrompt, maxTokens);
+        // Estimate tokens (rough: 1 token ≈ 4 chars)
+        const inputTokens = Math.ceil(userPrompt.length / 4);
+        const outputTokens = Math.ceil(text.length / 4);
+        const cost = computeCost(modelSlug, inputTokens, outputTokens);
+        const updatedUser = await storage.adjustApiBalance(user.id, -cost);
+        const balanceAfter = updatedUser?.apiBalance ?? 0;
+        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: cost });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost, model: modelSlug, stream: false });
+        return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost, inputTokens, outputTokens });
       } catch (err: any) {
         return res.status(500).json({ error: err.message || "Generation failed" });
       }

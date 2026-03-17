@@ -26,6 +26,7 @@ export const users = pgTable("users", {
   flagReason: text("flag_reason"),
   monthlyOutputTokens: integer("monthly_output_tokens").notNull().default(0),
   monthlyTokensResetAt: timestamp("monthly_tokens_reset_at"),
+  apiBalance: real("api_balance").notNull().default(0),
 });
 
 export const conversations = pgTable("conversations", {
@@ -179,6 +180,9 @@ export const apiLogs = pgTable("api_logs", {
   response: text("response"),
   inputTokens: integer("input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
+  modelUsed: text("model_used"),
+  endpoint: text("endpoint"),
+  costDeducted: real("cost_deducted"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 export type ApiLog = typeof apiLogs.$inferSelect;

@@ -33,8 +33,10 @@ export interface IStorage {
   setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
   setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined>;
   incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }>;
-  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number }): Promise<ApiLog>;
+  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number }): Promise<ApiLog>;
   getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
+  adjustApiBalance(id: string, delta: number): Promise<User | undefined>;
+  getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }>;
 
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -221,13 +223,43 @@ export class DatabaseStorage implements IStorage {
     return { allowed: true, dailyUsed: dailyCount + 1, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount + 1, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: null };
   }
 
-  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number }): Promise<ApiLog> {
+  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number }): Promise<ApiLog> {
     const [log] = await db.insert(apiLogs).values(data).returning();
     return log;
   }
 
   async getApiLogs(userId: string, limit = 50): Promise<ApiLog[]> {
     return db.select().from(apiLogs).where(eq(apiLogs.userId, userId)).orderBy(desc(apiLogs.createdAt)).limit(limit);
+  }
+
+  async adjustApiBalance(id: string, delta: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    if (!user) return undefined;
+    const newBalance = Math.max(0, (user.apiBalance ?? 0) + delta);
+    const [updated] = await db.update(users).set({ apiBalance: newBalance }).where(eq(users.id, id)).returning();
+    return updated;
+  }
+
+  async getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }> {
+    const logs = await db.select().from(apiLogs).where(eq(apiLogs.userId, userId));
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const monthStr = now.toISOString().slice(0, 7);
+    let totalSpent = 0, todaySpent = 0, monthSpent = 0;
+    const byModel: Record<string, { calls: number; spent: number }> = {};
+    for (const log of logs) {
+      const cost = log.costDeducted ?? 0;
+      totalSpent += cost;
+      const logDate = new Date(log.createdAt).toISOString().slice(0, 10);
+      const logMonth = new Date(log.createdAt).toISOString().slice(0, 7);
+      if (logDate === todayStr) todaySpent += cost;
+      if (logMonth === monthStr) monthSpent += cost;
+      const model = log.modelUsed ?? "unknown";
+      if (!byModel[model]) byModel[model] = { calls: 0, spent: 0 };
+      byModel[model].calls++;
+      byModel[model].spent += cost;
+    }
+    return { totalSpent, todaySpent, monthSpent, byModel };
   }
 
   async getConversations(userId: string): Promise<Conversation[]> {

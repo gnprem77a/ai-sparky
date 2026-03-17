@@ -12,6 +12,7 @@ import {
   ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { type Broadcast, type AiProvider } from "@shared/schema";
 
 interface TokenStats {
@@ -46,6 +47,7 @@ interface AdminUser {
   apiMonthlyLimit?: number | null;
   apiWebhookUrl?: string | null;
   apiRateLimitPerMin?: number | null;
+  apiBalance?: number | null;
   isFlagged?: boolean;
   flagReason?: string | null;
 }
@@ -1089,6 +1091,27 @@ export default function AdminPage() {
     },
   });
 
+  const { toast } = useToast();
+  const [balanceForms, setBalanceForms] = useState<Record<string, string>>({});
+  const [adminApiLogsOpenId, setAdminApiLogsOpenId] = useState<string | null>(null);
+
+  const adjustBalanceMutation = useMutation({
+    mutationFn: ({ id, delta }: { id: string; delta: number }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/balance`, { delta }).then((r) => r.json()),
+    onSuccess: (data, { id, delta }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setBalanceForms((prev) => ({ ...prev, [id]: "" }));
+      toast({ title: "Balance updated", description: `New balance: $${(data.balance ?? 0).toFixed(2)}` });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update balance", variant: "destructive" }),
+  });
+
+  const { data: adminApiLogs, isLoading: adminApiLogsLoading } = useQuery<{ logs: any[]; stats: any }>({
+    queryKey: ["/api/admin/users", adminApiLogsOpenId, "api-logs"],
+    queryFn: () => fetch(`/api/admin/users/${adminApiLogsOpenId}/api-logs`, { credentials: "include" }).then((r) => r.json()),
+    enabled: !!adminApiLogsOpenId,
+  });
+
   const { data: featureStats = [] } = useQuery<FeatureStat[]>({
     queryKey: ["/api/admin/stats/features"],
     queryFn: () => fetch("/api/admin/stats/features", { credentials: "include" }).then((r) => r.json()),
@@ -1667,6 +1690,14 @@ export default function AdminPage() {
                         )}
                         {u.apiDailyLimit && <span className="text-[10px] text-muted-foreground">{u.apiDailyLimit}/day</span>}
                         {u.apiMonthlyLimit && <span className="text-[10px] text-muted-foreground">{u.apiMonthlyLimit}/mo</span>}
+                        {u.apiEnabled && (
+                          <span className={cn(
+                            "text-[10px] font-mono font-semibold",
+                            (u.apiBalance ?? 0) <= 0 ? "text-red-500" : (u.apiBalance ?? 0) < 5 ? "text-amber-500" : "text-emerald-500"
+                          )} data-testid={`text-balance-${u.id}`}>
+                            ${(u.apiBalance ?? 0).toFixed(2)}
+                          </span>
+                        )}
                       </div>
                       {isGenerated && (
                         <div className="mt-2 flex items-center gap-2">
@@ -1807,6 +1838,99 @@ export default function AdminPage() {
                           />
                         </div>
                       </div>
+                      {/* Balance management */}
+                      <div className="pt-2 border-t border-border/40 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Balance Management</span>
+                          <span className={cn("text-xs font-mono font-bold ml-auto", (u.apiBalance ?? 0) <= 0 ? "text-red-500" : (u.apiBalance ?? 0) < 5 ? "text-amber-500" : "text-emerald-500")}>
+                            ${(u.apiBalance ?? 0).toFixed(2)} current
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={balanceForms[u.id] ?? ""}
+                            onChange={(e) => setBalanceForms((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                            placeholder="e.g. +10.00 or -5.00"
+                            className="flex-1 px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-xs text-foreground font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+                            data-testid={`input-balance-${u.id}`}
+                          />
+                          <button
+                            onClick={() => {
+                              const delta = parseFloat(balanceForms[u.id] ?? "");
+                              if (isNaN(delta)) return;
+                              adjustBalanceMutation.mutate({ id: u.id, delta });
+                            }}
+                            disabled={adjustBalanceMutation.isPending}
+                            data-testid={`button-adjust-balance-${u.id}`}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-primary/30 text-primary hover:bg-primary/10 transition-all whitespace-nowrap disabled:opacity-50"
+                          >
+                            {adjustBalanceMutation.isPending ? "..." : "Apply"}
+                          </button>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {[5, 10, 25, 50].map((amt) => (
+                            <button
+                              key={amt}
+                              onClick={() => adjustBalanceMutation.mutate({ id: u.id, delta: amt })}
+                              disabled={adjustBalanceMutation.isPending}
+                              data-testid={`button-add-${amt}-${u.id}`}
+                              className="px-2 py-1 rounded text-[10px] font-medium border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 transition-all"
+                            >
+                              +${amt}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => setAdminApiLogsOpenId(adminApiLogsOpenId === u.id ? null : u.id)}
+                          data-testid={`button-view-api-logs-${u.id}`}
+                          className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Activity className="w-3 h-3" />
+                          {adminApiLogsOpenId === u.id ? "Hide API logs" : "View API logs"}
+                        </button>
+                        {adminApiLogsOpenId === u.id && (
+                          <div className="rounded-xl border border-border bg-muted/20 overflow-hidden max-h-64 overflow-y-auto">
+                            {adminApiLogsLoading ? (
+                              <div className="p-4 text-xs text-muted-foreground text-center">Loading...</div>
+                            ) : !adminApiLogs?.logs?.length ? (
+                              <div className="p-4 text-xs text-muted-foreground text-center">No API calls yet.</div>
+                            ) : (
+                              <>
+                                {adminApiLogs.stats && (
+                                  <div className="px-4 py-2 border-b border-border/50 grid grid-cols-3 gap-2 text-[10px]">
+                                    <span className="text-muted-foreground">Today: <strong className="text-foreground">${(adminApiLogs.stats.todaySpent ?? 0).toFixed(4)}</strong></span>
+                                    <span className="text-muted-foreground">Month: <strong className="text-foreground">${(adminApiLogs.stats.monthSpent ?? 0).toFixed(4)}</strong></span>
+                                    <span className="text-muted-foreground">Total: <strong className="text-foreground">${(adminApiLogs.stats.totalSpent ?? 0).toFixed(4)}</strong></span>
+                                  </div>
+                                )}
+                                {adminApiLogs.logs.slice(0, 20).map((log: any) => (
+                                  <div key={log.id} className="px-4 py-2 border-b border-border/30 flex items-center justify-between gap-3 text-[10px]" data-testid={`row-admin-api-log-${log.id}`}>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        {log.modelUsed && <span className="text-primary font-semibold">{log.modelUsed}</span>}
+                                        {log.endpoint && <span className="font-mono text-muted-foreground">{log.endpoint}</span>}
+                                      </div>
+                                      <p className="text-muted-foreground truncate font-mono">
+                                        ↑{log.inputTokens} ↓{log.outputTokens} tok
+                                      </p>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 space-y-0.5">
+                                      <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
+                                      {log.costDeducted != null && (
+                                        <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(6)}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <div className="flex items-center justify-end gap-2 pt-1">
                         <button
                           onClick={() => setApiSettingsOpenId(null)}
