@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Crown, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Zap, Globe, BarChart2 } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon, Globe, BarChart2 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import {
   Sidebar,
@@ -796,79 +796,6 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="px-3 py-3 space-y-1">
-        {/* Monthly token usage bar for Pro users */}
-        {monthlyUsage && isPro && user && (
-          (() => {
-            const pct = Math.min(100, (monthlyUsage.used / monthlyUsage.limit) * 100);
-            const isWarn    = monthlyUsage.used >= monthlyUsage.warnAt;
-            const isBlocked = monthlyUsage.blocked;
-            const resetDate = monthlyUsage.resetAt ? new Date(monthlyUsage.resetAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
-            const usedK  = (monthlyUsage.used / 1000).toFixed(0);
-            const limitK = (monthlyUsage.limit / 1_000_000).toFixed(1);
-            const barColor = isBlocked ? "from-red-500 to-red-600" : isWarn ? "from-orange-500 to-amber-500" : "from-violet-500 to-purple-500";
-            const borderColor = isBlocked ? "border-red-500/20" : isWarn ? "border-amber-500/20" : "border-violet-500/15";
-            const bgColor = isBlocked ? "bg-red-500/5" : isWarn ? "bg-amber-500/5" : "bg-violet-500/5";
-            const textColor = isBlocked ? "text-red-400" : isWarn ? "text-amber-400" : "text-violet-400";
-            return (
-              <div className={`mb-1 px-1 py-2.5 rounded-xl ${bgColor} border ${borderColor} space-y-2`}>
-                <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-1.5">
-                    <Crown className={`w-3 h-3 ${textColor}`} />
-                    <span className={`text-[11px] font-semibold ${textColor}`}>Monthly tokens</span>
-                  </div>
-                  <span className={`text-[11px] font-bold tabular-nums ${textColor}`}>
-                    {usedK}K / {limitK}M
-                  </span>
-                </div>
-                <div className="mx-1 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                  <div className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all`} style={{ width: `${pct}%` }} />
-                </div>
-                {isBlocked ? (
-                  <p className={`text-[10px] font-medium px-1 ${textColor}`}>Limit reached · Resets {resetDate}</p>
-                ) : isWarn ? (
-                  <p className={`text-[10px] font-medium px-1 ${textColor}`}>90%+ used · Resets {resetDate}</p>
-                ) : (
-                  <p className="text-[10px] text-muted-foreground/50 px-1">Resets {resetDate}</p>
-                )}
-              </div>
-            );
-          })()
-        )}
-
-        {/* Usage bar for free users */}
-        {usage && !isPro && user && (
-          <div className="mb-1 px-1 py-2.5 rounded-xl bg-amber-500/5 border border-amber-500/15 space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-amber-500" />
-                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">Daily usage</span>
-              </div>
-              <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                {usage.count}/{usage.limit}
-              </span>
-            </div>
-            <div className="mx-1 h-1.5 rounded-full bg-amber-500/15 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all"
-                style={{ width: `${Math.min(100, (usage.count / usage.limit) * 100)}%` }}
-              />
-            </div>
-            {usage.count >= usage.limit ? (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 px-1 font-medium">
-                Limit reached · Resets at midnight
-              </p>
-            ) : (
-              <p className="text-[10px] text-muted-foreground/60 px-1">
-                {usage.limit - usage.count} messages left today
-              </p>
-            )}
-            <div className="px-1">
-              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                <Crown className="w-2.5 h-2.5" /> Pro = unlimited messages + all models
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Navigation links */}
         {user && (
@@ -955,33 +882,9 @@ export function AppSidebar({
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{isPro ? "Pro plan · Unlimited access" : "Free plan · 20 msgs/day"}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{isPro ? "Pro plan" : "Free plan"}</p>
                     </div>
                   </div>
-
-                  {/* Monthly usage for Pro users */}
-                  {isPro && monthlySummary && (
-                    <div className="mx-4 mb-3 p-3 rounded-xl bg-muted/30 border border-border/40">
-                      <p className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-widest mb-2">This month's usage</p>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] text-muted-foreground">Tokens</span>
-                        <span className="text-[11px] font-semibold text-foreground tabular-nums">
-                          {monthlySummary.monthlyTokens >= 1_000_000
-                            ? `${(monthlySummary.monthlyTokens / 1_000_000).toFixed(2)}M`
-                            : monthlySummary.monthlyTokens >= 1000
-                            ? `${(monthlySummary.monthlyTokens / 1000).toFixed(1)}K`
-                            : monthlySummary.monthlyTokens}
-                        </span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-1.5">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all"
-                          style={{ width: `${Math.min(100, (monthlySummary.monthlyTokens / 2_200_000) * 100)}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground/60">{monthlySummary.monthlyMessages} messages · {monthlySummary.totalTokens.toLocaleString()} tokens all-time</p>
-                    </div>
-                  )}
 
                   {/* Menu items */}
                   <div className="py-1">
@@ -1004,15 +907,17 @@ export function AppSidebar({
                       My Profile
                     </a>
 
-                    <a
-                      href="/analytics"
-                      onClick={() => setProfileMenuOpen(false)}
-                      data-testid="button-sidebar-analytics"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
-                    >
-                      <BarChart2 className="w-4 h-4 text-muted-foreground" />
-                      Usage Analytics
-                    </a>
+                    {user.apiEnabled && (
+                      <a
+                        href="/analytics"
+                        onClick={() => setProfileMenuOpen(false)}
+                        data-testid="button-sidebar-analytics"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                      >
+                        <BarChart2 className="w-4 h-4 text-muted-foreground" />
+                        Usage Analytics
+                      </a>
+                    )}
 
                     {user.isAdmin && (
                       <a
@@ -1071,7 +976,7 @@ export function AppSidebar({
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">{isPro ? "Unlimited access" : "Free · 20 msgs/day"}</p>
+                  <p className="text-[10px] text-muted-foreground">{isPro ? "Pro plan" : "Free plan"}</p>
                 </div>
                 <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0", profileMenuOpen && "rotate-180")} />
               </button>

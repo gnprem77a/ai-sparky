@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { MessageSquare, Database, Cpu, TrendingUp, ArrowLeft, DollarSign, Clock, Star } from "lucide-react";
+import { MessageSquare, Database, Cpu, TrendingUp, ArrowLeft, DollarSign, Clock, Star, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
 
 interface OverviewData {
   totalConversations: number;
@@ -50,6 +51,8 @@ function formatHour(hour: number) {
 }
 
 export default function AnalyticsPage() {
+  const { user, isLoading: authLoading } = useAuth();
+
   const { data: overview, isLoading: loadingOverview } = useQuery<OverviewData>({
     queryKey: ["/api/analytics/overview"],
   });
@@ -74,13 +77,30 @@ export default function AnalyticsPage() {
     queryKey: ["/api/analytics/top-conversations"],
   });
 
-  if (loadingOverview || loadingDaily || loadingModels) {
+  if (authLoading || loadingOverview || loadingDaily || loadingModels) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
         <div className="flex gap-1.5">
           <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
           <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
           <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user?.apiEnabled) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-8">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mx-auto">
+            <Lock className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-bold text-foreground">Analytics not available</h2>
+          <p className="text-sm text-muted-foreground">Usage analytics are available to API users only. Contact an admin to request API access.</p>
+          <Link href="/">
+            <Button variant="outline" className="mt-2">Back to Chat</Button>
+          </Link>
         </div>
       </div>
     );
