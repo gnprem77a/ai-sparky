@@ -180,6 +180,7 @@ export const kbChunks = pgTable("kb_chunks", {
 export const apiLogs = pgTable("api_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  apiKeyId: text("api_key_id"),
   messages: text("messages").notNull(),
   response: text("response"),
   inputTokens: integer("input_tokens").notNull().default(0),
@@ -189,9 +190,14 @@ export const apiLogs = pgTable("api_logs", {
   costDeducted: real("cost_deducted"),
   inputCost: real("input_cost"),
   outputCost: real("output_cost"),
+  status: text("status").notNull().default("success"),
   success: boolean("success").notNull().default(true),
   requestId: text("request_id"),
   failReason: text("fail_reason"),
+  providerResponseId: text("provider_response_id"),
+  balanceBefore: real("balance_before"),
+  balanceAfter: real("balance_after"),
+  durationMs: integer("duration_ms"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 export type ApiLog = typeof apiLogs.$inferSelect;

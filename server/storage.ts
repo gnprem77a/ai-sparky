@@ -44,10 +44,10 @@ export interface IStorage {
   setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
   setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined>;
   incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }>;
-  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; requestId?: string; failReason?: string }): Promise<ApiLog>;
+  createApiLog(data: { userId: string; apiKeyId?: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; status?: string; requestId?: string; failReason?: string; providerResponseId?: string; balanceBefore?: number; balanceAfter?: number; durationMs?: number }): Promise<ApiLog>;
   getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
   adjustApiBalance(id: string, delta: number): Promise<User | undefined>;
-  deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number }>;
+  deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number; balanceBefore: number }>;
   getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }>;
 
   getConversations(userId: string): Promise<Conversation[]>;
@@ -253,8 +253,8 @@ export class DatabaseStorage implements IStorage {
     return { allowed: true, dailyUsed: dailyCount + 1, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount + 1, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: null };
   }
 
-  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; requestId?: string; failReason?: string }): Promise<ApiLog> {
-    const [log] = await db.insert(apiLogs).values({ ...data, success: data.success ?? true }).returning();
+  async createApiLog(data: { userId: string; apiKeyId?: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean; status?: string; requestId?: string; failReason?: string; providerResponseId?: string; balanceBefore?: number; balanceAfter?: number; durationMs?: number }): Promise<ApiLog> {
+    const [log] = await db.insert(apiLogs).values({ ...data, success: data.success ?? true, status: data.status ?? "success" }).returning();
     return log;
   }
 
@@ -270,21 +270,37 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Atomically deducts cost from wallet. Prevents race conditions and negative balance.
-  // Returns { success: false } if insufficient balance without touching the balance.
-  async deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number }> {
+  // Atomically deducts cost from wallet using a serializable transaction with row-level locking.
+  // SELECT FOR UPDATE ensures two simultaneous requests queue rather than run in parallel.
+  // Returns balanceBefore so callers can include it in audit logs.
+  async deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number; balanceBefore: number }> {
     const rounded = Math.round(cost * 1_000_000) / 1_000_000;
-    const result = await db.execute(drizzleSql`
-      UPDATE users
-      SET api_balance = ROUND(CAST(api_balance - ${rounded} AS NUMERIC), 6)::REAL
-      WHERE id = ${id} AND api_balance >= ${rounded}
-      RETURNING api_balance
-    `);
-    if (result.rows.length === 0) {
-      const [u] = await db.select({ bal: users.apiBalance }).from(users).where(eq(users.id, id));
-      return { success: false, newBalance: u?.bal ?? 0 };
+    try {
+      return await db.transaction(async (tx) => {
+        // Lock the wallet row exclusively — concurrent requests will block here until this tx commits
+        const locked = await tx.execute(drizzleSql`
+          SELECT api_balance FROM users WHERE id = ${id} FOR UPDATE
+        `);
+        if (locked.rows.length === 0) {
+          console.warn(`[wallet-tx] user not found | user=${id}`);
+          return { success: false, newBalance: 0, balanceBefore: 0 };
+        }
+        const balanceBefore = Math.round(((locked.rows[0] as any).api_balance ?? 0) * 1_000_000) / 1_000_000;
+        if (balanceBefore < rounded) {
+          console.warn(`[wallet-tx] insufficient balance | user=${id} | balance=${balanceBefore} | cost=${rounded}`);
+          return { success: false, newBalance: balanceBefore, balanceBefore };
+        }
+        const newBalance = Math.round((balanceBefore - rounded) * 1_000_000) / 1_000_000;
+        await tx.execute(drizzleSql`
+          UPDATE users SET api_balance = ${newBalance}::REAL WHERE id = ${id}
+        `);
+        console.log(`[wallet-tx] deducted | user=${id} | before=${balanceBefore} | cost=${rounded} | after=${newBalance}`);
+        return { success: true, newBalance, balanceBefore };
+      });
+    } catch (err: any) {
+      console.error(`[wallet-tx] transaction error | user=${id} | cost=${rounded} | err=${err?.message}`);
+      throw err;
     }
-    return { success: true, newBalance: (result.rows[0] as any).api_balance ?? 0 };
   }
 
   async getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }> {

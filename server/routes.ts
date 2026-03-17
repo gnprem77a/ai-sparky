@@ -2074,6 +2074,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ error: "Invalid API key" });
     if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled. Contact admin to request access" });
 
+    // Unique request ID for tracing — generated before any check so it can be returned in every response
+    const requestId = "req_" + randomBytes(6).toString("hex");
+    // Wall-clock start for duration tracking
+    const startTime = Date.now();
+    // Masked API key identifier for audit logs
+    const apiKeyId = user.apiKey ?? null;
+
     // Rate limit — use per-user override if set, else global default
     const userRateLimit = user.apiRateLimitPerMin ?? API_RATE_LIMIT_DEFAULT;
     const rl = checkApiV1RateLimit(apiKey, userRateLimit);
@@ -2081,15 +2088,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Retry-After", "60");
       res.setHeader("X-Rate-Limit-Remaining", "0");
       res.setHeader("X-Rate-Limit-Reset", String(Math.ceil(rl.resetAt / 1000)));
-      return res.status(429).json({ error: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", retry_after: 60 });
+      res.setHeader("X-Request-ID", requestId);
+      storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: "[]", response: null, inputTokens: 0, outputTokens: 0, endpoint: "/api/v1/chat", costDeducted: 0, success: false, status: "rejected", requestId, failReason: "rate_limit", durationMs: Date.now() - startTime });
+      return res.status(429).json({ error: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", retry_after: 60, request_id: requestId });
     }
-
-    // Unique request ID for tracing
-    const requestId = crypto.randomUUID();
 
     // Balance check — block at $0.01 or below
     const currentBalance = user.apiBalance ?? 0;
     if (currentBalance < 0.01) {
+      res.setHeader("X-Request-ID", requestId);
+      storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: "[]", response: null, inputTokens: 0, outputTokens: 0, endpoint: "/api/v1/chat", costDeducted: 0, balanceBefore: currentBalance, balanceAfter: currentBalance, success: false, status: "rejected", requestId, failReason: "insufficient_balance", durationMs: Date.now() - startTime });
       return res.status(402).json({
         error: "Insufficient balance",
         balance_remaining: `$${currentBalance.toFixed(2)}`,
@@ -2151,6 +2159,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const estimatedOutputTokens = Math.min(maxTokens, 512); // conservative output estimate
     const { totalCost: estimatedCost } = computeCost(modelSlug, estimatedInputTokens, estimatedOutputTokens, providerInputPrice, providerOutputPrice);
     if (currentBalance < estimatedCost) {
+      res.setHeader("X-Request-ID", requestId);
+      storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, balanceBefore: currentBalance, balanceAfter: currentBalance, success: false, status: "rejected", requestId, failReason: "insufficient_balance", durationMs: Date.now() - startTime });
       return res.status(402).json({
         error: "Insufficient balance for estimated request cost",
         balance_remaining: `$${currentBalance.toFixed(6)}`,
@@ -2168,7 +2178,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("X-Tokens-Output", String(outputTok));
       res.setHeader("X-Rate-Limit-Remaining", String(rl.remaining));
       res.setHeader("X-Rate-Limit-Reset", String(Math.ceil(rl.resetAt / 1000)));
-      res.setHeader("X-Request-Id", requestId);
+      res.setHeader("X-Request-ID", requestId);
     };
 
     // Also track daily/monthly call counts
@@ -2177,6 +2187,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const limitType = usage.limitType!;
       const limit = limitType === "daily" ? usage.dailyLimit! : usage.monthlyLimit!;
       if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, `api.limit.${limitType}`, { username: user.username, limit, limitType });
+      res.setHeader("X-Request-ID", requestId);
+      storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, balanceBefore: currentBalance, balanceAfter: currentBalance, success: false, status: "rejected", requestId, failReason: `${limitType}_limit_reached`, durationMs: Date.now() - startTime });
       return res.status(429).json({ error: `${limitType === "daily" ? "Daily" : "Monthly"} request limit of ${limit} reached.`, request_id: requestId });
     }
 
@@ -2195,14 +2207,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const roundedTotal      = Math.round(totalCost  * 1_000_000) / 1_000_000;
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         const balanceAfter = deduction.newBalance;
+        const durationMs = Date.now() - startTime;
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, roundedTotal);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: deduction.success, requestId });
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, failReason: deduction.success ? undefined : "insufficient_balance", balanceBefore: deduction.balanceBefore, balanceAfter, durationMs });
         if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, cost: roundedTotal, model: modelSlug, stream: true });
         res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, request_id: requestId })}\n\n`);
         res.end();
       } catch (err: any) {
         const failReason = (err?.message || "Stream failed").slice(0, 500);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId, failReason });
+        const durationMs = Date.now() - startTime;
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, status: "failed", requestId, failReason, balanceBefore: currentBalance, balanceAfter: currentBalance, durationMs });
         res.write(`data: ${JSON.stringify({ error: failReason, request_id: requestId })}\n\n`);
         res.end();
       }
@@ -2220,13 +2234,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const roundedTotal      = Math.round(totalCost  * 1_000_000) / 1_000_000;
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         const balanceAfter = deduction.newBalance;
+        const durationMs = Date.now() - startTime;
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, roundedTotal);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: true, requestId });
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, failReason: deduction.success ? undefined : "insufficient_balance", balanceBefore: deduction.balanceBefore, balanceAfter, durationMs });
         if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost: roundedTotal, model: modelSlug, stream: false });
         return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, inputTokens, outputTokens, request_id: requestId });
       } catch (err: any) {
         const failReason = (err?.message || "Generation failed").slice(0, 500);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId, failReason });
+        const durationMs = Date.now() - startTime;
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, status: "failed", requestId, failReason, balanceBefore: currentBalance, balanceAfter: currentBalance, durationMs });
         return res.status(500).json({ error: failReason, request_id: requestId });
       }
     }
