@@ -28,11 +28,11 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   powerful: {
     key: "powerful",
     friendlyName: "Powerful",
-    exactName: "Claude Sonnet 4.6",
-    apiModelId: "claude-sonnet-4-6",
+    exactName: "Claude Opus 4.6",
+    apiModelId: "claude-opus-4-6",
     provider: "anthropic",
     description: "Most intelligent, complex reasoning",
-    badgeLabel: "Sonnet 4.6",
+    badgeLabel: "Opus 4.6",
   },
   creative: {
     key: "creative",
@@ -46,11 +46,11 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   fast: {
     key: "fast",
     friendlyName: "Fast",
-    exactName: "Claude Sonnet 4.6",
-    apiModelId: "claude-sonnet-4-6",
+    exactName: "Claude Haiku",
+    apiModelId: "claude-haiku-prod2",
     provider: "anthropic",
     description: "Instant responses for quick tasks",
-    badgeLabel: "Sonnet 4.6",
+    badgeLabel: "Haiku",
   },
 };
 
@@ -59,4 +59,19 @@ export const FALLBACK_MODEL = MODEL_REGISTRY.balanced;
 /** Returns the ModelDefinition for a given key, defaulting to balanced. */
 export function getModel(key: string): ModelDefinition {
   return MODEL_REGISTRY[key as Exclude<ModelKey, "auto">] ?? FALLBACK_MODEL;
+}
+
+/**
+ * Returns provider name/modelName patterns to prefer for a given model key.
+ * Used by the server to boost matching providers to the top of the fallback chain.
+ */
+export function getProviderPatterns(modelKey: string): string[] {
+  const map: Record<string, string[]> = {
+    powerful: ["opus"],
+    balanced: ["sonnet"],
+    creative: ["sonnet", "claude"],
+    fast:     ["haiku", "fast", "mini"],
+    auto:     [],
+  };
+  return map[modelKey] ?? [];
 }

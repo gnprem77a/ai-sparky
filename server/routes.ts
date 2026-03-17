@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, type ModelDefinition } from "../shared/models";
+import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, getProviderPatterns, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
@@ -211,6 +211,24 @@ function smartSortProviders(providers: ProviderConfig[], messages: RawMessage[])
     return a.priority - b.priority;        // then original priority
   });
   return { sorted, category };
+}
+
+/**
+ * Boost providers that match the user's explicit model key to the top of the list.
+ * e.g. "powerful" → prefers providers whose name/modelName contains "opus".
+ * Falls through to the original order for providers that don't match.
+ */
+function boostProvidersForModelKey(providers: ProviderConfig[], modelKey: string): ProviderConfig[] {
+  const patterns = getProviderPatterns(modelKey);
+  if (!patterns.length) return providers;
+  return [...providers].sort((a, b) => {
+    const na = ((a.name ?? "") + " " + (a.modelName ?? "")).toLowerCase();
+    const nb = ((b.name ?? "") + " " + (b.modelName ?? "")).toLowerCase();
+    const matchA = patterns.some((p) => na.includes(p)) ? 1 : 0;
+    const matchB = patterns.some((p) => nb.includes(p)) ? 1 : 0;
+    if (matchB !== matchA) return matchB - matchA;
+    return a.priority - b.priority;
+  });
 }
 
 function resolveModel(requestedModel: string, messages: RawMessage[]): ModelDefinition {
@@ -1260,8 +1278,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Smart routing: reorder providers based on query type
       const { sorted: smartProviders, category: routingCategory } = smartSortProviders(providerConfigs, recentMessages as RawMessage[]);
+
+      // Model-key boosting: when user explicitly selects a model (not "auto"), prefer matching providers
+      const finalProviders = effectiveModel !== "auto"
+        ? boostProvidersForModelKey(smartProviders, effectiveModel)
+        : smartProviders;
+
       if (routingCategory !== "general") {
-        const topProvider = smartProviders.find((p) => {
+        const topProvider = finalProviders.find((p) => {
           const isChatP = !((p.modelName ?? "").toLowerCase().includes("embed") || (p.apiUrl ?? "").toLowerCase().includes("embed") || (p.modelName ?? "").toLowerCase().includes("rerank") || (p.apiUrl ?? "").toLowerCase().includes("rerank"));
           return p.isEnabled && isChatP;
         });
@@ -1270,7 +1294,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      const { inputTokens, outputTokens, modelName: usedModelName } = await streamWithFallback(smartProviders, {
+      const { inputTokens, outputTokens, modelName: usedModelName } = await streamWithFallback(finalProviders, {
         messages: recentMessages,
         systemPrompt: systemPrompt ?? undefined,
         maxTokens,

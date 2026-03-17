@@ -1464,10 +1464,27 @@ function EmptyState({ onSuggest }: { onSuggest: (text: string) => void }) {
         {t("chat.empty.subtitle")}
       </p>
 
+      {/* Opus 4.6 featured banner */}
+      <div className="w-full max-w-2xl mb-5 relative overflow-hidden rounded-xl border border-amber-500/25 bg-gradient-to-r from-amber-500/8 via-amber-400/5 to-orange-500/8 px-4 py-3.5 flex items-center gap-3.5">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent" />
+        <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+          <span className="text-lg">👑</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[13px] font-bold text-amber-500 dark:text-amber-400">Claude Opus 4.6 is now available</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-500 uppercase tracking-wide">New</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground/80 leading-snug mt-0.5">
+            Anthropic's most intelligent model — select <span className="text-foreground font-medium">Powerful</span> in the model picker to activate it.
+          </p>
+        </div>
+      </div>
+
       {/* Feature highlights */}
       <div className="w-full max-w-2xl mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
-          { icon: "🧠", label: "Multi-Model AI", desc: "GPT, Claude, Gemini & more" },
+          { icon: "👑", label: "Claude Opus 4.6", desc: "Anthropic's most powerful AI" },
           { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
           { icon: "🎤", label: "Voice Chat", desc: "Talk instead of type" },
           { icon: "📎", label: "File Uploads", desc: "Share images & PDFs" },

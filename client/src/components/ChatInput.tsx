@@ -628,7 +628,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                           className="w-full mx-0 mt-1.5 mb-0.5 px-3 py-2.5 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-amber-500/20 text-left hover:from-orange-500/15 hover:to-amber-500/15 transition-colors"
                         >
                           <p className="text-[12px] text-amber-500 font-semibold flex items-center gap-1.5">
-                            <Crown className="w-3.5 h-3.5" /> Upgrade to Pro — Unlock Claude
+                            <Crown className="w-3.5 h-3.5" /> Upgrade to Pro — Unlock Claude Opus 4.6
                           </p>
                           <p className="text-[10px] text-amber-600/70 dark:text-amber-400/70 mt-0.5">
                             All models · Unlimited messages · Priority access
