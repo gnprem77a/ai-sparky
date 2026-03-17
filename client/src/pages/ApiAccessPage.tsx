@@ -466,7 +466,7 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
                   <div key={label} className="rounded-xl border border-border bg-card p-4 text-center">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1.5">{label}</p>
                     <p className="text-lg font-bold tabular-nums text-foreground" data-testid={`text-spent-${label.toLowerCase().replace(" ", "-")}`}>
-                      ${value.toFixed(4)}
+                      ${value.toFixed(2)}
                     </p>
                   </div>
                 ))}
@@ -486,7 +486,7 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
                         <span className="font-medium text-foreground">{MODEL_LABELS[model] ?? model}</span>
                         <span className="text-xs text-muted-foreground ml-2">({stats.calls} calls)</span>
                       </div>
-                      <span className="font-mono text-foreground tabular-nums">${stats.spent.toFixed(6)}</span>
+                      <span className="font-mono text-foreground tabular-nums">${stats.spent.toFixed(4)}</span>
                     </div>
                   ))}
                 </div>
@@ -538,11 +538,11 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl border border-border bg-card p-4 text-center">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">Today Spent</p>
-                  <p className="text-base font-bold tabular-nums text-foreground">${(data?.todaySpent ?? 0).toFixed(4)}</p>
+                  <p className="text-base font-bold tabular-nums text-foreground">${(data?.todaySpent ?? 0).toFixed(2)}</p>
                 </div>
                 <div className="rounded-xl border border-border bg-card p-4 text-center">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">Month Spent</p>
-                  <p className="text-base font-bold tabular-nums text-foreground">${(data?.monthSpent ?? 0).toFixed(4)}</p>
+                  <p className="text-base font-bold tabular-nums text-foreground">${(data?.monthSpent ?? 0).toFixed(2)}</p>
                 </div>
                 <div className="rounded-xl border border-border bg-card p-4 text-center">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">Remaining</p>
@@ -555,7 +555,15 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
               <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
                 <Clock className="w-4 h-4 text-primary" />
                 <h2 className="font-semibold text-foreground">Balance History</h2>
-                <span className="text-xs text-muted-foreground ml-auto">Last 50 calls</span>
+                <span className="text-xs text-muted-foreground">Last 50 calls</span>
+                <a
+                  href="/api/me/api-history/export.csv"
+                  download
+                  data-testid="button-export-history-csv"
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                >
+                  ↓ Export CSV
+                </a>
               </div>
 
               {historyLoading ? (
@@ -595,13 +603,21 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
                             <p className="text-xs text-foreground truncate font-mono">{preview || "(no content)"}</p>
                           </div>
                           <div className="flex-shrink-0 text-right space-y-1">
-                            <p className="text-[10px] text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className={cn("w-1.5 h-1.5 rounded-full", log.success !== false ? "bg-emerald-500" : "bg-red-500")} title={log.success !== false ? "Success" : "Failed"} />
+                              <p className="text-[10px] text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
+                            </div>
                             <p className="text-[10px] font-mono text-muted-foreground">
                               ↑{log.inputTokens} ↓{log.outputTokens} tok
                             </p>
                             {log.costDeducted != null && (
                               <p className="text-[11px] font-bold font-mono text-foreground" data-testid={`text-cost-${log.id}`}>
-                                -${log.costDeducted.toFixed(6)}
+                                -{log.success !== false ? "$" : ""}{log.success !== false ? log.costDeducted.toFixed(4) : "no charge"}
+                              </p>
+                            )}
+                            {log.success === false && (log as any).failReason && (
+                              <p className="text-[10px] text-red-400 font-mono max-w-[180px] text-right truncate" title={(log as any).failReason}>
+                                ⚠ {(log as any).failReason}
                               </p>
                             )}
                           </div>

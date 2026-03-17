@@ -191,6 +191,7 @@ export const apiLogs = pgTable("api_logs", {
   outputCost: real("output_cost"),
   success: boolean("success").notNull().default(true),
   requestId: text("request_id"),
+  failReason: text("fail_reason"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 export type ApiLog = typeof apiLogs.$inferSelect;

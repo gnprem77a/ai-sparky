@@ -1944,14 +1944,24 @@ export default function AdminPage() {
                             </button>
                           ))}
                         </div>
-                        <button
-                          onClick={() => setAdminApiLogsOpenId(adminApiLogsOpenId === u.id ? null : u.id)}
-                          data-testid={`button-view-api-logs-${u.id}`}
-                          className="text-[11px] text-primary hover:underline flex items-center gap-1"
-                        >
-                          <Activity className="w-3 h-3" />
-                          {adminApiLogsOpenId === u.id ? "Hide API logs" : "View API logs"}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setAdminApiLogsOpenId(adminApiLogsOpenId === u.id ? null : u.id)}
+                            data-testid={`button-view-api-logs-${u.id}`}
+                            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Activity className="w-3 h-3" />
+                            {adminApiLogsOpenId === u.id ? "Hide API logs" : "View API logs"}
+                          </button>
+                          <a
+                            href={`/api/admin/users/${u.id}/api-logs/export.csv`}
+                            download
+                            data-testid={`button-export-csv-${u.id}`}
+                            className="text-[11px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-1 ml-2"
+                          >
+                            ↓ Export CSV
+                          </a>
+                        </div>
                         {adminApiLogsOpenId === u.id && (
                           <div className="rounded-xl border border-border bg-muted/20 overflow-hidden max-h-64 overflow-y-auto">
                             {adminApiLogsLoading ? (
@@ -1962,9 +1972,9 @@ export default function AdminPage() {
                               <>
                                 {adminApiLogs.stats && (
                                   <div className="px-4 py-2 border-b border-border/50 grid grid-cols-3 gap-2 text-[10px]">
-                                    <span className="text-muted-foreground">Today: <strong className="text-foreground">${(adminApiLogs.stats.todaySpent ?? 0).toFixed(4)}</strong></span>
-                                    <span className="text-muted-foreground">Month: <strong className="text-foreground">${(adminApiLogs.stats.monthSpent ?? 0).toFixed(4)}</strong></span>
-                                    <span className="text-muted-foreground">Total: <strong className="text-foreground">${(adminApiLogs.stats.totalSpent ?? 0).toFixed(4)}</strong></span>
+                                    <span className="text-muted-foreground">Today: <strong className="text-foreground">${(adminApiLogs.stats.todaySpent ?? 0).toFixed(2)}</strong></span>
+                                    <span className="text-muted-foreground">Month: <strong className="text-foreground">${(adminApiLogs.stats.monthSpent ?? 0).toFixed(2)}</strong></span>
+                                    <span className="text-muted-foreground">Total: <strong className="text-foreground">${(adminApiLogs.stats.totalSpent ?? 0).toFixed(2)}</strong></span>
                                   </div>
                                 )}
                                 {adminApiLogs.logs.slice(0, 20).map((log: any) => (
@@ -1978,14 +1988,17 @@ export default function AdminPage() {
                                       <div className="text-right space-y-0.5">
                                         <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
                                         {log.costDeducted != null && (
-                                          <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(6)}</p>
+                                          <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(4)}</p>
                                         )}
                                       </div>
                                     </div>
                                     <div className="flex gap-3 mt-0.5 text-muted-foreground font-mono">
-                                      <span>In: {log.inputTokens} tok {log.inputCost != null && <span className="text-foreground/70">(${log.inputCost.toFixed(6)})</span>}</span>
-                                      <span>Out: {log.outputTokens} tok {log.outputCost != null && <span className="text-foreground/70">(${log.outputCost.toFixed(6)})</span>}</span>
+                                      <span>In: {log.inputTokens} tok {log.inputCost != null && <span className="text-foreground/70">(${log.inputCost.toFixed(4)})</span>}</span>
+                                      <span>Out: {log.outputTokens} tok {log.outputCost != null && <span className="text-foreground/70">(${log.outputCost.toFixed(4)})</span>}</span>
                                     </div>
+                                    {log.success === false && log.failReason && (
+                                      <p className="mt-0.5 text-red-400 font-mono truncate" title={log.failReason}>⚠ {log.failReason}</p>
+                                    )}
                                   </div>
                                 ))}
                               </>

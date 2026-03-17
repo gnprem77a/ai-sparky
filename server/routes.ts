@@ -1118,6 +1118,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ logs, stats });
   });
 
+  /* ── admin: export user API logs as CSV (all-time, no row cap) ── */
+  app.get("/api/admin/users/:id/api-logs/export.csv", requireAdmin as any, async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = await storage.getUser(id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const logs = await storage.getApiLogs(id, 100_000);
+    const header = "date,model,input_tokens,output_tokens,input_cost_usd,output_cost_usd,total_cost_usd,success,fail_reason,request_id\r\n";
+    const rows = logs.map((l) => [
+      new Date(l.createdAt).toISOString(),
+      l.modelUsed ?? "",
+      l.inputTokens,
+      l.outputTokens,
+      (l.inputCost ?? 0).toFixed(6),
+      (l.outputCost ?? 0).toFixed(6),
+      (l.costDeducted ?? 0).toFixed(6),
+      l.success ? "true" : "false",
+      (l.failReason ?? "").replace(/,/g, ";"),
+      l.requestId ?? "",
+    ].join(",")).join("\r\n");
+    const filename = `api-logs-${user.username}-${new Date().toISOString().split("T")[0]}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(header + rows);
+  });
+
   /* ── admin: flag / unflag user ── */
   app.patch("/api/admin/users/:id/flag", requireAdmin as any, async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
@@ -1207,6 +1232,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const limit = Math.min(parseInt(req.query.limit as string ?? "50"), 100);
     const logs = await storage.getApiLogs(userId, limit);
     return res.json(logs);
+  });
+
+  /* ── user: export own API logs as CSV (all-time, no row cap) ── */
+  app.get("/api/me/api-history/export.csv", requireAuth as any, async (req: Request, res: Response) => {
+    const userId = (req as any).session?.userId as string;
+    const user = await storage.getUser(userId);
+    if (!user || !user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const logs = await storage.getApiLogs(userId, 100_000);
+    const header = "date,model,input_tokens,output_tokens,input_cost_usd,output_cost_usd,total_cost_usd,success,fail_reason,request_id\r\n";
+    const rows = logs.map((l) => [
+      new Date(l.createdAt).toISOString(),
+      l.modelUsed ?? "",
+      l.inputTokens,
+      l.outputTokens,
+      (l.inputCost ?? 0).toFixed(6),
+      (l.outputCost ?? 0).toFixed(6),
+      (l.costDeducted ?? 0).toFixed(6),
+      l.success ? "true" : "false",
+      (l.failReason ?? "").replace(/,/g, ";"),
+      l.requestId ?? "",
+    ].join(",")).join("\r\n");
+    const filename = `api-logs-${user.username}-${new Date().toISOString().split("T")[0]}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send(header + rows);
   });
 
   /* ── user: update webhook URL ── */
@@ -1978,22 +2028,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   };
   // Default global rate limit (req/min). Per-user override via apiRateLimitPerMin.
   const API_RATE_LIMIT_DEFAULT = 30;
-  const apiRateLimitMap = new Map<string, { count: number; resetAt: number; limit: number }>();
+  // Sliding-window rate limiter: stores per-key timestamp arrays.
+  // Removes timestamps older than 60 s on every check — no burst abuse at window boundaries.
+  const apiRateLimitMap = new Map<string, number[]>();
 
   function checkApiV1RateLimit(apiKey: string, limitPerMin: number): { allowed: boolean; remaining: number; resetAt: number } {
     const now = Date.now();
     const windowMs = 60_000;
-    const entry = apiRateLimitMap.get(apiKey);
-    if (!entry || now > entry.resetAt) {
-      apiRateLimitMap.set(apiKey, { count: 1, resetAt: now + windowMs, limit: limitPerMin });
-      return { allowed: true, remaining: limitPerMin - 1, resetAt: now + windowMs };
+    const timestamps = (apiRateLimitMap.get(apiKey) ?? []).filter(t => now - t < windowMs);
+    if (timestamps.length >= limitPerMin) {
+      const resetAt = Math.min(...timestamps) + windowMs;
+      return { allowed: false, remaining: 0, resetAt };
     }
-    const effectiveLimit = entry.limit;
-    if (entry.count >= effectiveLimit) {
-      return { allowed: false, remaining: 0, resetAt: entry.resetAt };
-    }
-    entry.count++;
-    return { allowed: true, remaining: effectiveLimit - entry.count, resetAt: entry.resetAt };
+    timestamps.push(now);
+    apiRateLimitMap.set(apiKey, timestamps);
+    const resetAt = timestamps.length > 0 ? Math.min(...timestamps) + windowMs : now + windowMs;
+    return { allowed: true, remaining: limitPerMin - timestamps.length, resetAt };
   }
 
   // Compute cost using provider-specific prices when available, else fall back to defaults
@@ -2151,8 +2201,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, request_id: requestId })}\n\n`);
         res.end();
       } catch (err: any) {
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId });
-        res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed", request_id: requestId })}\n\n`);
+        const failReason = (err?.message || "Stream failed").slice(0, 500);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId, failReason });
+        res.write(`data: ${JSON.stringify({ error: failReason, request_id: requestId })}\n\n`);
         res.end();
       }
     } else {
@@ -2174,8 +2225,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost: roundedTotal, model: modelSlug, stream: false });
         return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, inputTokens, outputTokens, request_id: requestId });
       } catch (err: any) {
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId });
-        return res.status(500).json({ error: err.message || "Generation failed", request_id: requestId });
+        const failReason = (err?.message || "Generation failed").slice(0, 500);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false, requestId, failReason });
+        return res.status(500).json({ error: failReason, request_id: requestId });
       }
     }
   });
