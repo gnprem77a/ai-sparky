@@ -28,7 +28,7 @@ export const MODELS: ModelOption[] = [
     icon: <Sparkles className="w-4 h-4" />,
     iconBg: "bg-cyan-500/10",
     iconColor: "text-cyan-400",
-    proOnly: true,
+    proOnly: false,
   },
   {
     id: "powerful",
@@ -52,7 +52,7 @@ export const MODELS: ModelOption[] = [
     icon: <Scale className="w-4 h-4" />,
     iconBg: "bg-violet-500/10",
     iconColor: "text-violet-400",
-    proOnly: true,
+    proOnly: false,
   },
   {
     id: "creative",
@@ -63,7 +63,7 @@ export const MODELS: ModelOption[] = [
     icon: <Palette className="w-4 h-4" />,
     iconBg: "bg-emerald-500/10",
     iconColor: "text-emerald-400",
-    proOnly: true,
+    proOnly: false,
   },
   {
     id: "fast",

@@ -33,7 +33,10 @@ export function useAuth() {
   const registerMutation = useMutation({
     mutationFn: (data: { username: string; password: string }) =>
       apiRequest("POST", "/api/auth/register", data).then((r) => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }),
+    onSuccess: () => {
+      sessionStorage.setItem("justRegistered", "1");
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    },
   });
 
   const logoutMutation = useMutation({

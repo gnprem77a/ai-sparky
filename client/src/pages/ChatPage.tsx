@@ -32,6 +32,7 @@ function isProActive(user: { plan: string; planExpiresAt: string | null } | null
 
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { AssistantNameModal } from "@/components/AssistantNameModal";
 import { useToast } from "@/hooks/use-toast";
 
 export default function ChatPage() {
@@ -46,6 +47,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<"limit" | "model">("limit");
+  const [showAssistantNameModal, setShowAssistantNameModal] = useState(() => sessionStorage.getItem("justRegistered") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
@@ -1393,6 +1395,12 @@ export default function ChatPage() {
       <LoginPromptModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
       <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
       {user && <OnboardingModal onStartWithPrompt={(prompt) => setInput(prompt)} />}
+      {showAssistantNameModal && (
+        <AssistantNameModal onDone={() => {
+          sessionStorage.removeItem("justRegistered");
+          setShowAssistantNameModal(false);
+        }} />
+      )}
 
       <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
         <DialogContent className="max-w-lg">

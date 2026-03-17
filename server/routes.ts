@@ -1351,14 +1351,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       auto:       8192,
       fast:       4096,
     };
-    const maxTokens = pro
-      ? (MODEL_TOKEN_LIMITS[model] ?? 8192)
-      : 4096; /* free users always get Fast/4096 */
-
     /* ── Free plan enforcement ── */
     let effectiveModel = model;
     if (!pro) {
-      effectiveModel = "fast";
+      /* Only the "powerful" model requires Pro — cap it to "balanced" */
+      if (effectiveModel === "powerful") effectiveModel = "balanced";
       const today = new Date().toISOString().split("T")[0];
       const settings = await storage.getUserSettings(user.id);
       const count = settings.lastMessageDate === today ? settings.dailyMessageCount : 0;
@@ -1401,6 +1398,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       /* track pro user messages too */
       void storage.trackFeatureEvent(user.id, "send_message");
     }
+
+    /* ── maxTokens: pro gets model-specific limit, free gets 4096 cap ── */
+    const maxTokens = pro
+      ? (MODEL_TOKEN_LIMITS[effectiveModel] ?? 8192)
+      : Math.min(MODEL_TOKEN_LIMITS[effectiveModel] ?? 4096, 4096);
 
     /* ── load system prompt ── */
     const settings = await storage.getUserSettings(user.id);
