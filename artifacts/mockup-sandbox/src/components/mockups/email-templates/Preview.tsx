@@ -296,52 +296,153 @@ function PasswordChangedEmail() {
 }
 
 function ProWelcomeEmail() {
+  const gold = "#c9a84c";
+  const goldLight = "#e8c96a";
+  const goldDim = "rgba(201,168,76,0.15)";
+  const goldBorder = "rgba(201,168,76,0.3)";
+
+  const features = [
+    { icon: "∞", label: "Unlimited messages", sub: "No daily cap, ever" },
+    { icon: "🧠", label: "All AI models", sub: "Fast, Balanced, Powerful & Creative" },
+    { icon: "🌐", label: "Live web search", sub: "Real-time answers from the internet" },
+    { icon: "📚", label: "Knowledge Base", sub: "RAG search across your documents" },
+  ];
+
   return (
-    <EmailShell
-      accent={ACCENT_GOLD}
-      headerBg={HEADER_GOLD}
-      headerBorder={BORDER_GOLD}
-      icon="👑"
-      title="Welcome to Pro!"
-      subtitle={<>Hi <strong>Alex</strong> — your upgrade is active ✨</>}
-    >
-      <p style={{ margin: "0 0 28px", color: "#374151", fontSize: 15, lineHeight: 1.7 }}>
-        You now have full Pro access. Here's everything that's unlocked for you:
-      </p>
-      <table width="100%" cellPadding={0} cellSpacing={0} style={{ marginBottom: 28 }}>
-        <tbody>
-          <tr>
-            <td style={{ padding: "12px 14px", background: "#f9fafb", borderRadius: 10, width: "50%", verticalAlign: "top" }}>
-              <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#111827", fontSize: 14 }}>∞ Unlimited messages</p>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>No daily cap, ever</p>
-            </td>
-            <td style={{ width: 12 }} />
-            <td style={{ padding: "12px 14px", background: "#f9fafb", borderRadius: 10, width: "50%", verticalAlign: "top" }}>
-              <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#111827", fontSize: 14 }}>🧠 All AI models</p>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>Fast, Balanced, Powerful &amp; Creative</p>
-            </td>
-          </tr>
-          <tr><td colSpan={3} style={{ height: 10 }} /></tr>
-          <tr>
-            <td style={{ padding: "12px 14px", background: "#f9fafb", borderRadius: 10, verticalAlign: "top" }}>
-              <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#111827", fontSize: 14 }}>🌐 Web search</p>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>Real-time internet answers</p>
-            </td>
-            <td />
-            <td style={{ padding: "12px 14px", background: "#f9fafb", borderRadius: 10, verticalAlign: "top" }}>
-              <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#111827", fontSize: 14 }}>📚 Knowledge Base</p>
-              <p style={{ margin: 0, color: "#6b7280", fontSize: 13 }}>Full RAG search over your docs</p>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "16px 20px", marginBottom: 28 }}>
-        <p style={{ margin: 0, color: "#166534", fontSize: 13 }}>
-          🔒 <strong>Your privacy matters.</strong> We never train on your conversations. Your data is yours — always encrypted, never shared.
-        </p>
+    <div style={{ background: "#0c0a14", padding: "40px 16px", minHeight: "100%" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        {/* Card */}
+        <div style={{
+          background: "#13111f",
+          borderRadius: 20,
+          overflow: "hidden",
+          border: `1px solid ${goldBorder}`,
+          boxShadow: `0 0 60px rgba(201,168,76,0.08), 0 24px 48px rgba(0,0,0,0.6)`,
+        }}>
+          {/* Gold top bar */}
+          <div style={{ height: 3, background: `linear-gradient(90deg, #8b6914, ${goldLight}, #c9a84c, ${goldLight}, #8b6914)` }} />
+
+          {/* Header */}
+          <div style={{
+            padding: "52px 48px 40px",
+            textAlign: "center",
+            background: "radial-gradient(ellipse at 50% -10%, rgba(201,168,76,0.12) 0%, transparent 65%)",
+            borderBottom: `1px solid ${goldBorder}`,
+          }}>
+            {/* Crown */}
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background: `radial-gradient(circle at 35% 35%, #e8c96a, #a0722a)`,
+              boxShadow: `0 0 32px rgba(201,168,76,0.45), 0 8px 24px rgba(0,0,0,0.5)`,
+              fontSize: 32,
+              marginBottom: 24,
+            }}>
+              👑
+            </div>
+            <p style={{ margin: "0 0 8px", color: gold, fontSize: 11, fontWeight: 700, letterSpacing: 4, textTransform: "uppercase" }}>
+              Pro Access Activated
+            </p>
+            <h1 style={{
+              margin: "0 0 14px",
+              fontSize: 30,
+              fontWeight: 800,
+              color: "#f5f0e8",
+              letterSpacing: -0.5,
+              lineHeight: 1.2,
+            }}>
+              Welcome to the top tier, Alex.
+            </h1>
+            <p style={{ margin: 0, color: "rgba(245,240,232,0.5)", fontSize: 15, lineHeight: 1.6 }}>
+              Every limit is lifted. Every model is unlocked.<br />This is AI Sparky without the guardrails.
+            </p>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: "36px 48px 12px" }}>
+            <p style={{ margin: "0 0 24px", color: "rgba(245,240,232,0.4)", fontSize: 12, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase" }}>
+              What's unlocked
+            </p>
+            {features.map((f, i) => (
+              <div key={i} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                padding: "16px 20px",
+                marginBottom: 8,
+                background: goldDim,
+                borderRadius: 12,
+                border: `1px solid ${goldBorder}`,
+              }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "rgba(201,168,76,0.1)",
+                  border: `1px solid ${goldBorder}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 18,
+                  flexShrink: 0,
+                  lineHeight: 1,
+                }}>
+                  {f.icon}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0 0 2px", color: "#f5f0e8", fontSize: 14, fontWeight: 700 }}>{f.label}</p>
+                  <p style={{ margin: 0, color: "rgba(245,240,232,0.45)", fontSize: 13 }}>{f.sub}</p>
+                </div>
+                <div style={{ color: gold, fontSize: 16, flexShrink: 0 }}>✓</div>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div style={{ padding: "28px 48px 40px", textAlign: "center" }}>
+            <a
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              style={{
+                display: "inline-block",
+                background: `linear-gradient(135deg, #a07830, ${goldLight}, #a07830)`,
+                color: "#1a1200",
+                fontWeight: 800,
+                fontSize: 15,
+                padding: "15px 48px",
+                borderRadius: 12,
+                textDecoration: "none",
+                letterSpacing: 0.3,
+                boxShadow: `0 4px 24px rgba(201,168,76,0.4)`,
+              }}
+            >
+              Start chatting →
+            </a>
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            padding: "18px 48px 28px",
+            borderTop: `1px solid rgba(201,168,76,0.1)`,
+            textAlign: "center",
+          }}>
+            <p style={{ margin: "0 0 4px", color: "rgba(245,240,232,0.2)", fontSize: 12 }}>
+              You received this because your account was upgraded to Pro.
+            </p>
+            <p style={{ margin: 0, color: "rgba(245,240,232,0.2)", fontSize: 12 }}>
+              We never train on your conversations. Your privacy is our priority.
+            </p>
+          </div>
+
+          {/* Gold bottom bar */}
+          <div style={{ height: 3, background: `linear-gradient(90deg, #8b6914, ${goldLight}, #c9a84c, ${goldLight}, #8b6914)` }} />
+        </div>
       </div>
-      {ctaButton("Start chatting →", "#f59e0b")}
-    </EmailShell>
+    </div>
   );
 }
 
