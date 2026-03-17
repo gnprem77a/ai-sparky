@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, ArrowDownToLine, Upload, MailCheck } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -1213,10 +1213,7 @@ ${messagesHtml}
                     <DropdownMenuItem onClick={() => setPinnedOpen(true)} className="gap-2 cursor-pointer">
                       <Pin className="w-3.5 h-3.5" /> Pinned messages
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setLocalAutoScroll(v => !v)} className="gap-2 cursor-pointer">
-                      <ArrowDownToLine className={cn("w-3.5 h-3.5", localAutoScroll && "text-primary")} />
-                      Auto-scroll {localAutoScroll ? "on" : "off"}
-                    </DropdownMenuItem>
+
                     <DropdownMenuItem onClick={handleExport} className="gap-2 cursor-pointer">
                       <Download className="w-3.5 h-3.5" /> Download Markdown
                     </DropdownMenuItem>
@@ -1317,16 +1314,7 @@ ${messagesHtml}
                 </Button>
               </>
             )}
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setLocalAutoScroll(v => !v)}
-              data-testid="button-toggle-autoscroll"
-              title={localAutoScroll ? "Auto-scroll on — click to disable" : "Auto-scroll off — click to enable"}
-              className={cn("hidden sm:flex h-9 w-9", localAutoScroll ? "text-primary bg-primary/10" : "text-muted-foreground")}
-            >
-              <ArrowDownToLine className="w-4 h-4" />
-            </Button>
+
             <Button
               size="icon"
               variant="ghost"
