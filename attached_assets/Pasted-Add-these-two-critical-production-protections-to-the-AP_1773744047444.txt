@@ -1,0 +1,62 @@
+Add these two critical production protections 
+to the API wallet system:
+
+16. WALLET DEDUCTION DATABASE TRANSACTION LOCK:
+
+Every balance deduction must use a database transaction:
+
+BEGIN TRANSACTION
+  → Read latest balance from DB (not from cache)
+  → Check if balance >= request cost
+  → If yes: deduct cost and save
+  → If no: reject request
+COMMIT TRANSACTION
+→ If any error at any step: ROLLBACK completely
+
+Rules:
+- Never read balance from memory/cache for deductions
+- Always read fresh from database inside transaction
+- Use row-level locking (SELECT FOR UPDATE) on wallet row
+- Two simultaneous requests must queue, not run parallel
+- If transaction fails → do NOT call AI provider
+- If AI provider fails → rollback deduction transaction
+- Log every transaction attempt (success and failed)
+
+This prevents:
+- Double deduction from simultaneous requests
+- Balance going negative
+- Race conditions with concurrent API calls
+
+17. UNIQUE REQUEST ID FOR EVERY API CALL:
+
+Generate a unique request_id for every API call and store:
+
+request_id        → unique ID (format: req_xxxxxxxxxxxx)
+user_id           → who made the request
+api_key_id        → which API key was used
+model             → which model was called
+endpoint          → which endpoint was hit
+input_tokens      → exact input token count
+output_tokens     → exact output token count
+input_cost        → exact input cost ($X.XXXXXX)
+output_cost       → exact output cost ($X.XXXXXX)
+total_cost        → total deducted ($X.XXXXXX)
+status            → success / failed / rejected
+failure_reason    → if failed, why (insufficient_balance, 
+                    rate_limit, provider_error, timeout)
+provider_response_id → ID returned by AI provider 
+                       if available (for cross-referencing)
+timestamp         → exact time of request
+duration_ms       → how long request took in milliseconds
+balance_before    → wallet balance before deduction
+balance_after     → wallet balance after deduction
+
+Return request_id in every API response header:
+X-Request-ID: req_xxxxxxxxxxxx
+
+This allows:
+- Exact billing audit per request
+- Dispute resolution ("I was charged but got no response")
+- Debug provider issues using provider_response_id
+- Track which API key made which request
+- Full billing history reconstruction
