@@ -18,6 +18,7 @@ export interface UsageResult {
   inputTokens: number;
   outputTokens: number;
   modelName?: string;
+  providerResponseId?: string;
 }
 
 export interface TestResult {
