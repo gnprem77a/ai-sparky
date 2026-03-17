@@ -1140,7 +1140,7 @@ ${messagesHtml}
 
   return (
     <div
-      className="flex h-screen w-full bg-background overflow-hidden"
+      className="flex h-dvh w-full bg-background overflow-hidden"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -1159,7 +1159,7 @@ ${messagesHtml}
         onLogin={() => setLoginModalOpen(true)}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 h-dvh overflow-hidden">
         {/* Header */}
         <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
           <div className="flex items-center gap-1">
@@ -1238,7 +1238,7 @@ ${messagesHtml}
                         Pinned Messages
                       </SheetTitle>
                     </SheetHeader>
-                    <ScrollArea className="h-[calc(100vh-100px)] mt-4 pr-4">
+                    <ScrollArea className="h-[calc(100dvh-100px)] mt-4 pr-4">
                       <div className="flex flex-col gap-4">
                         {messages.filter(m => m.isPinned).length === 0 ? (
                           <div className="text-center py-10 text-muted-foreground">

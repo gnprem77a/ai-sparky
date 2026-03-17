@@ -263,7 +263,7 @@ export default function KnowledgeBasePage() {
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 rounded-2xl bg-blue-500/15 flex items-center justify-center mx-auto">
             <Database className="w-8 h-8 text-blue-400" />
@@ -279,7 +279,7 @@ export default function KnowledgeBasePage() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-dvh bg-background overflow-hidden">
       {/* Hidden PDF file input */}
       <input
         ref={pdfInputRef}

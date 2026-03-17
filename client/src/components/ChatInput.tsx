@@ -122,7 +122,10 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
 
   const supportsSpeechRecognition = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
+  const isRecordingRef = useRef(false);
+
   const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
     recognitionRef.current?.stop();
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     setIsRecording(false);
@@ -143,22 +146,35 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     recognition.maxAlternatives = 1;
 
     committedRef.current = "";
+    isRecordingRef.current = true;
 
     recognition.onstart = () => {
       setIsRecording(true);
       setRecordingSeconds(0);
-      recordTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+      if (!recordTimerRef.current) {
+        recordTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000);
+      }
     };
 
     recognition.onend = () => {
+      // iOS Safari stops recognition after silence — auto-restart if still recording
+      if (isRecordingRef.current) {
+        try { recognitionRef.current?.start(); } catch { stopRecording(); }
+        return;
+      }
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
       setIsRecording(false);
       setInterimText("");
       setRecordingSeconds(0);
       committedRef.current = "";
     };
 
-    recognition.onerror = () => stopRecording();
+    recognition.onerror = (e: any) => {
+      // "no-speech" is benign on iOS — let onend handle the restart
+      if (e.error === "no-speech") return;
+      stopRecording();
+    };
 
     recognition.onresult = (event: any) => {
       let interim = "";
@@ -508,7 +524,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                 {/* attach popup */}
                 {menuOpen && (
                   <div className="absolute bottom-full left-0 mb-2 z-50 animate-fade-up">
-                    <div className="w-72 rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
+                    <div className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border/60 bg-popover shadow-2xl overflow-hidden p-1.5">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-3 py-1.5">
                         Attach
                       </p>
