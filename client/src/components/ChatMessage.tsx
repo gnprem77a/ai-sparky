@@ -127,6 +127,20 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 interface ChatMessageProps {
   message: Message;
   isStreaming?: boolean;
@@ -641,6 +655,9 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
                           <Pin className="w-3 h-3 text-white fill-current" />
                         </div>
                       )}
+                      <p className={cn("text-[10px] text-white/40 text-right mt-1 -mb-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+                        {relativeTime(message.timestamp)}
+                      </p>
                     </div>
                     <div className={cn("absolute -left-[120px] top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
                       <button
@@ -714,6 +731,9 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
         {/* Assistant name row */}
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[11px] font-semibold text-foreground/50 uppercase tracking-widest">{assistantName}</span>
+          <span className={cn("text-[10px] text-muted-foreground/30 transition-all", actionsVisible ? "opacity-100" : "opacity-0")}>
+            {relativeTime(message.timestamp)}
+          </span>
         </div>
 
         <div className={cn("leading-relaxed text-foreground/90 relative", fontClass)} data-testid="content-assistant">

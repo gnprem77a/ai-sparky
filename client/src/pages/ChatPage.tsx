@@ -174,11 +174,15 @@ export default function ChatPage() {
   };
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isSubmittingRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   const inputRef = useRef("");
   const streamStartRef = useRef<number>(0);
+  const prevTitleRef = useRef<string>("");
+  const tabHiddenDuringStreamRef = useRef(false);
+  const [isAtTop, setIsAtTop] = useState(true);
 
   const isPro = isProActive(user);
 
@@ -340,6 +344,7 @@ export default function ChatPage() {
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       setIsAtBottom(scrollHeight - scrollTop - clientHeight < 80);
+      setIsAtTop(scrollTop < 100);
     };
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);
@@ -349,6 +354,36 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     setIsAtBottom(true);
   };
+
+  const scrollToTop = () => {
+    topRef.current?.scrollIntoView({ behavior: "smooth" });
+    setIsAtTop(true);
+  };
+
+  /* ── Tab title notification when AI finishes while tab is hidden ── */
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden && isStreaming) {
+        tabHiddenDuringStreamRef.current = true;
+      }
+      if (!document.hidden) {
+        if (document.title !== prevTitleRef.current && prevTitleRef.current) {
+          document.title = prevTitleRef.current;
+          prevTitleRef.current = "";
+        }
+        tabHiddenDuringStreamRef.current = false;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming && tabHiddenDuringStreamRef.current && document.hidden) {
+      prevTitleRef.current = document.title;
+      document.title = "✓ Response ready — AI Sparky";
+    }
+  }, [isStreaming]);
 
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
@@ -516,23 +551,105 @@ export default function ChatPage() {
 
   const handleExportPDF = () => {
     if (!messages.length) return;
-    const style = document.createElement("style");
-    style.id = "print-style";
-    style.innerHTML = `
-      @media print {
-        [data-sidebar], header, [data-testid="chat-input-area"], .no-print { display: none !important; }
-        body, html { background: white !important; color: black !important; }
-        .flex-1.overflow-y-auto { overflow: visible !important; height: auto !important; }
-        pre, code { white-space: pre-wrap !important; word-break: break-all !important; }
-        .max-w-3xl { max-width: 100% !important; }
-        * { color-scheme: light !important; }
-      }
-    `;
-    document.head.appendChild(style);
-    window.print();
-    window.addEventListener("afterprint", () => {
-      document.getElementById("print-style")?.remove();
-    }, { once: true });
+    const conv = conversations.find((c) => c.id === activeId);
+    const title = conv?.title ?? "Conversation";
+    const exportedAt = new Date().toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" });
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const mdToHtml = (text: string) => {
+      let t = esc(text);
+      t = t.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) =>
+        `<div class="code-block">${lang ? `<div class="code-lang">${lang}</div>` : ""}<pre><code>${code}</code></pre></div>`
+      );
+      t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+      t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
+      t = t.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+      t = t.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+      t = t.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+      t = t.replace(/^\s*[-*] (.+)$/gm, "<li>$1</li>");
+      t = t.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`);
+      t = t.replace(/\n\n+/g, "</p><p>");
+      t = t.replace(/\n/g, "<br>");
+      return `<p>${t}</p>`;
+    };
+
+    const messagesHtml = messages.map((m) => {
+      const isUser = m.role === "user";
+      const time = new Date(m.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      const content = isUser ? `<p class="user-text">${esc(m.content)}</p>` : mdToHtml(m.content);
+      const attachments = m.attachments?.length
+        ? `<div class="attachments">${m.attachments.map(a => `<span class="att-chip">📎 ${esc(a.name)}</span>`).join("")}</div>`
+        : "";
+      return `
+        <div class="message ${isUser ? "user" : "assistant"}">
+          <div class="msg-header">
+            <span class="role">${isUser ? "You" : (assistantName || "Assistant")}</span>
+            <span class="time">${time}</span>
+          </div>
+          ${attachments}
+          <div class="msg-body">${content}</div>
+        </div>`;
+    }).join("\n");
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(title)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; color: #1a1a2e; background: #fff; padding: 0 24px; max-width: 820px; margin: 0 auto; }
+  .doc-header { padding: 32px 0 24px; border-bottom: 2px solid #6d28d9; margin-bottom: 28px; }
+  .doc-header h1 { font-size: 22px; font-weight: 700; color: #4c1d95; margin-bottom: 6px; }
+  .doc-header .meta { font-size: 12px; color: #6b7280; display: flex; gap: 16px; flex-wrap: wrap; }
+  .message { margin-bottom: 20px; padding: 14px 16px; border-radius: 12px; page-break-inside: avoid; }
+  .message.user { background: #f5f3ff; border-left: 3px solid #7c3aed; }
+  .message.assistant { background: #f9fafb; border-left: 3px solid #e5e7eb; }
+  .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .message.user .role { color: #7c3aed; }
+  .message.assistant .role { color: #6b7280; }
+  .time { font-size: 10px; color: #9ca3af; margin-left: auto; }
+  .msg-body p { line-height: 1.7; margin-bottom: 10px; }
+  .msg-body p:last-child { margin-bottom: 0; }
+  .msg-body h1 { font-size: 18px; font-weight: 700; margin: 16px 0 8px; }
+  .msg-body h2 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+  .msg-body h3 { font-size: 13px; font-weight: 600; margin: 12px 0 5px; }
+  .msg-body ul { padding-left: 20px; margin: 8px 0; }
+  .msg-body li { margin-bottom: 4px; line-height: 1.6; }
+  .msg-body code { background: #f3f4f6; padding: 1px 5px; border-radius: 4px; font-family: "SF Mono", Consolas, monospace; font-size: 12px; color: #b45309; }
+  .code-block { background: #1e1e2e; border-radius: 8px; overflow: hidden; margin: 12px 0; page-break-inside: avoid; }
+  .code-lang { background: #2d2d3f; color: #a78bfa; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 6px 14px; letter-spacing: 0.08em; font-family: monospace; }
+  .code-block pre { padding: 14px; overflow-x: auto; }
+  .code-block code { background: none; color: #e2e8f0; font-size: 12px; padding: 0; line-height: 1.6; }
+  .user-text { white-space: pre-wrap; word-break: break-word; }
+  .attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .att-chip { background: #ede9fe; color: #7c3aed; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+  .print-btn { position: fixed; top: 16px; right: 16px; background: #7c3aed; color: white; border: none; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; z-index: 100; }
+  .print-btn:hover { background: #6d28d9; }
+  @media print { .print-btn { display: none; } body { padding: 0 8px; } }
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button>
+<div class="doc-header">
+  <h1>${esc(title)}</h1>
+  <div class="meta">
+    <span>📅 Exported ${exportedAt}</span>
+    <span>💬 ${messages.length} message${messages.length !== 1 ? "s" : ""}</span>
+  </div>
+</div>
+${messagesHtml}
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   const handleExportTxt = () => {
@@ -1277,6 +1394,7 @@ export default function ChatPage() {
                 <EmptyState onSuggest={(text) => { setInput(text); }} userName={user?.username} />
               ) : (
                 <div className="max-w-3xl mx-auto py-6">
+                  <div ref={topRef} />
                   {messages.map((msg) => (
                     <ChatMessage
                       key={msg.id}
@@ -1340,6 +1458,17 @@ export default function ChatPage() {
               >
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Jump to latest</span>
+              </button>
+            )}
+            {/* Scroll to top button */}
+            {!isAtTop && messages.length > 0 && (
+              <button
+                onClick={scrollToTop}
+                data-testid="button-scroll-to-top"
+                className="absolute bottom-52 right-5 z-20 flex items-center gap-1.5 pl-3 pr-3.5 py-2 rounded-full bg-background/95 backdrop-blur-sm border border-border shadow-lg hover:shadow-xl hover:bg-card text-foreground font-medium transition-all duration-200 animate-in fade-in slide-in-from-top-2"
+              >
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Jump to top</span>
               </button>
             )}
 
