@@ -293,6 +293,24 @@ export default function AuthPage() {
                   {isLogin ? "Sign up" : "Sign in"}
                 </button>
               </p>
+
+              {/* Legal links */}
+              <div className="flex items-center justify-center gap-4 mt-6 pt-4 border-t border-border/40">
+                {[
+                  { label: "About", href: "/about" },
+                  { label: "Privacy", href: "/privacy" },
+                  { label: "Terms", href: "/terms" },
+                  { label: "Contact", href: "/contact" },
+                ].map(({ label, href }) => (
+                  <a
+                    key={href}
+                    href={href}
+                    className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                  >
+                    {label}
+                  </a>
+                ))}
+              </div>
             </>
           )}
         </div>

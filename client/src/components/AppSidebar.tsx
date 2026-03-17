@@ -965,6 +965,24 @@ export function AppSidebar({
             </>
           )}
         </div>
+
+        {/* Legal links */}
+        <div className="flex items-center justify-center gap-3 pt-1 pb-0.5">
+          {[
+            { label: "About", href: "/about" },
+            { label: "Privacy", href: "/privacy" },
+            { label: "Terms", href: "/terms" },
+            { label: "Contact", href: "/contact" },
+          ].map(({ label, href }) => (
+            <a
+              key={href}
+              href={href}
+              className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
