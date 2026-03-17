@@ -3,10 +3,11 @@ version: "3.9"
 services:
   db:
     image: postgres:16-alpine
+    container_name: aisparky-db
     restart: always
     environment:
       POSTGRES_USER: sparky
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: aisparky
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -18,6 +19,7 @@ services:
 
   app:
     build: .
+    container_name: aisparky-app
     restart: always
     ports:
       - "5000:5000"
@@ -25,12 +27,12 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://sparky:${DB_PASSWORD:-changeme}@db:5432/aisparky
-      NODE_ENV: production
+      DATABASE_URL: postgresql://sparky:${DB_PASSWORD}@db:5432/aisparky
+      DB_PASSWORD: ${DB_PASSWORD}
       SESSION_SECRET: ${SESSION_SECRET}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      NODE_ENV: production
+      PORT: 5000
+      APP_URL: ${APP_URL}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
