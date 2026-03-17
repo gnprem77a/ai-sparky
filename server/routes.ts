@@ -1054,7 +1054,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const id = req.params.id as string;
     const target = await storage.getUser(id);
     if (!target) return res.status(404).json({ error: "User not found" });
-    const newKey = "sk-" + randomBytes(32).toString("hex");
+    const newKey = "sk-sparky-" + randomBytes(20).toString("hex");
     await storage.setApiKey(id, newKey);
     await storage.setApiEnabled(id, true);
     const baseUrl = `${req.protocol}://${req.get("host")}`;
@@ -1192,7 +1192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
-    const newKey = "sk-" + randomBytes(32).toString("hex");
+    const newKey = "sk-sparky-" + randomBytes(20).toString("hex");
     await storage.setApiKey(userId, newKey);
     return res.json({ apiKey: newKey, apiEnabled: true });
   });
@@ -1962,44 +1962,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Default pricing per 1M tokens (fallback when provider has no custom price set)
   const API_PRICING: Record<string, { input: number; output: number }> = {
-    powerful:  { input: 5.00,  output: 25.00 },
-    fast:      { input: 1.00,  output: 5.00  },
-    creative:  { input: 3.00,  output: 15.00 },
-    balanced:  { input: 2.00,  output: 10.00 },
+    powerful:  { input: 5.00,  output: 25.00 },  // Claude Opus 4.6
+    fast:      { input: 0.80,  output: 4.00  },  // Claude Haiku
+    creative:  { input: 2.00,  output: 8.00  },  // GPT-5.3
+    balanced:  { input: 1.00,  output: 3.00  },  // Mistral Large 3
   };
-  // Hard cap: max 4000 output tokens per API request (all models)
-  const API_V1_MAX_TOKENS = 4000;
-  // Safety rate limit: 5 req/min per key
-  const API_RATE_LIMIT = 5;
-  const apiRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  // Per-model max output tokens
+  const API_MODEL_MAX_TOKENS: Record<string, number> = {
+    powerful: 32000,  // Claude Opus 4.6
+    fast:     4096,   // Claude Haiku
+    creative: 8192,   // GPT-5.3
+    balanced: 8192,   // Mistral Large 3
+  };
+  // Default global rate limit (req/min). Per-user override via apiRateLimitPerMin.
+  const API_RATE_LIMIT_DEFAULT = 30;
+  const apiRateLimitMap = new Map<string, { count: number; resetAt: number; limit: number }>();
 
-  function checkApiV1RateLimit(apiKey: string): { allowed: boolean; remaining: number; resetAt: number } {
+  function checkApiV1RateLimit(apiKey: string, limitPerMin: number): { allowed: boolean; remaining: number; resetAt: number } {
     const now = Date.now();
     const windowMs = 60_000;
     const entry = apiRateLimitMap.get(apiKey);
     if (!entry || now > entry.resetAt) {
-      apiRateLimitMap.set(apiKey, { count: 1, resetAt: now + windowMs });
-      return { allowed: true, remaining: API_RATE_LIMIT - 1, resetAt: now + windowMs };
+      apiRateLimitMap.set(apiKey, { count: 1, resetAt: now + windowMs, limit: limitPerMin });
+      return { allowed: true, remaining: limitPerMin - 1, resetAt: now + windowMs };
     }
-    if (entry.count >= API_RATE_LIMIT) {
+    const effectiveLimit = entry.limit;
+    if (entry.count >= effectiveLimit) {
       return { allowed: false, remaining: 0, resetAt: entry.resetAt };
     }
     entry.count++;
-    return { allowed: true, remaining: API_RATE_LIMIT - entry.count, resetAt: entry.resetAt };
+    return { allowed: true, remaining: effectiveLimit - entry.count, resetAt: entry.resetAt };
   }
 
   // Compute cost using provider-specific prices when available, else fall back to defaults
+  // Returns { inputCost, outputCost, totalCost }
   function computeCost(
     modelSlug: string,
     inputTokens: number,
     outputTokens: number,
     providerInputPrice?: number | null,
     providerOutputPrice?: number | null,
-  ): number {
+  ): { inputCost: number; outputCost: number; totalCost: number } {
     const defaultRates = API_PRICING[modelSlug] ?? API_PRICING.balanced;
     const inputRate  = providerInputPrice  ?? defaultRates.input;
     const outputRate = providerOutputPrice ?? defaultRates.output;
-    return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
+    const inputCost  = (inputTokens  / 1_000_000) * inputRate;
+    const outputCost = (outputTokens / 1_000_000) * outputRate;
+    return { inputCost, outputCost, totalCost: inputCost + outputCost };
   }
 
   app.post("/api/v1/chat", async (req: Request, res: Response) => {
@@ -2013,22 +2022,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ error: "Invalid API key" });
     if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled. Contact admin to request access" });
 
-    // Rate limit (hard 30/min)
-    const rl = checkApiV1RateLimit(apiKey);
+    // Rate limit — use per-user override if set, else global default
+    const userRateLimit = user.apiRateLimitPerMin ?? API_RATE_LIMIT_DEFAULT;
+    const rl = checkApiV1RateLimit(apiKey, userRateLimit);
     if (!rl.allowed) {
       res.setHeader("Retry-After", "60");
       res.setHeader("X-Rate-Limit-Remaining", "0");
       res.setHeader("X-Rate-Limit-Reset", String(Math.ceil(rl.resetAt / 1000)));
-      return res.status(429).json({ error: "Rate limit exceeded", retry_after: 60 });
+      return res.status(429).json({ error: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", retry_after: 60 });
     }
 
-    // Balance check
+    // Balance check — block at $0.01 or below
     const currentBalance = user.apiBalance ?? 0;
-    if (currentBalance <= 0) {
+    if (currentBalance < 0.01) {
       return res.status(402).json({
         error: "Insufficient balance",
         balance_remaining: `$${currentBalance.toFixed(2)}`,
-        message: "Please contact admin to add balance",
+        message: "Please contact admin to top up balance",
       });
     }
 
@@ -2073,15 +2083,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const providerInputPrice  = primaryProvider?.inputPricePerMillion  ?? null;
     const providerOutputPrice = primaryProvider?.outputPricePerMillion ?? null;
 
-    // Hard cap at API_V1_MAX_TOKENS (4000); user can request less
-    const maxTokens = Math.min(reqMaxTokens ?? API_V1_MAX_TOKENS, API_V1_MAX_TOKENS);
+    // Per-model max tokens; user can request less
+    const modelMaxTokens = API_MODEL_MAX_TOKENS[modelSlug] ?? 8192;
+    const maxTokens = Math.min(reqMaxTokens ?? modelMaxTokens, modelMaxTokens);
     const messagesJson = JSON.stringify(messages);
     const endpoint = "/api/v1/chat";
 
     // Helper: set standard response headers
     const setBalanceHeaders = (inputTok: number, outputTok: number, balanceAfter: number, cost: number) => {
       res.setHeader("X-Balance-Remaining", `$${balanceAfter.toFixed(2)}`);
-      res.setHeader("X-Balance-Used", `$${cost.toFixed(6)}`);
+      res.setHeader("X-Cost-This-Request", `$${cost.toFixed(6)}`);
       res.setHeader("X-Tokens-Input", String(inputTok));
       res.setHeader("X-Tokens-Output", String(outputTok));
       res.setHeader("X-Rate-Limit-Remaining", String(rl.remaining));
@@ -2106,15 +2117,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
           messages, systemPrompt: systemPrompt ?? undefined, maxTokens, useTools: false, res,
         });
-        const cost = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
-        const updatedUser = await storage.adjustApiBalance(user.id, -cost);
+        const { inputCost, outputCost, totalCost } = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
+        const updatedUser = await storage.adjustApiBalance(user.id, -totalCost);
         const balanceAfter = updatedUser?.apiBalance ?? 0;
-        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: cost });
-        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, cost, model: modelSlug, stream: true });
-        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost })}\n\n`);
+        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, totalCost);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: totalCost, inputCost, outputCost, success: true });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, cost: totalCost, model: modelSlug, stream: true });
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost: totalCost, inputCost, outputCost })}\n\n`);
         res.end();
       } catch (err: any) {
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false });
         res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
         res.end();
       }
@@ -2126,14 +2138,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Estimate tokens (rough: 1 token ≈ 4 chars)
         const inputTokens = Math.ceil(userPrompt.length / 4);
         const outputTokens = Math.ceil(text.length / 4);
-        const cost = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
-        const updatedUser = await storage.adjustApiBalance(user.id, -cost);
+        const { inputCost, outputCost, totalCost } = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
+        const updatedUser = await storage.adjustApiBalance(user.id, -totalCost);
         const balanceAfter = updatedUser?.apiBalance ?? 0;
-        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, cost);
-        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: cost });
-        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost, model: modelSlug, stream: false });
-        return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost, inputTokens, outputTokens });
+        setBalanceHeaders(inputTokens, outputTokens, balanceAfter, totalCost);
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: totalCost, inputCost, outputCost, success: true });
+        if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost: totalCost, model: modelSlug, stream: false });
+        return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost: totalCost, inputCost, outputCost, inputTokens, outputTokens });
       } catch (err: any) {
+        storage.createApiLog({ userId: user.id, messages: messagesJson, response: null, inputTokens: 0, outputTokens: 0, modelUsed: modelSlug, endpoint, costDeducted: 0, inputCost: 0, outputCost: 0, success: false });
         return res.status(500).json({ error: err.message || "Generation failed" });
       }
     }

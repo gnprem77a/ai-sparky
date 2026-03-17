@@ -33,7 +33,7 @@ export interface IStorage {
   setApiEnabled(id: string, enabled: boolean): Promise<User | undefined>;
   setApiSettings(id: string, settings: Partial<Pick<User, "apiDailyLimit" | "apiMonthlyLimit" | "apiWebhookUrl" | "apiRateLimitPerMin" | "email">>): Promise<User | undefined>;
   incrementApiUsage(id: string): Promise<{ allowed: boolean; dailyUsed: number; dailyLimit: number | null; monthlyUsed: number; monthlyLimit: number | null; limitType: "daily" | "monthly" | null }>;
-  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number }): Promise<ApiLog>;
+  createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean }): Promise<ApiLog>;
   getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
   adjustApiBalance(id: string, delta: number): Promise<User | undefined>;
   getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }>;
@@ -223,8 +223,8 @@ export class DatabaseStorage implements IStorage {
     return { allowed: true, dailyUsed: dailyCount + 1, dailyLimit: user.apiDailyLimit ?? null, monthlyUsed: monthlyCount + 1, monthlyLimit: user.apiMonthlyLimit ?? null, limitType: null };
   }
 
-  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number }): Promise<ApiLog> {
-    const [log] = await db.insert(apiLogs).values(data).returning();
+  async createApiLog(data: { userId: string; messages: string; response: string | null; inputTokens: number; outputTokens: number; modelUsed?: string; endpoint?: string; costDeducted?: number; inputCost?: number; outputCost?: number; success?: boolean }): Promise<ApiLog> {
+    const [log] = await db.insert(apiLogs).values({ ...data, success: data.success ?? true }).returning();
     return log;
   }
 

@@ -74,27 +74,35 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   );
 }
 
-function BalanceBar({ balance, low = false }: { balance: number; low?: boolean }) {
+function BalanceBar({ balance }: { balance: number }) {
+  const isEmpty   = balance <= 0;
+  const isRed     = balance < 5;
+  const isYellow  = balance >= 5 && balance < 10;
+  const isGreen   = balance >= 10;
+
+  const borderCls = isEmpty || isRed ? "border-red-500/30 bg-red-500/5"
+    : isYellow ? "border-amber-500/30 bg-amber-500/5"
+    : "border-emerald-500/30 bg-emerald-500/5";
+  const iconBg = isEmpty || isRed ? "bg-red-500/15"
+    : isYellow ? "bg-amber-500/15"
+    : "bg-emerald-500/15";
+  const textCls = isEmpty || isRed ? "text-red-500"
+    : isYellow ? "text-amber-500"
+    : "text-emerald-500";
+
   return (
-    <div className={cn(
-      "rounded-2xl border p-5 flex items-center gap-4",
-      balance <= 0 ? "border-red-500/30 bg-red-500/5" :
-      low ? "border-amber-500/30 bg-amber-500/5" :
-      "border-emerald-500/30 bg-emerald-500/5"
-    )} data-testid="card-balance">
-      <div className={cn(
-        "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0",
-        balance <= 0 ? "bg-red-500/15" : low ? "bg-amber-500/15" : "bg-emerald-500/15"
-      )}>
-        <DollarSign className={cn("w-6 h-6", balance <= 0 ? "text-red-500" : low ? "text-amber-500" : "text-emerald-500")} />
+    <div className={cn("rounded-2xl border p-5 flex items-center gap-4", borderCls)} data-testid="card-balance">
+      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0", iconBg)}>
+        <DollarSign className={cn("w-6 h-6", textCls)} />
       </div>
       <div className="flex-1">
         <p className="text-xs text-muted-foreground font-medium mb-0.5">Available Balance</p>
-        <p className={cn("text-2xl font-bold tabular-nums", balance <= 0 ? "text-red-500" : low ? "text-amber-500" : "text-emerald-500")} data-testid="text-balance">
+        <p className={cn("text-2xl font-bold tabular-nums", textCls)} data-testid="text-balance">
           ${balance.toFixed(2)}
         </p>
-        {balance <= 0 && <p className="text-xs text-red-400 mt-0.5">API calls are blocked. Contact admin to add balance.</p>}
-        {balance > 0 && low && <p className="text-xs text-amber-400 mt-0.5">Low balance warning — consider contacting admin to top up.</p>}
+        {isEmpty && <p className="text-xs text-red-400 mt-0.5">API calls are blocked. Contact admin to add balance.</p>}
+        {!isEmpty && isRed && <p className="text-xs text-red-400 mt-0.5">Critical: Balance below $5.00 — API access will stop soon.</p>}
+        {isYellow && <p className="text-xs text-amber-400 mt-0.5">Warning: Balance below $10.00 — consider topping up.</p>}
       </div>
     </div>
   );
@@ -265,7 +273,7 @@ export default function ApiAccessPage() {
   const apiKey = data?.apiKey ?? "";
   const maskedKey = apiKey ? apiKey.slice(0, 12) + "•".repeat(Math.max(0, apiKey.length - 16)) + apiKey.slice(-4) : "Loading...";
   const balance = data?.balance ?? 0;
-  const balanceLow = balance > 0 && balance < 5;
+  const balanceLow = balance > 0 && balance < 10;
 
   const curlExample = `curl -X POST ${baseUrl}/api/v1/chat \\
   -H "Authorization: Bearer ${apiKey || "<your-api-key>"}" \\
@@ -339,7 +347,7 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
         {isLoading ? (
           <div className="h-24 rounded-2xl bg-muted/40 animate-pulse" />
         ) : (
-          <BalanceBar balance={balance} low={balanceLow} />
+          <BalanceBar balance={balance} />
         )}
 
         {/* API Key Card */}
@@ -723,7 +731,7 @@ console.log("Balance:", response.headers.get("X-Balance-Remaining"));`;
               <div className="space-y-2 text-xs">
                 {[
                   { header: "X-Balance-Remaining", desc: "Your remaining balance (e.g. $28.45)" },
-                  { header: "X-Balance-Used", desc: "Cost of this request (e.g. $0.000125)" },
+                  { header: "X-Cost-This-Request", desc: "Total cost of this request (e.g. $0.000125)" },
                   { header: "X-Tokens-Input", desc: "Input tokens consumed" },
                   { header: "X-Tokens-Output", desc: "Output tokens generated" },
                   { header: "X-Rate-Limit-Remaining", desc: "Requests left in current minute window" },

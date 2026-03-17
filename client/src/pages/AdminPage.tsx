@@ -258,12 +258,15 @@ interface ProviderFormData {
   responsePath: string;
   isEnabled: boolean;
   priority: number;
+  inputPricePerMillion: string;
+  outputPricePerMillion: string;
 }
 
 const EMPTY_FORM: ProviderFormData = {
   name: "", providerType: "openai", apiUrl: "", apiKey: "", modelName: "",
   headers: "", httpMethod: "POST", authStyle: "bearer", authHeaderName: "", streamMode: "none",
   bodyTemplate: "", responsePath: "", isEnabled: true, priority: 100,
+  inputPricePerMillion: "", outputPricePerMillion: "",
 };
 
 const HTTP_METHODS = ["POST", "GET", "PUT", "PATCH", "DELETE"];
@@ -417,6 +420,8 @@ function ProviderFormModal({
           responsePath: editing.responsePath ?? "",
           isEnabled: editing.isEnabled,
           priority: editing.priority,
+          inputPricePerMillion: (editing as any).inputPricePerMillion != null ? String((editing as any).inputPricePerMillion) : "",
+          outputPricePerMillion: (editing as any).outputPricePerMillion != null ? String((editing as any).outputPricePerMillion) : "",
         }
       : EMPTY_FORM
   );
@@ -646,6 +651,34 @@ function ProviderFormModal({
             </div>
           </div>
 
+          {/* Pricing */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Input Price ($ per 1M tokens)">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.inputPricePerMillion}
+                onChange={(e) => set("inputPricePerMillion", e.target.value)}
+                placeholder="e.g. 0.80"
+                className={inputClass}
+                data-testid="input-provider-input-price"
+              />
+            </Field>
+            <Field label="Output Price ($ per 1M tokens)">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.outputPricePerMillion}
+                onChange={(e) => set("outputPricePerMillion", e.target.value)}
+                placeholder="e.g. 4.00"
+                className={inputClass}
+                data-testid="input-provider-output-price"
+              />
+            </Field>
+          </div>
+
           {/* Advanced */}
           <button
             onClick={() => setShowAdvanced((s) => !s)}
@@ -826,6 +859,8 @@ function ProvidersSection() {
       bodyTemplate: data.bodyTemplate || null,
       responsePath: data.responsePath || null, isEnabled: data.isEnabled,
       priority: typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100,
+      inputPricePerMillion: data.inputPricePerMillion !== "" ? parseFloat(data.inputPricePerMillion) : null,
+      outputPricePerMillion: data.outputPricePerMillion !== "" ? parseFloat(data.outputPricePerMillion) : null,
     }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setShowForm(false); setEditingProvider(null); },
   });
@@ -837,6 +872,12 @@ function ProvidersSection() {
         httpMethod: data.httpMethod || "POST",
         priority: data.priority !== undefined
           ? (typeof data.priority === "number" ? data.priority : parseInt(String(data.priority), 10) || 100)
+          : undefined,
+        inputPricePerMillion: data.inputPricePerMillion !== undefined
+          ? (data.inputPricePerMillion !== "" ? parseFloat(data.inputPricePerMillion as string) : null)
+          : undefined,
+        outputPricePerMillion: data.outputPricePerMillion !== undefined
+          ? (data.outputPricePerMillion !== "" ? parseFloat(data.outputPricePerMillion as string) : null)
           : undefined,
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/admin/providers"] }); setEditingProvider(null); setShowForm(false); },
@@ -1693,7 +1734,7 @@ export default function AdminPage() {
                         {u.apiEnabled && (
                           <span className={cn(
                             "text-[10px] font-mono font-semibold",
-                            (u.apiBalance ?? 0) <= 0 ? "text-red-500" : (u.apiBalance ?? 0) < 5 ? "text-amber-500" : "text-emerald-500"
+                            (u.apiBalance ?? 0) < 5 ? "text-red-500" : (u.apiBalance ?? 0) < 10 ? "text-amber-500" : "text-emerald-500"
                           )} data-testid={`text-balance-${u.id}`}>
                             ${(u.apiBalance ?? 0).toFixed(2)}
                           </span>
@@ -1843,7 +1884,7 @@ export default function AdminPage() {
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Balance Management</span>
-                          <span className={cn("text-xs font-mono font-bold ml-auto", (u.apiBalance ?? 0) <= 0 ? "text-red-500" : (u.apiBalance ?? 0) < 5 ? "text-amber-500" : "text-emerald-500")}>
+                          <span className={cn("text-xs font-mono font-bold ml-auto", (u.apiBalance ?? 0) < 5 ? "text-red-500" : (u.apiBalance ?? 0) < 10 ? "text-amber-500" : "text-emerald-500")}>
                             ${(u.apiBalance ?? 0).toFixed(2)} current
                           </span>
                         </div>
@@ -1870,8 +1911,8 @@ export default function AdminPage() {
                             {adjustBalanceMutation.isPending ? "..." : "Apply"}
                           </button>
                         </div>
-                        <div className="flex gap-1.5">
-                          {[5, 10, 25, 50].map((amt) => (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {[5, 10, 25, 30, 50].map((amt) => (
                             <button
                               key={amt}
                               onClick={() => adjustBalanceMutation.mutate({ id: u.id, delta: amt })}
@@ -1907,21 +1948,23 @@ export default function AdminPage() {
                                   </div>
                                 )}
                                 {adminApiLogs.logs.slice(0, 20).map((log: any) => (
-                                  <div key={log.id} className="px-4 py-2 border-b border-border/30 flex items-center justify-between gap-3 text-[10px]" data-testid={`row-admin-api-log-${log.id}`}>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                  <div key={log.id} className="px-4 py-2 border-b border-border/30 text-[10px]" data-testid={`row-admin-api-log-${log.id}`}>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", log.success !== false ? "bg-emerald-500" : "bg-red-500")} title={log.success !== false ? "Success" : "Failed"} />
                                         {log.modelUsed && <span className="text-primary font-semibold">{log.modelUsed}</span>}
                                         {log.endpoint && <span className="font-mono text-muted-foreground">{log.endpoint}</span>}
                                       </div>
-                                      <p className="text-muted-foreground truncate font-mono">
-                                        ↑{log.inputTokens} ↓{log.outputTokens} tok
-                                      </p>
+                                      <div className="text-right space-y-0.5">
+                                        <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
+                                        {log.costDeducted != null && (
+                                          <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(6)}</p>
+                                        )}
+                                      </div>
                                     </div>
-                                    <div className="text-right flex-shrink-0 space-y-0.5">
-                                      <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
-                                      {log.costDeducted != null && (
-                                        <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(6)}</p>
-                                      )}
+                                    <div className="flex gap-3 mt-0.5 text-muted-foreground font-mono">
+                                      <span>In: {log.inputTokens} tok {log.inputCost != null && <span className="text-foreground/70">(${log.inputCost.toFixed(6)})</span>}</span>
+                                      <span>Out: {log.outputTokens} tok {log.outputCost != null && <span className="text-foreground/70">(${log.outputCost.toFixed(6)})</span>}</span>
                                     </div>
                                   </div>
                                 ))}

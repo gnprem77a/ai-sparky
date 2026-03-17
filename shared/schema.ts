@@ -185,6 +185,9 @@ export const apiLogs = pgTable("api_logs", {
   modelUsed: text("model_used"),
   endpoint: text("endpoint"),
   costDeducted: real("cost_deducted"),
+  inputCost: real("input_cost"),
+  outputCost: real("output_cost"),
+  success: boolean("success").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 export type ApiLog = typeof apiLogs.$inferSelect;
