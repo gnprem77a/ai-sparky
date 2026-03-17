@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Sun, Moon } from "lucide-react";
-import { useTheme } from "@/hooks/use-theme";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -104,7 +103,6 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { t } = useLanguage();
-  const { theme, toggleTheme } = useTheme();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -515,16 +513,6 @@ export function AppSidebar({
             <span className="font-semibold text-sm text-foreground tracking-tight">AI Sparky</span>
           </div>
           <div className="flex items-center gap-0.5">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-              data-testid="button-sidebar-theme"
-              title={theme === "dark" ? "Light mode" : "Dark mode"}
-              className="h-8 w-8 text-muted-foreground"
-            >
-              {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-            </Button>
             <Button
               size="icon"
               variant="ghost"
