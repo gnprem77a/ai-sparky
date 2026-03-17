@@ -19,7 +19,6 @@ export function buildAdapter(config: ProviderConfig): ProviderAdapter {
     case "openai":
     case "azure":
     case "gemini":
-    case "bluesminds":
     case "openai-compatible":
       return new OpenAICompatAdapter(config);
     case "anthropic":
@@ -40,7 +39,6 @@ export async function testProvider(config: ProviderConfig): Promise<TestResult> 
 /**
  * Stream through an ordered list of providers, trying each in priority order.
  * If a provider fails, we emit nothing and try the next one.
- * Falls back to the built-in bluesminds config if all DB providers fail or list is empty.
  */
 export async function streamWithFallback(
   providers: ProviderConfig[],
@@ -100,27 +98,6 @@ export async function generateText(
   };
 
   const candidates = [...providers.filter((p) => p.isEnabled && isChatProvider(p)).sort((a, b) => a.priority - b.priority)];
-
-  const fallback: ProviderConfig = {
-    id: "builtin",
-    name: "Bluesminds (built-in)",
-    providerType: "bluesminds",
-    apiUrl: "https://api.bluesminds.com/v1",
-    apiKey: process.env.BLUESMINDS_API_KEY ?? "",
-    modelName: "claude-sonnet-4-6",
-    headers: null,
-    httpMethod: "POST",
-    authStyle: "bearer",
-    authHeaderName: null,
-    streamMode: "none",
-    bodyTemplate: null,
-    responsePath: null,
-    isActive: true,
-    isEnabled: true,
-    priority: 999,
-  };
-
-  candidates.push(fallback);
 
   for (const prov of candidates) {
     try {

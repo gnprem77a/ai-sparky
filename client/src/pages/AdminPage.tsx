@@ -221,7 +221,6 @@ function PlanManager({ user, currentUserId, onClose }: { user: AdminUser; curren
 
 /* ─── Provider Types ─── */
 const PROVIDER_TYPE_META: Record<string, { label: string; color: string }> = {
-  bluesminds:         { label: "Bluesminds",         color: "text-violet-400" },
   openai:             { label: "OpenAI",              color: "text-emerald-400" },
   anthropic:          { label: "Anthropic",           color: "text-orange-400" },
   azure:              { label: "Azure",               color: "text-blue-400" },
@@ -232,7 +231,6 @@ const PROVIDER_TYPE_META: Record<string, { label: string; color: string }> = {
 };
 
 const PROVIDER_TYPE_OPTIONS = [
-  { value: "bluesminds",         label: "Bluesminds (default)" },
   { value: "openai",             label: "OpenAI" },
   { value: "anthropic",          label: "Anthropic" },
   { value: "azure",              label: "Azure OpenAI" },
@@ -286,18 +284,6 @@ const PROVIDER_DEFAULTS: Record<string, {
   hint: string;
   hintColor: string;
 }> = {
-  bluesminds: {
-    apiUrl: "https://api.bluesminds.com/v1",
-    modelPlaceholder: "claude-sonnet-4-6",
-    modelSuggestions: ["claude-sonnet-4-6", "claude-haiku-4-5"],
-    keyPlaceholder: "Your Bluesminds API key",
-    keyLabel: "API Key",
-    keyRequired: true,
-    urlLabel: "API Base URL",
-    urlRequired: false,
-    hint: "OpenAI-compatible endpoint. Uses your BLUESMINDS_API_KEY env var if left blank.",
-    hintColor: "text-violet-400",
-  },
   openai: {
     apiUrl: "https://api.openai.com/v1",
     modelPlaceholder: "gpt-4o",

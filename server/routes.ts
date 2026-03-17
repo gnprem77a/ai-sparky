@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { MODEL_REGISTRY, FALLBACK_MODEL, BLUESMINDS_MODEL_ID, getModel, getProviderPatterns, type ModelDefinition } from "../shared/models";
+import { MODEL_REGISTRY, FALLBACK_MODEL, getModel, getProviderPatterns, type ModelDefinition } from "../shared/models";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
@@ -62,19 +62,6 @@ function isProActive(user: { plan: string; planExpiresAt: Date | null }): boolea
   return user.planExpiresAt > new Date();
 }
 
-/* ─── bluesminds API client helpers ──────────────────────────── */
-const BLUESMINDS_BASE = "https://api.bluesminds.com/v1";
-
-function bluesmindsHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${process.env.BLUESMINDS_API_KEY ?? ""}`,
-  };
-}
-
-function hasApiKey() {
-  return !!process.env.BLUESMINDS_API_KEY;
-}
 
 /* Convert Anthropic tool definitions → OpenAI function format */
 function toOpenAITools(tools: typeof TOOL_DEFINITIONS) {
@@ -280,153 +267,10 @@ interface ToolCallRecord {
   result?: string;
 }
 
-async function streamModelWithTools(
-  entry: ModelDefinition,
-  messages: RawMessage[],
-  maxTokens: number,
-  res: Response,
-  systemPrompt?: string,
-  useTools = false,
-): Promise<{ inputTokens: number; outputTokens: number; toolCalls: ToolCallRecord[] }> {
-  const allToolCalls: ToolCallRecord[] = [];
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let isFirstCall = true;
-  const MAX_TOOL_ROUNDS = useTools ? 3 : 1;
-
-  const openAIMessages = buildOpenAIMessages(messages, systemPrompt);
-  const openAITools = useTools ? toOpenAITools(TOOL_DEFINITIONS) : undefined;
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const body: Record<string, unknown> = {
-      model: entry.apiModelId,
-      max_tokens: maxTokens,
-      messages: openAIMessages,
-      stream: true,
-      ...(useTools ? { tools: openAITools, tool_choice: "auto" } : {}),
-    };
-
-    const httpRes = await fetch(`${BLUESMINDS_BASE}/chat/completions`, {
-      method: "POST",
-      headers: bluesmindsHeaders(),
-      body: JSON.stringify(body),
-    });
-
-    if (!httpRes.ok) {
-      const errText = await httpRes.text();
-      throw new Error(errText || `API error ${httpRes.status}`);
-    }
-
-    if (isFirstCall) {
-      res.write(`data: ${JSON.stringify({ modelUsed: entry.badgeLabel, exactName: entry.exactName })}\n\n`);
-      isFirstCall = false;
-    }
-
-    if (!httpRes.body) throw new Error("No response body");
-
-    const reader = httpRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let finishReason = "stop";
-
-    /* Accumulate tool call deltas */
-    const pendingToolCalls: Record<number, { id: string; name: string; argsBuffer: string }> = {};
-    let assistantTextAccum = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (data === "[DONE]") break;
-        try {
-          const parsed = JSON.parse(data);
-          const choice = parsed.choices?.[0];
-          if (!choice) continue;
-          if (choice.finish_reason) finishReason = choice.finish_reason;
-          const delta = choice.delta ?? {};
-
-          /* Text streaming */
-          if (delta.content) {
-            res.write(`data: ${JSON.stringify({ text: delta.content })}\n\n`);
-            assistantTextAccum += delta.content;
-          }
-
-          /* Tool call streaming — accumulate per-index */
-          if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 0;
-              if (!pendingToolCalls[idx]) {
-                pendingToolCalls[idx] = { id: tc.id ?? "", name: tc.function?.name ?? "", argsBuffer: "" };
-              }
-              if (tc.id) pendingToolCalls[idx].id = tc.id;
-              if (tc.function?.name) pendingToolCalls[idx].name = tc.function.name;
-              if (tc.function?.arguments) pendingToolCalls[idx].argsBuffer += tc.function.arguments;
-            }
-          }
-
-          /* Usage */
-          if (parsed.usage) {
-            inputTokens += parsed.usage.prompt_tokens ?? 0;
-            outputTokens += parsed.usage.completion_tokens ?? 0;
-          }
-        } catch { /* ignore parse errors */ }
-      }
-    }
-
-    if (finishReason !== "tool_calls") break;
-
-    /* Execute tool calls */
-    const toolEntries = Object.values(pendingToolCalls);
-    if (toolEntries.length === 0) break;
-
-    const toolMessages: Array<{ role: string; content: string; tool_call_id: string }> = [];
-
-    for (const tc of toolEntries) {
-      let input: Record<string, string> = {};
-      try { input = JSON.parse(tc.argsBuffer); } catch { /* ignore */ }
-      res.write(`data: ${JSON.stringify({ toolCall: { name: tc.name, input } })}\n\n`);
-      const result = await executeTool(tc.name, input);
-      res.write(`data: ${JSON.stringify({ toolResult: { name: tc.name, input, result } })}\n\n`);
-      allToolCalls.push({ id: tc.id, name: tc.name, input, result });
-      toolMessages.push({ role: "tool", content: result, tool_call_id: tc.id });
-    }
-
-    /* Append assistant + tool-result messages */
-    openAIMessages.push({
-      role: "assistant",
-      content: assistantTextAccum || null,
-    } as unknown as { role: string; content: unknown });
-
-    for (const tm of toolMessages) {
-      openAIMessages.push(tm as unknown as { role: string; content: unknown });
-    }
-  }
-
-  return { inputTokens, outputTokens, toolCalls: allToolCalls };
-}
-
-/* Simple non-streaming call for summarize / suggestions */
-async function callAPI(modelId: string, systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
-  const res = await fetch(`${BLUESMINDS_BASE}/chat/completions`, {
-    method: "POST",
-    headers: bluesmindsHeaders(),
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: maxTokens,
-      stream: false,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content?.trim() ?? "";
+/* Simple non-streaming call for summarize / suggestions — uses configured providers */
+async function callAPI(_modelId: string, systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
+  const providers = await storage.getProviders();
+  return generateText(providers as unknown as ProviderConfig[], systemPrompt, userPrompt, maxTokens);
 }
 
 /* ─── route registration ─────────────────────────────────────── */
@@ -1744,22 +1588,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages array is required" });
     }
-    if (!hasApiKey()) return res.status(500).json({ error: "API key not configured" });
     const conversationText = messages
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .map((m: any) => `${m.role === "user" ? "User" : "Assistant"}: ${typeof m.content === "string" ? m.content : "[attachment]"}`)
       .join("\n\n");
     try {
       const summary = await callAPI(
-        BLUESMINDS_MODEL_ID,
+        "",
         "You are a concise summarizer. Respond ONLY with bullet points — no intro, no conclusion.",
         `Summarize this conversation as 3–5 clear bullet points. Each bullet should capture a key topic, question answered, or decision made.\n\n${conversationText}`,
         600,
       );
       res.json({ summary: summary || "Unable to generate summary." });
     } catch (err: unknown) {
-      console.error("[bluesminds] summarize error:", err);
-      res.status(500).json({ error: "Failed to generate summary" });
+      console.error("[summarize] error:", err);
+      res.status(500).json({ error: "Failed to generate summary. Make sure an AI provider is configured." });
     }
   });
 
@@ -1769,7 +1612,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.json({ suggestions: [] });
     }
-    if (!hasApiKey()) return res.json({ suggestions: [] });
     const recent = messages
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .slice(-6)
@@ -1777,7 +1619,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .join("\n\n");
     try {
       const text = await callAPI(
-        BLUESMINDS_MODEL_ID,
+        "",
         "You generate short follow-up questions. Respond ONLY with a JSON array of exactly 3 strings. No explanation, no markdown, just valid JSON like: [\"Question 1?\",\"Question 2?\",\"Question 3?\"]",
         `Based on this conversation, suggest 3 short follow-up questions the user might ask next. Keep each under 60 characters.\n\n${recent}`,
         150,
@@ -2134,12 +1976,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // Fall back to direct Bluesminds call (proven to work)
-      if (!answer) {
-        answer = await callAPI(BLUESMINDS_MODEL_ID, kbSystemPrompt, kbUserPrompt, 1000);
-      }
-
-      if (!answer) throw new Error("Empty response from AI");
+      if (!answer) throw new Error("No AI providers available. Please configure a provider in the admin panel.");
       res.json({ answer, sources });
     } catch (err) {
       console.error("[kb/chat] error:", err);

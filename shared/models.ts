@@ -67,12 +67,6 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
 /** Fallback for provider-based chat routing. */
 export const FALLBACK_MODEL = MODEL_REGISTRY.powerful;
 
-/**
- * Standard Anthropic model ID for the built-in Bluesminds API gateway
- * (used for KB Q&A, summaries, and other non-streaming utility calls).
- * Note: Use the standard Anthropic API name, NOT the Azure deployment name.
- */
-export const BLUESMINDS_MODEL_ID = "claude-opus-4-6";
 
 /** Returns the ModelDefinition for a given key, defaulting to balanced. */
 export function getModel(key: string): ModelDefinition {

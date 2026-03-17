@@ -1,7 +1,7 @@
 /**
  * OpenAI-compatible streaming adapter.
  * Covers: OpenAI, Azure OpenAI (Chat Completions + Responses API),
- *         Google Gemini (compat endpoint), Bluesminds, and any other OpenAI-compatible API.
+ *         Google Gemini (compat endpoint), and any other OpenAI-compatible API.
  */
 import type { Response } from "express";
 import { executeTool } from "../../tools";
@@ -49,7 +49,6 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     if (this.config.apiUrl) return this.config.apiUrl.replace(/\/$/, "");
     if (this.config.providerType === "openai") return "https://api.openai.com/v1";
     if (this.config.providerType === "gemini") return "https://generativelanguage.googleapis.com/v1beta/openai";
-    if (this.config.providerType === "bluesminds") return "https://api.bluesminds.com/v1";
     return "https://api.openai.com/v1";
   }
 

@@ -1,4 +1,3 @@
-const BLUESMINDS_API_URL = "https://api.bluesminds.com/v1";
 
 export function chunkText(text: string, chunkSize = 800, overlap = 100): string[] {
   const chunks: string[] = [];
@@ -83,67 +82,29 @@ export async function generateEmbedding(text: string, config?: EmbedProviderConf
   let headers: Record<string, string>;
   let body: Record<string, unknown>;
 
-  // Try configured embed provider first, then fall back to Bluesminds
-  if (config) {
-    url = buildEmbedUrl(config.url, config.modelName);
-    headers = authHeaders(config.providerType, config.apiKey);
-    // Use OpenAI format for /embeddings endpoints, Cohere format for /embed endpoints
-    if (url.endsWith("/embeddings")) {
-      body = { input: [text], model: config.modelName };
-    } else {
-      body = { texts: [text], input_type: "search_document" };
-    }
-    const authType = headers["api-key"] ? "api-key" : "Bearer";
-    console.log(`[embed] Using provider "${config.modelName}" at ${url} (auth: ${authType})`);
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const rawText = await res.text();
-      if (!res.ok) {
-        console.error(`[embed] provider error ${res.status}: ${rawText.slice(0, 300)}`);
-        throw new Error(`Embedding API error ${res.status}: ${rawText.slice(0, 200)}`);
-      }
-      const json = JSON.parse(rawText);
-      return parseEmbeddingResponse(json);
-    } catch (err) {
-      console.warn(`[embed] configured provider failed: ${(err as Error).message} — falling back to Bluesminds`);
-    }
+  if (!config) throw new Error("No embedding provider configured. Please add an embedding provider in the admin panel.");
+
+  url = buildEmbedUrl(config.url, config.modelName);
+  headers = authHeaders(config.providerType, config.apiKey);
+  // Use OpenAI format for /embeddings endpoints, Cohere format for /embed endpoints
+  if (url.endsWith("/embeddings")) {
+    body = { input: [text], model: config.modelName };
+  } else {
+    body = { texts: [text], input_type: "search_document" };
   }
-
-  // Bluesminds fallback — try embed-v-4-0 (Cohere) format first, then OpenAI format
-  const apiKey = process.env.BLUESMINDS_API_KEY;
-  if (!apiKey) throw new Error("No embed provider configured and BLUESMINDS_API_KEY not set");
-
-  // Try Cohere-style endpoint
-  try {
-    const cohereUrl = `${BLUESMINDS_API_URL}/v2/embed`;
-    const cohereHeaders = { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" };
-    const cohereBody = { model: "embed-v-4-0", texts: [text], input_type: "search_document" };
-    console.log(`[embed] Trying Bluesminds Cohere fallback at ${cohereUrl}`);
-    const cohereRes = await fetch(cohereUrl, { method: "POST", headers: cohereHeaders, body: JSON.stringify(cohereBody) });
-    if (cohereRes.ok) {
-      const j = await cohereRes.json();
-      return parseEmbeddingResponse(j);
-    }
-  } catch { /* try next */ }
-
-  url = `${BLUESMINDS_API_URL}/embeddings`;
-  headers = { "Authorization": `Bearer ${apiKey}` };
-  body = { model: "embed-v-4-0", input: [text] };
-  console.log(`[embed] Using Bluesminds fallback (embed-v-4-0, OpenAI format)`);
+  const authType = headers["api-key"] ? "api-key" : "Bearer";
+  console.log(`[embed] Using provider "${config.modelName}" at ${url} (auth: ${authType})`);
   const res = await fetch(url, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const rawText = await res.text();
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Embedding API error ${res.status}: ${err}`);
+    console.error(`[embed] provider error ${res.status}: ${rawText.slice(0, 300)}`);
+    throw new Error(`Embedding API error ${res.status}: ${rawText.slice(0, 200)}`);
   }
-  const json = await res.json();
+  const json = JSON.parse(rawText);
   return parseEmbeddingResponse(json);
 }
 
@@ -179,14 +140,8 @@ export async function rerankChunks(
     headers = authHeaders(config.providerType, config.apiKey);
     console.log(`[rerank] Using provider "${config.modelName}" at ${url}`);
   } else {
-    const apiKey = process.env.BLUESMINDS_API_KEY;
-    if (!apiKey) {
-      console.warn("[rerank] No provider configured, skipping reranking");
-      return chunks.slice(0, topN);
-    }
-    url = `${BLUESMINDS_API_URL}/rerank`;
-    headers = { "Authorization": `Bearer ${apiKey}` };
-    console.log(`[rerank] Using Bluesminds fallback`);
+    console.warn("[rerank] No provider configured, skipping reranking");
+    return chunks.slice(0, topN);
   }
 
   try {

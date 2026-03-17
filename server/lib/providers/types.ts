@@ -76,7 +76,6 @@ export interface ProviderConfig {
 }
 
 export const PROVIDER_TYPES = [
-  { value: "bluesminds",        label: "Bluesminds (default)",      requiresKey: true  },
   { value: "openai",            label: "OpenAI",                    requiresKey: true  },
   { value: "anthropic",         label: "Anthropic",                 requiresKey: true  },
   { value: "azure",             label: "Azure OpenAI",              requiresKey: true  },
