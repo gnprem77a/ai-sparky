@@ -37,3 +37,12 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "mail.privateemail.com"
+SMTP_PORT = "465"
+SMTP_USER = "noreply@aisparky.dev"
+SMTP_FROM = "AI Sparky <noreply@aisparky.dev>"
+APP_URL = "https://aisparky.dev"
