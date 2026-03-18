@@ -42,6 +42,28 @@ import { streamWithFallback, testProvider, generateText, type ProviderConfig } f
 import { chunkText, generateEmbedding, generateEmbeddings, cosineSimilarity, rerankChunks, type RankedChunk } from "./lib/embeddings";
 const _require = createRequire(import.meta.url);
 const pdfParse: (buf: Buffer) => Promise<{ text: string; numpages: number }> = _require("pdf-parse");
+const mammoth: { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> } = _require("mammoth");
+const xlsx: {
+  read: (data: Buffer, opts: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> };
+  utils: { sheet_to_csv: (sheet: unknown) => string };
+} = _require("xlsx");
+const unzipper: { Open: { buffer: (buf: Buffer) => Promise<{ files: Array<{ path: string; buffer: () => Promise<Buffer> }> }> } } = _require("unzipper");
+
+async function extractPptxText(buffer: Buffer): Promise<string> {
+  const zip = await unzipper.Open.buffer(buffer);
+  const slideFiles = zip.files
+    .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f.path))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  const texts: string[] = [];
+  for (const slideFile of slideFiles) {
+    const content = await slideFile.buffer();
+    const xml = content.toString("utf-8");
+    const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) ?? [];
+    const slideText = matches.map(m => m.replace(/<[^>]+>/g, "").trim()).filter(Boolean).join(" ");
+    if (slideText) texts.push(slideText);
+  }
+  return texts.join("\n\n");
+}
 
 /* ─── auth middleware ─────────────────────────────────────────── */
 function requireAuth(req: Request, res: Response, next: () => void) {
@@ -1714,6 +1736,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json({ text: result.text.slice(0, 50000), pageCount: result.numpages });
     } catch (e) {
       return res.status(422).json({ error: `Could not parse PDF: ${(e as Error).message}` });
+    }
+  });
+
+  /* ── extract-document: DOCX / XLSX / PPTX / plain text ── */
+  app.post("/api/extract-document", requireAuth as any, upload.single("file") as any, async (req: Request, res: Response) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const { buffer, originalname = "", mimetype = "" } = req.file;
+    const name = originalname.toLowerCase();
+    try {
+      let text = "";
+      if (name.endsWith(".docx") || mimetype.includes("wordprocessingml")) {
+        const result = await mammoth.extractRawText({ buffer });
+        text = result.value;
+      } else if (name.endsWith(".xlsx") || name.endsWith(".xls") || mimetype.includes("spreadsheet") || mimetype.includes("excel")) {
+        const wb = xlsx.read(buffer, { type: "buffer" });
+        text = wb.SheetNames.map(s => `=== ${s} ===\n${xlsx.utils.sheet_to_csv(wb.Sheets[s])}`).join("\n\n");
+      } else if (name.endsWith(".pptx") || mimetype.includes("presentationml")) {
+        text = await extractPptxText(buffer);
+      } else if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".json") || mimetype.startsWith("text/")) {
+        text = buffer.toString("utf-8");
+      } else {
+        return res.status(422).json({ error: `"${originalname}" cannot be read as text. Supported: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV, JSON.` });
+      }
+      return res.json({ text: text.slice(0, 100000), name: originalname });
+    } catch (e) {
+      return res.status(422).json({ error: `Could not extract text from "${originalname}": ${(e as Error).message}` });
     }
   });
 

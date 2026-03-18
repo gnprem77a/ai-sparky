@@ -28,7 +28,7 @@ const ROTATING_HINTS = [
 ];
 
 /* ─── accepted file types ────────────────────────────────────── */
-const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
+const EXTS_ALL = ".jpg,.jpeg,.png,.gif,.webp,.txt,.md,.csv,.json,.pdf,.docx,.xlsx,.xls,.pptx,.py,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.rb,.go,.rs,.java,.cpp,.c,.php,.swift";
 const EXTS_IMG = ".jpg,.jpeg,.png,.gif,.webp";
 
 /* ─── menu items ─────────────────────────────────────────────── */
@@ -262,11 +262,17 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     });
     try {
       const results = await Promise.all(arr.map(async (file) => {
-        if (file.type === "application/pdf") {
+        const n = file.name.toLowerCase();
+        const isPdf = file.type === "application/pdf" || n.endsWith(".pdf");
+        const isDocx = n.endsWith(".docx") || file.type.includes("wordprocessingml");
+        const isXlsx = n.endsWith(".xlsx") || n.endsWith(".xls") || file.type.includes("spreadsheet") || file.type.includes("excel");
+        const isPptx = n.endsWith(".pptx") || file.type.includes("presentationml");
+
+        if (isPdf) {
           const formData = new FormData();
           formData.append("file", file);
           try {
-            const resp = await fetch("/api/extract-pdf", { method: "POST", body: formData });
+            const resp = await fetch("/api/extract-pdf", { method: "POST", body: formData, credentials: "include" });
             if (resp.ok) {
               const { text, pageCount } = await resp.json();
               return {
@@ -282,8 +288,34 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             console.error("PDF extract error", e);
           }
         }
+
+        if (isDocx || isXlsx || isPptx) {
+          const formData = new FormData();
+          formData.append("file", file);
+          try {
+            const resp = await fetch("/api/extract-document", { method: "POST", body: formData, credentials: "include" });
+            if (resp.ok) {
+              const { text } = await resp.json();
+              return {
+                id: `${Date.now()}-${Math.random()}`,
+                name: file.name,
+                type: "file" as const,
+                mimeType: file.type,
+                size: file.size,
+                data: `Document: ${file.name}\n\n${text}`,
+              };
+            } else {
+              const { error } = await resp.json();
+              throw new Error(error || "Failed to extract document");
+            }
+          } catch (e) {
+            alert(`Could not read "${file.name}": ${(e as Error).message}`);
+            return null;
+          }
+        }
+
         return readFileAsAttachment(file);
-      }));
+      })).then(r => r.filter(Boolean) as Awaited<ReturnType<typeof readFileAsAttachment>>[]);
       setAttachments(prev => [...prev, ...results].slice(0, maxFiles));
     } catch (e) {
       console.error("file read error", e);
