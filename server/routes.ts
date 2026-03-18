@@ -2076,6 +2076,203 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  /* ── External API: CORS + OpenAI-compatible routes ── */
+
+  // Allow external tools (VS Code extensions, curl, etc.) to reach the API
+  app.use("/api/v1", (req: Request, res: Response, next: () => void) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") { res.sendStatus(200); return; }
+    next();
+  });
+
+  // OpenAI-compatible model list — required by CodeGPT and similar tools for the connection test
+  app.get("/api/v1/models", async (req: Request, res: Response) => {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    const apiKey = authHeader.slice(7).trim();
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+    const now = Math.floor(Date.now() / 1000);
+    return res.json({
+      object: "list",
+      data: [
+        { id: "powerful", object: "model", created: now, owned_by: "aisparky", description: "Most powerful model (Claude Opus)" },
+        { id: "balanced", object: "model", created: now, owned_by: "aisparky", description: "Balanced performance (Mistral Large)" },
+        { id: "fast",     object: "model", created: now, owned_by: "aisparky", description: "Fastest responses (Claude Haiku)" },
+        { id: "creative", object: "model", created: now, owned_by: "aisparky", description: "Most creative (GPT)" },
+      ],
+    });
+  });
+
+  // OpenAI-compatible chat completions — works with CodeGPT, Continue.dev, Cursor, etc.
+  app.post("/api/v1/chat/completions", async (req: Request, res: Response) => {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    }
+    const apiKey = authHeader.slice(7).trim();
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+
+    const requestId = "chatcmpl-" + randomBytes(12).toString("hex");
+    const startTime = Date.now();
+    const apiKeyId = user.apiKey ?? null;
+
+    const userRateLimit = user.apiRateLimitPerMin ?? API_RATE_LIMIT_DEFAULT;
+    const rl = checkApiV1RateLimit(apiKey, userRateLimit);
+    if (!rl.allowed) {
+      return res.status(429).json({ error: { message: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", type: "rate_limit_error" } });
+    }
+
+    const currentBalance = user.apiBalance ?? 0;
+    if (currentBalance < 0.01) {
+      return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
+    }
+
+    const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system } = req.body;
+
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
+      return res.status(400).json({ error: { message: "messages array is required", type: "invalid_request_error" } });
+    }
+
+    // Map OpenAI model names → our slugs; default balanced
+    const modelMap: Record<string, string> = {
+      "gpt-4": "powerful", "gpt-4o": "powerful", "gpt-3.5-turbo": "fast",
+      "claude-3-opus": "powerful", "claude-3-sonnet": "balanced", "claude-3-haiku": "fast",
+      "powerful": "powerful", "balanced": "balanced", "fast": "fast", "creative": "creative",
+    };
+    const modelSlug: string = modelMap[modelParam] ?? "balanced";
+
+    const messages: { role: string; content: string }[] = rawMessages
+      .filter((m: any) => m.role !== "system")
+      .map((m: any) => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
+
+    // Extract system message from messages array if not provided separately
+    const systemMsg = system ?? rawMessages.find((m: any) => m.role === "system")?.content ?? "";
+
+    const dbProviders = await storage.getActiveProviders();
+    const patterns = getProviderPatterns(modelSlug as any);
+    let selectedProviders = dbProviders.filter((p) =>
+      p.isEnabled && p.isActive &&
+      patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat))
+    );
+    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled && p.isActive);
+    if (selectedProviders.length === 0) return res.status(503).json({ error: { message: "No active AI providers configured", type: "server_error" } });
+
+    const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      authStyle: (p.authStyle ?? "bearer") as ProviderConfig["authStyle"],
+      authHeaderName: p.authHeaderName ?? null,
+      streamMode: (p.streamMode ?? "none") as ProviderConfig["streamMode"],
+      bodyTemplate: p.bodyTemplate ?? null, responsePath: p.responsePath ?? null,
+      isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    }));
+
+    const primaryProvider = selectedProviders[0];
+    const providerInputPrice  = primaryProvider?.inputPricePerMillion  ?? null;
+    const providerOutputPrice = primaryProvider?.outputPricePerMillion ?? null;
+    const modelMaxTokens = API_MODEL_MAX_TOKENS[modelSlug] ?? 8192;
+    const maxTokens = Math.min(reqMaxTokens ?? modelMaxTokens, modelMaxTokens);
+    const messagesJson = JSON.stringify(messages);
+    const endpoint = "/api/v1/chat/completions";
+
+    const usage = await storage.incrementApiUsage(user.id);
+    if (!usage.allowed) {
+      return res.status(429).json({ error: { message: "Request limit reached", type: "rate_limit_error" } });
+    }
+
+    const created = Math.floor(Date.now() / 1000);
+
+    if (wantStream === true) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      // Wrap res.write to convert our SSE chunks → OpenAI SSE format
+      const originalWrite = res.write.bind(res);
+      let fullContent = "";
+      (res as any).write = (chunk: any) => {
+        const raw = typeof chunk === "string" ? chunk : chunk.toString();
+        // Our SSE lines: "data: <text>\n\n" — extract the text and re-emit in OpenAI format
+        for (const line of raw.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload);
+            // Skip our internal done/metadata object
+            if (parsed.done === true || parsed.error) continue;
+            const text = typeof parsed === "string" ? parsed : (parsed.content ?? parsed.text ?? parsed.delta ?? "");
+            if (!text) continue;
+            fullContent += text;
+            const oaiChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+              choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] };
+            originalWrite(`data: ${JSON.stringify(oaiChunk)}\n\n`);
+          } catch {
+            // raw text chunk (not JSON) — treat the whole payload as content
+            if (payload && payload !== "[DONE]") {
+              fullContent += payload;
+              const oaiChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+                choices: [{ index: 0, delta: { role: "assistant", content: payload }, finish_reason: null }] };
+              originalWrite(`data: ${JSON.stringify(oaiChunk)}\n\n`);
+            }
+          }
+        }
+        return true;
+      };
+
+      try {
+        const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+          messages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
+        });
+        // Restore original write, send final OpenAI done chunk + [DONE]
+        (res as any).write = originalWrite;
+        const doneChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+        res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
+        res.write("data: [DONE]\n\n");
+
+        const { totalCost } = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
+        const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
+        const deduction = await storage.deductApiBalance(user.id, roundedTotal);
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: fullContent.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        res.end();
+      } catch (err: any) {
+        (res as any).write = originalWrite;
+        res.write(`data: ${JSON.stringify({ error: { message: err?.message ?? "Stream failed", type: "server_error" } })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }
+    } else {
+      try {
+        const userPrompt = messages.map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`).join("\n");
+        const text = await generateText(providerConfigs, systemMsg, userPrompt, maxTokens);
+        const inputTokens = Math.ceil(userPrompt.length / 4);
+        const outputTokens = Math.ceil(text.length / 4);
+        const { totalCost } = computeCost(modelSlug, inputTokens, outputTokens, providerInputPrice, providerOutputPrice);
+        const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
+        const deduction = await storage.deductApiBalance(user.id, roundedTotal);
+        res.setHeader("X-Request-ID", requestId);
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        return res.json({
+          id: requestId, object: "chat.completion", created, model: modelSlug,
+          choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+          usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens },
+        });
+      } catch (err: any) {
+        return res.status(500).json({ error: { message: err?.message ?? "Generation failed", type: "server_error" } });
+      }
+    }
+  });
+
   /* ── External API: /api/v1/chat (API key auth, balance-based) ── */
 
   // Default pricing per 1M tokens (fallback when provider has no custom price set)
