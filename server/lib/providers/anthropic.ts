@@ -45,7 +45,7 @@ export class AnthropicAdapter implements ProviderAdapter {
         headers: this.buildHeaders(),
         body: JSON.stringify({
           model: this.config.modelName,
-          max_tokens: 5,
+          max_tokens: 16,
           messages: [{ role: "user", content: "Say OK" }],
         }),
       });

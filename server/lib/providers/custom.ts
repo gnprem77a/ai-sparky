@@ -184,7 +184,7 @@ export class CustomAdapter implements ProviderAdapter {
     try {
       const hasBody = this.method !== "GET" && this.method !== "HEAD";
       const body = hasBody
-        ? JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 5, stream: false })
+        ? JSON.stringify({ model: this.config.modelName, messages: [{ role: "user", content: "Say OK" }], max_tokens: 16, stream: false })
         : undefined;
       const res = await fetch(url, { method: this.method, headers: this.buildHeaders(), body });
       if (!res.ok) {

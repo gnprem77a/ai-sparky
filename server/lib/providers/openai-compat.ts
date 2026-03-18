@@ -194,14 +194,14 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         testBody = {
           model: this.config.modelName,
           messages: [{ role: "user", content: "Say OK" }],
-          max_tokens: 5,
+          max_tokens: 16,
         };
       } else if (this.isResponsesApi) {
         endpoint = this.chatEndpoint();
         testBody = {
           model: this.config.modelName,
           input: [{ role: "user", content: "Say OK" }],
-          max_output_tokens: 5,
+          max_output_tokens: 16,
           stream: false,
         };
       } else {
@@ -209,7 +209,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         testBody = {
           model: this.config.modelName,
           messages: [{ role: "user", content: "Say OK" }],
-          max_tokens: 5,
+          max_tokens: 16,
           stream: false,
         };
       }

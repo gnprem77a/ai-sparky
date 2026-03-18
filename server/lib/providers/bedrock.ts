@@ -53,7 +53,7 @@ export class BedrockAdapter implements ProviderAdapter {
       const url = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(this.modelId)}/converse`;
       const body = JSON.stringify({
         messages: [{ role: "user", content: [{ text: "Say OK" }] }],
-        inferenceConfig: { maxTokens: 5 },
+        inferenceConfig: { maxTokens: 16 },
       });
       const headers = signRequest("POST", url, { "content-type": "application/json", host: `bedrock-runtime.${this.region}.amazonaws.com` }, body);
       const res = await fetch(url, { method: "POST", headers, body });
