@@ -345,6 +345,44 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   // Anthropic Messages API streaming (Azure /anthropic/v1/messages endpoint)
   // ---------------------------------------------------------------------------
 
+  // Build Anthropic-format content blocks for a single message, including images.
+  private static buildAnthropicContent(m: RawMessage): unknown {
+    const images = (m.attachments ?? []).filter((a) => a.type === "image");
+    const textAtts = (m.attachments ?? []).filter((a) => a.type !== "image");
+
+    if (images.length === 0 && textAtts.length === 0) return m.content;
+
+    const parts: unknown[] = [];
+
+    // Text content (with any text attachments appended)
+    let text = m.content || "";
+    for (const att of textAtts) {
+      text += `\n\n--- File: ${att.name} ---\n${att.data}\n--- End of ${att.name} ---`;
+    }
+    if (text.trim()) parts.push({ type: "text", text });
+
+    // Image content blocks in Anthropic format
+    for (const att of images) {
+      let mediaType = att.mimeType || "image/jpeg";
+      let b64 = att.data;
+      // Strip data URL prefix: "data:image/jpeg;base64," → just base64
+      if (b64.startsWith("data:")) {
+        const comma = b64.indexOf(",");
+        if (comma !== -1) {
+          const header = b64.slice(5, comma); // e.g. "image/jpeg;base64"
+          mediaType = header.split(";")[0] || mediaType;
+          b64 = b64.slice(comma + 1);
+        }
+      }
+      parts.push({
+        type: "image",
+        source: { type: "base64", media_type: mediaType, data: b64 },
+      });
+    }
+
+    return parts;
+  }
+
   private async streamAnthropicApi(
     endpoint: string,
     messages: RawMessage[],
@@ -353,7 +391,10 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     useTools: boolean,
     res: Response,
   ): Promise<UsageResult> {
-    const anthropicMessages = messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const anthropicMessages = messages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: OpenAICompatAdapter.buildAnthropicContent(m),
+    }));
     let inputTokens = 0;
     let outputTokens = 0;
 
