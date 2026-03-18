@@ -72,9 +72,13 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      // Only set secure if APP_URL is explicitly https — otherwise HTTP access
-      // (direct port or plain nginx) silently drops the cookie.
-      secure: process.env.APP_URL?.startsWith("https://") ?? false,
+      // secure: false — Express runs behind nginx inside Docker; the
+      // nginx↔browser leg is HTTPS (nginx enforces it), the nginx↔container
+      // leg is always private HTTP. Setting secure:true here causes Express to
+      // suppress Set-Cookie entirely for any non-TLS request, which silently
+      // breaks login whenever X-Forwarded-Proto isn't forwarded correctly.
+      // Rely on nginx + firewall to protect the cookie in transit.
+      secure: false,
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     },

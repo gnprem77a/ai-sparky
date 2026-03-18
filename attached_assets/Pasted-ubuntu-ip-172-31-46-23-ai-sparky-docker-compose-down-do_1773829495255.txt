@@ -1,0 +1,57 @@
+ubuntu@ip-172-31-46-23:~/ai-sparky$ docker compose down
+docker compose build --no-cache app
+docker compose up -d
+WARN[0000] /home/ubuntu/ai-sparky/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+[+] down 3/3
+ ✔ Container aisparky-app    Removed                                                                                    0.2s
+ ✔ Container aisparky-db     Removed                                                                                    0.3s
+ ✔ Network ai-sparky_default Removed                                                                                    0.1s
+WARN[0000] /home/ubuntu/ai-sparky/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+[+] Building 172.4s (18/18) FINISHED                                                                                        
+ => [internal] load local bake definitions                                                                             0.0s
+ => => reading from stdin 512B                                                                                         0.0s
+ => [internal] load build definition from Dockerfile                                                                   0.0s
+ => => transferring dockerfile: 1.13kB                                                                                 0.0s
+ => [internal] load metadata for docker.io/library/node:20-alpine                                                      0.2s
+ => [internal] load .dockerignore                                                                                      0.0s
+ => => transferring context: 139B                                                                                      0.0s
+ => [internal] load build context                                                                                      0.0s
+ => => transferring context: 9.25kB                                                                                    0.0s
+ => CACHED [builder 1/6] FROM docker.io/library/node:20-alpine@sha256:b88333c42c23fbd91596ebd7fd10de239cedab9617de041  0.0s
+ => => resolve docker.io/library/node:20-alpine@sha256:b88333c42c23fbd91596ebd7fd10de239cedab9617de04142dde7315e3bc0a  0.0s
+ => CACHED [builder 2/6] WORKDIR /app                                                                                  0.0s
+ => [runner 2/6] RUN apk add --no-cache dumb-init                                                                      1.4s
+ => [builder 3/6] COPY package*.json ./                                                                                0.1s
+ => [builder 4/6] RUN npm ci                                                                                          46.9s
+ => [runner 3/6] WORKDIR /app                                                                                          0.1s 
+ => [runner 4/6] COPY package*.json ./                                                                                 0.1s
+ => [runner 5/6] RUN npm ci --omit=dev                                                                                45.4s
+ => [builder 5/6] COPY . .                                                                                             0.8s
+ => [builder 6/6] RUN npm run build                                                                                   34.1s 
+ => [runner 6/6] COPY --from=builder /app/dist ./dist                                                                  2.1s 
+ => exporting to image                                                                                                85.8s 
+ => => exporting layers                                                                                               72.0s 
+ => => exporting manifest sha256:29cc995c581b74f095bf91d87aed28f6aa37b951d8452431fe41eb203072f4bb                      0.0s 
+ => => exporting config sha256:c360c2f75abbfce4a1a540a6cdbcf33e10569cda765fb299c94a0482d0adfdf4                        0.0s 
+ => => exporting attestation manifest sha256:50c69e0f9db63ae213bdb7beed0b81690648d1009dfce92b2886fbb1163daab8          0.0s 
+ => => exporting manifest list sha256:f27afc1e4ee272678d870054037994457e9191667b8399c89342ff9e5d94dd5d                 0.0s 
+ => => naming to docker.io/library/ai-sparky-app:latest                                                                0.0s 
+ => => unpacking to docker.io/library/ai-sparky-app:latest                                                            13.7s 
+ => resolving provenance for metadata file                                                                             0.0s 
+[+] build 1/1
+ ✔ Image ai-sparky-app Built                                                                                          172.5s
+WARN[0000] /home/ubuntu/ai-sparky/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+[+] up 3/3
+ ✔ Network ai-sparky_default Created                                                                                   0.1ss
+ ✔ Container aisparky-db     Healthy                                                                                   13.6s
+ ✔ Container aisparky-app    Started                                                                                   11.0s
+ubuntu@ip-172-31-46-23:~/ai-sparky$ docker logs aisparky-app --tail 50
+10:23:51 AM [express] serving on port 5000
+10:24:17 AM [express] GET /api/auth/me 401 in 6ms :: {"error":"Not logged in"}
+10:24:18 AM [express] GET /api/folders 401 in 2ms :: {"error":"Unauthorized"}
+10:24:18 AM [express] GET /api/settings/usage 401 in 1ms :: {"error":"Unauthorized"}
+10:24:31 AM [express] POST /api/auth/login 200 in 440ms
+10:24:31 AM [express] GET /api/auth/me 401 in 2ms :: {"error":"Not logged in"}
+10:24:32 AM [express] GET /api/folders 401 in 1ms :: {"error":"Unauthorized"}
+10:24:32 AM [express] GET /api/settings/usage 401 in 1ms :: {"error":"Unauthorized"}
+ubuntu@ip-172-31-46-23:~/ai-sparky$ 
