@@ -45,10 +45,13 @@ app.use(express.urlencoded({ extended: false }));
 
 // ── Session ───────────────────────────────────────────────────────────────────
 const sessionSecret = process.env.SESSION_SECRET;
-if (!sessionSecret && process.env.NODE_ENV === "production") {
-  console.error(
-    "[security] SESSION_SECRET is not set — using insecure fallback. Set this environment variable in production."
-  );
+if (!sessionSecret) {
+  if (process.env.NODE_ENV === "production") {
+    console.error("[security] FATAL: SESSION_SECRET is not set. Refusing to start in production without it.");
+    process.exit(1);
+  } else {
+    console.warn("[security] SESSION_SECRET is not set — using insecure fallback. Set this in production.");
+  }
 }
 
 const PgSession = connectPgSimple(session);

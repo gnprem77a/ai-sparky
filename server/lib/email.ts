@@ -3,7 +3,8 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 
 /* ─── Encryption helpers (AES-256-GCM) ────────────────────────────────────── */
 function getEncryptionKey(): Buffer {
-  const secret = process.env.SESSION_SECRET ?? "fallback-insecure-key-change-me";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is not set — cannot encrypt/decrypt SMTP password.");
   return scryptSync(secret, "smtp-salt", 32);
 }
 
@@ -84,7 +85,7 @@ async function getFromAddress(): Promise<string> {
       return cfg.fromName ? `"${cfg.fromName}" <${cfg.fromEmail}>` : cfg.fromEmail;
     }
   } catch { /* fall through */ }
-  return process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "noreply@aisparky.dev";
+  return process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "";
 }
 
 /* ─── Logging helper ───────────────────────────────────────────────────────── */
