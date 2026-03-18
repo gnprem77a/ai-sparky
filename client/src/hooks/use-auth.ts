@@ -35,9 +35,11 @@ export function useAuth() {
   const registerMutation = useMutation({
     mutationFn: (data: { email: string; password: string }) =>
       apiRequest("POST", "/api/auth/register", data).then((r) => r.json()),
-    onSuccess: () => {
-      sessionStorage.setItem("justRegistered", "1");
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (data: { pendingVerification?: boolean }) => {
+      if (!data.pendingVerification) {
+        sessionStorage.setItem("justRegistered", "1");
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      }
     },
   });
 

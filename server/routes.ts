@@ -329,30 +329,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.setApiEnabled(user.id, true);
     }
     const finalUser = isFirstUser ? { ...user, isAdmin: true } : user;
-    req.session.userId = finalUser.id;
+    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
 
-    // Send verification + welcome email (fire-and-forget)
-    if (user.email) {
-      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
-      if (!isFirstUser) {
-        // Send verification email
+    if (isFirstUser) {
+      // First user (admin): auto-verify, create session, send welcome
+      await storage.markEmailVerified(user.id);
+      if (user.email) sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl), "welcome").catch(() => {});
+      req.session.userId = finalUser.id;
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ error: "Session save failed." });
+        return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt, pendingVerification: false });
+      });
+    } else {
+      // Regular user: require email verification before allowing login
+      if (user.email) {
         await storage.deleteEmailVerificationTokensByUser(user.id);
         const verToken = randomBytes(32).toString("hex");
         const verExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await storage.createEmailVerificationToken(user.id, verToken, verExpires);
         const verifyUrl = `${appUrl}/verify-email?token=${verToken}`;
         sendEmail(user.email, "Verify your email — AI Sparky", verificationEmail(user.username, verifyUrl), "verification").catch(() => {});
-      } else {
-        // First user (admin) is auto-verified, send welcome
-        await storage.markEmailVerified(user.id);
-        sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl), "welcome").catch(() => {});
       }
+      // Do NOT create a session — user must verify email first
+      return res.status(201).json({ pendingVerification: true, email: normalizedEmail });
     }
-
-    req.session.save((err) => {
-      if (err) return res.status(500).json({ error: "Session save failed." });
-      return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
-    });
   });
 
   /* ── auth: verify email ── */
@@ -367,16 +367,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     await storage.markEmailVerified(record.userId);
     await storage.deleteEmailVerificationToken(token);
-    // Send welcome email after successful verification
     const user = await storage.getUser(record.userId);
     if (user?.email) {
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
       sendEmail(user.email, "Welcome to AI Sparky! ✨", welcomeEmail(user.username, appUrl), "welcome").catch(() => {});
     }
-    return res.json({ ok: true });
+    // Auto-login: create a session so the user lands directly in the app
+    req.session.userId = record.userId;
+    req.session.save((err) => {
+      if (err) return res.json({ ok: true }); // Non-fatal — user can log in manually
+      return res.json({ ok: true, autoLogin: true });
+    });
   });
 
-  /* ── auth: resend verification email ── */
+  /* ── auth: resend verification email (authenticated) ── */
   app.post("/api/auth/resend-verification", requireAuth as any, async (req: Request, res: Response) => {
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(404).json({ error: "User not found." });
@@ -390,6 +394,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
     const verifyUrl = `${appUrl}/verify-email?token=${token}`;
     await sendEmail(user.email, "Verify your email — AI Sparky", verificationEmail(user.username, verifyUrl), "verification");
+    return res.json({ ok: true });
+  });
+
+  /* ── auth: resend verification email (public, no session required) ── */
+  const resendPublicRateMap = new Map<string, number>();
+  app.post("/api/auth/resend-verification-public", async (req: Request, res: Response) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required." });
+    const key = email.toLowerCase().trim();
+    const now = Date.now();
+    const lastSent = resendPublicRateMap.get(key) ?? 0;
+    if (now - lastSent < 3 * 60 * 1000) {
+      return res.status(429).json({ error: "Please wait a few minutes before requesting another verification email." });
+    }
+    resendPublicRateMap.set(key, now);
+    const user = await storage.getUserByEmail(key);
+    if (!user || user.emailVerified) return res.json({ ok: true }); // Silent — don't reveal existence
+    if (!(await emailConfigured())) return res.status(503).json({ error: "Email service is not configured. Contact the administrator." });
+    await storage.deleteEmailVerificationTokensByUser(user.id);
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await storage.createEmailVerificationToken(user.id, token, expiresAt);
+    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const verifyUrl = `${appUrl}/verify-email?token=${token}`;
+    await sendEmail(user.email!, "Verify your email — AI Sparky", verificationEmail(user.username, verifyUrl), "verification");
     return res.json({ ok: true });
   });
 
@@ -407,6 +436,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Invalid email or password." });
+
+    // Block unverified accounts when email service is configured
+    if (!user.emailVerified && user.email && (await emailConfigured())) {
+      return res.status(403).json({
+        error: "Please verify your email before logging in. Check your inbox for the verification link.",
+        code: "EMAIL_UNVERIFIED",
+        email: user.email,
+      });
+    }
 
     req.session.userId = user.id;
     req.session.save((err) => {

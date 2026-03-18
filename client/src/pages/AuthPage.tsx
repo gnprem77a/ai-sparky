@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, ArrowLeft, Mail, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, ArrowLeft, Mail, CheckCircle2, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -31,6 +31,17 @@ export default function AuthPage() {
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  /* ── post-register "check your email" state ── */
+  const [pendingVerification, setPendingVerification] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+
+  /* ── unverified login state ── */
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+
   const { login, register } = useAuth();
   const [, navigate] = useLocation();
 
@@ -49,12 +60,49 @@ export default function AuthPage() {
   const mutation = isLogin ? login : register;
   const serverError = (mutation.error as Error)?.message;
 
+  const isUnverifiedError = !!serverError && serverError.toLowerCase().includes("verify your email");
+
   const onSubmit = async (data: FormData) => {
+    setUnverifiedEmail(null);
     try {
-      await mutation.mutateAsync(data);
-      navigate("/");
+      const result = await mutation.mutateAsync(data);
+      if (!isLogin && result?.pendingVerification) {
+        setPendingEmail(data.email);
+        setPendingVerification(true);
+      } else {
+        navigate("/");
+      }
     } catch {
-      // error displayed via serverError
+      if (isLogin) {
+        const msg = (mutation.error as Error)?.message ?? "";
+        if (msg.toLowerCase().includes("verify your email")) {
+          setUnverifiedEmail(data.email);
+        }
+      }
+    }
+  };
+
+  const handleResend = async (email: string) => {
+    setResendLoading(true);
+    setResendError(null);
+    setResendSent(false);
+    try {
+      const res = await fetch("/api/auth/resend-verification-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+        credentials: "include",
+      });
+      if (res.ok) {
+        setResendSent(true);
+      } else {
+        const d = await res.json();
+        setResendError(d.error ?? "Failed to resend. Please try again.");
+      }
+    } catch {
+      setResendError("Something went wrong. Please try again.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -77,7 +125,69 @@ export default function AuthPage() {
     mutation.reset();
     setForgotMode(false);
     setForgotSent(false);
+    setPendingVerification(false);
+    setUnverifiedEmail(null);
+    setResendSent(false);
+    setResendError(null);
   };
+
+  /* ── "Check your email" screen (shown after successful register) ── */
+  if (pendingVerification) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm">
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+              <Mail className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Check your email</h1>
+            <p className="text-sm text-muted-foreground mt-1 text-center">One more step to activate your account</p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card shadow-lg p-6 text-center space-y-4">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              We sent a verification link to{" "}
+              <span className="font-medium text-foreground">{pendingEmail}</span>.
+              Click the link in the email to activate your account.
+            </p>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+              Check your spam/junk folder if you don't see it within a minute.
+            </div>
+
+            {resendSent ? (
+              <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <CheckCircle2 className="w-4 h-4" />
+                Verification email resent!
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Didn't receive it?</p>
+                <button
+                  onClick={() => handleResend(pendingEmail)}
+                  disabled={resendLoading}
+                  data-testid="button-resend-verification"
+                  className="flex items-center justify-center gap-1.5 mx-auto text-sm text-primary hover:underline font-medium disabled:opacity-60"
+                >
+                  {resendLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Resend verification email
+                </button>
+                {resendError && <p className="text-xs text-destructive">{resendError}</p>}
+              </div>
+            )}
+
+            <button
+              onClick={() => switchTab("login")}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="link-back-to-login"
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -113,7 +223,7 @@ export default function AuthPage() {
                 <CheckCircle2 className="w-12 h-12 text-green-500" />
                 <p className="font-semibold text-foreground">Check your email</p>
                 <p className="text-sm text-muted-foreground">
-                  If an account with that email exists, we've sent a password reset link. It expires in 1 hour.
+                  If an account with that email exists, we've sent a password reset link. It expires in 15 minutes.
                 </p>
                 <button
                   onClick={() => { setForgotMode(false); setForgotSent(false); }}
@@ -267,8 +377,30 @@ export default function AuthPage() {
                 </div>
 
                 {serverError && (
-                  <div data-testid="error-auth" className="px-3.5 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                    {serverError}
+                  <div data-testid="error-auth" className="rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm overflow-hidden">
+                    <div className="px-3.5 py-2.5">{serverError}</div>
+                    {isUnverifiedError && unverifiedEmail && (
+                      <div className="px-3.5 pb-2.5 border-t border-destructive/10 pt-2">
+                        {resendSent ? (
+                          <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-xs">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Verification email resent — check your inbox.
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleResend(unverifiedEmail)}
+                            disabled={resendLoading}
+                            data-testid="button-resend-from-login"
+                            className="flex items-center gap-1.5 text-xs font-medium text-destructive/80 hover:text-destructive underline disabled:opacity-60"
+                          >
+                            {resendLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                            Resend verification email
+                          </button>
+                        )}
+                        {resendError && <p className="text-xs mt-1 text-destructive/70">{resendError}</p>}
+                      </div>
+                    )}
                   </div>
                 )}
 
