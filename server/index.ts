@@ -72,7 +72,9 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      // Only set secure if APP_URL is explicitly https — otherwise HTTP access
+      // (direct port or plain nginx) silently drops the cookie.
+      secure: process.env.APP_URL?.startsWith("https://") ?? false,
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     },

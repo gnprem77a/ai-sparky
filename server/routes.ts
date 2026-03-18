@@ -327,7 +327,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "Session save failed." });
+      return res.status(201).json({ id: finalUser.id, username: finalUser.username, isAdmin: finalUser.isAdmin, plan: finalUser.plan, planExpiresAt: finalUser.planExpiresAt });
+    });
   });
 
   /* ── auth: verify email ── */
@@ -384,7 +387,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!valid) return res.status(401).json({ error: "Invalid email or password." });
 
     req.session.userId = user.id;
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "Session save failed." });
+      return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, plan: user.plan, planExpiresAt: user.planExpiresAt });
+    });
   });
 
   /* ── auth: logout ── */
