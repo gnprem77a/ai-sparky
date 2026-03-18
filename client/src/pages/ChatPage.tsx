@@ -1676,12 +1676,12 @@ ${messagesHtml}
 }
 
 const QUICK_SUGGESTIONS = [
-  { icon: Code2,       label: "Write code",       prompt: "Write a TypeScript function that debounces any async function and returns a promise.", color: "text-blue-400",   bg: "bg-blue-500/8"   },
-  { icon: PenLine,     label: "Draft writing",     prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.", color: "text-violet-400", bg: "bg-violet-500/8" },
-  { icon: BarChart2,   label: "Analyze data",      prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.", color: "text-emerald-400", bg: "bg-emerald-500/8" },
-  { icon: Lightbulb,   label: "Brainstorm ideas",  prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.", color: "text-amber-400",  bg: "bg-amber-500/8"  },
-  { icon: Globe,       label: "Explain concepts",  prompt: "Explain how large language models work in plain English, step by step.", color: "text-cyan-400",   bg: "bg-cyan-500/8"   },
-  { icon: FlaskConical,label: "Debug & review",    prompt: "What are the most common React performance pitfalls and how do I fix them?", color: "text-rose-400",   bg: "bg-rose-500/8"   },
+  { icon: Code2,       label: "Write code",       prompt: "Write a TypeScript function that debounces any async function and returns a promise.", color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-500/10 dark:bg-blue-500/8"    },
+  { icon: PenLine,     label: "Draft writing",     prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.", color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10 dark:bg-violet-500/8" },
+  { icon: BarChart2,   label: "Analyze data",      prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 dark:bg-emerald-500/8" },
+  { icon: Lightbulb,   label: "Brainstorm ideas",  prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.", color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-500/10 dark:bg-amber-500/8"   },
+  { icon: Globe,       label: "Explain concepts",  prompt: "Explain how large language models work in plain English, step by step.", color: "text-cyan-600 dark:text-cyan-400",     bg: "bg-cyan-500/10 dark:bg-cyan-500/8"    },
+  { icon: FlaskConical,label: "Debug & review",    prompt: "What are the most common React performance pitfalls and how do I fix them?", color: "text-rose-600 dark:text-rose-400",     bg: "bg-rose-500/10 dark:bg-rose-500/8"    },
 ];
 
 const STARTER_TEMPLATES = [
@@ -1691,7 +1691,7 @@ const STARTER_TEMPLATES = [
     category: "Technical",
     desc: "Paste your code for a detailed review",
     prompt: "Please review the following code for bugs, performance issues, and best practices. Provide specific, actionable feedback:\n\n```\n// Paste your code here\n```",
-    color: "text-blue-400",
+    color: "text-blue-600 dark:text-blue-400",
     bgGradient: "from-blue-500/10 to-blue-500/5",
     border: "border-blue-500/20",
   },
@@ -1701,7 +1701,7 @@ const STARTER_TEMPLATES = [
     category: "Writing",
     desc: "Write a professional email in seconds",
     prompt: "Help me write a professional email. Here are the details:\n- To: [recipient]\n- Purpose: [what you want to achieve]\n- Tone: [formal/friendly/urgent]\n- Key points to include: [list your points]",
-    color: "text-violet-400",
+    color: "text-violet-600 dark:text-violet-400",
     bgGradient: "from-violet-500/10 to-violet-500/5",
     border: "border-violet-500/20",
   },
@@ -1711,7 +1711,7 @@ const STARTER_TEMPLATES = [
     category: "Career",
     desc: "Improve a bullet point or section",
     prompt: "Help me improve this resume bullet point to be more impactful and results-oriented:\n\n[Paste your bullet point here]\n\nJob I'm applying for: [Job title]",
-    color: "text-emerald-400",
+    color: "text-emerald-600 dark:text-emerald-400",
     bgGradient: "from-emerald-500/10 to-emerald-500/5",
     border: "border-emerald-500/20",
   },
@@ -1721,7 +1721,7 @@ const STARTER_TEMPLATES = [
     category: "Learning",
     desc: "Build a structured learning roadmap",
     prompt: "Create a detailed 4-week study plan to learn [topic]. I'm a [beginner/intermediate/advanced] learner with [X hours/week] available. Include resources, milestones, and daily exercises.",
-    color: "text-amber-400",
+    color: "text-amber-600 dark:text-amber-400",
     bgGradient: "from-amber-500/10 to-amber-500/5",
     border: "border-amber-500/20",
   },
@@ -1778,10 +1778,10 @@ function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void
         <p className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-2.5">Available Models</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
-            { icon: "👑", label: "Powerful",  model: "Claude Opus 4.6",  color: "text-amber-400",   bg: "bg-amber-500/8  border-amber-500/20" },
-            { icon: "⚖️", label: "Balanced",  model: "Mistral Large 3",  color: "text-violet-400",  bg: "bg-violet-500/8 border-violet-500/20" },
-            { icon: "🎨", label: "Creative",  model: "GPT 5.3",          color: "text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/20" },
-            { icon: "⚡", label: "Fast",      model: "Claude Haiku",     color: "text-blue-400",    bg: "bg-blue-500/8   border-blue-500/20" },
+            { icon: "👑", label: "Powerful",  model: "Claude Opus 4.6",  color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-500/8  border-amber-500/20" },
+            { icon: "⚖️", label: "Balanced",  model: "Mistral Large 3",  color: "text-violet-600 dark:text-violet-400",  bg: "bg-violet-500/8 border-violet-500/20" },
+            { icon: "🎨", label: "Creative",  model: "GPT 5.3",          color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/20" },
+            { icon: "⚡", label: "Fast",      model: "Claude Haiku",     color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-500/8   border-blue-500/20" },
           ].map((f) => (
             <div key={f.label} className={cn("flex flex-col gap-1 px-3 py-2.5 rounded-xl border", f.bg)}>
               <div className="flex items-center gap-1.5">

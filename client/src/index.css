@@ -4,39 +4,44 @@
 
 /* LIGHT MODE */
 :root {
-  --button-outline: rgba(0,0,0, .12);
-  --badge-outline: rgba(0,0,0, .07);
-  --opaque-button-border-intensity: -10;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
-  --background: 0 0% 98%;
-  --foreground: 240 6% 8%;
-  --border: 240 6% 82%;
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .06);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0,0,0, .025);
+  --elevate-2: rgba(0,0,0, .06);
+  /* Blue-slate tinted background — modern, not flat grey */
+  --background: 220 30% 97%;
+  --foreground: 222 25% 9%;
+  /* Cards are pure white — visible elevation above blue-slate bg */
   --card: 0 0% 100%;
-  --card-foreground: 240 6% 8%;
-  --card-border: 240 6% 86%;
-  --sidebar: 240 5% 94%;
-  --sidebar-foreground: 240 6% 12%;
-  --sidebar-border: 240 5% 82%;
+  --card-foreground: 222 25% 9%;
+  --card-border: 220 18% 88%;
+  /* Sidebar clearly distinct from main area */
+  --sidebar: 220 22% 92%;
+  --sidebar-foreground: 222 20% 13%;
+  --sidebar-border: 220 18% 85%;
   --sidebar-primary: 250 84% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 240 5% 87%;
-  --sidebar-accent-foreground: 240 6% 10%;
+  --sidebar-accent: 220 20% 87%;
+  --sidebar-accent-foreground: 222 20% 11%;
   --sidebar-ring: 250 84% 54%;
+  /* Popovers float above — pure white */
   --popover: 0 0% 100%;
-  --popover-foreground: 240 6% 8%;
-  --popover-border: 240 6% 82%;
+  --popover-foreground: 222 25% 9%;
+  --popover-border: 220 18% 86%;
   --primary: 250 84% 54%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 240 5% 88%;
-  --secondary-foreground: 240 6% 12%;
-  --muted: 240 5% 89%;
-  --muted-foreground: 240 4% 38%;
-  --accent: 240 5% 88%;
-  --accent-foreground: 240 6% 12%;
+  --secondary: 220 20% 91%;
+  --secondary-foreground: 222 20% 13%;
+  --muted: 220 22% 93%;
+  --muted-foreground: 222 12% 40%;
+  --accent: 220 20% 91%;
+  --accent-foreground: 222 20% 13%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --input: 240 6% 78%;
+  /* Borders more visible — design requires clear structure in light mode */
+  --border: 220 18% 82%;
+  --input: 220 18% 76%;
   --ring: 250 84% 54%;
   --chart-1: 250 84% 54%;
   --chart-2: 280 70% 48%;
@@ -47,14 +52,15 @@
   --font-serif: Georgia, serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius: .625rem;
-  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.04);
-  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.06);
-  --shadow-sm: 0px 2px 6px 0px rgba(0,0,0,0.06), 0px 1px 2px 0px rgba(0,0,0,0.04);
-  --shadow: 0px 4px 12px 0px rgba(0,0,0,0.08), 0px 1px 3px 0px rgba(0,0,0,0.05);
-  --shadow-md: 0px 6px 20px 0px rgba(0,0,0,0.10), 0px 2px 6px 0px rgba(0,0,0,0.06);
-  --shadow-lg: 0px 12px 32px 0px rgba(0,0,0,0.12), 0px 4px 8px 0px rgba(0,0,0,0.06);
-  --shadow-xl: 0px 20px 48px 0px rgba(0,0,0,0.14), 0px 8px 16px 0px rgba(0,0,0,0.08);
-  --shadow-2xl: 0px 32px 64px 0px rgba(0,0,0,0.16);
+  /* Stronger shadows in light mode for proper elevation */
+  --shadow-2xs: 0px 1px 2px 0px rgba(30,40,80,0.06);
+  --shadow-xs: 0px 1px 3px 0px rgba(30,40,80,0.08);
+  --shadow-sm: 0px 2px 6px 0px rgba(30,40,80,0.08), 0px 1px 2px 0px rgba(30,40,80,0.05);
+  --shadow: 0px 4px 12px 0px rgba(30,40,80,0.10), 0px 1px 3px 0px rgba(30,40,80,0.06);
+  --shadow-md: 0px 6px 20px 0px rgba(30,40,80,0.12), 0px 2px 6px 0px rgba(30,40,80,0.07);
+  --shadow-lg: 0px 12px 32px 0px rgba(30,40,80,0.14), 0px 4px 8px 0px rgba(30,40,80,0.07);
+  --shadow-xl: 0px 20px 48px 0px rgba(30,40,80,0.16), 0px 8px 16px 0px rgba(30,40,80,0.09);
+  --shadow-2xl: 0px 32px 64px 0px rgba(30,40,80,0.18);
   --tracking-normal: -0.01em;
   --spacing: 0.25rem;
 
@@ -422,6 +428,26 @@
   }
   .profile-orb-4 {
     animation: orb-float-1 16s ease-in-out infinite reverse, orb-pulse 8s ease-in-out infinite 1s;
+  }
+
+  /* ── Light mode refinements ── */
+
+  /* Light mode: chat input card — white on a blue-tinted background needs proper shadow */
+  html:not(.dark) .rounded-3xl.bg-card {
+    box-shadow: 0 4px 24px rgba(30,40,80,0.09), 0 1px 4px rgba(30,40,80,0.06);
+  }
+  html:not(.dark) .rounded-3xl.bg-card:focus-within {
+    box-shadow: 0 8px 32px rgba(30,40,80,0.13), 0 2px 8px rgba(30,40,80,0.07), 0 0 0 2px hsl(var(--primary) / 0.16);
+  }
+
+  /* Light mode: user message bubble — lighten the violet glow */
+  html:not(.dark) .shadow-lg.shadow-violet-900\/30 {
+    box-shadow: 0 4px 16px rgba(109, 40, 217, 0.18);
+  }
+
+  /* Light mode: popovers and dropdowns need a stronger shadow to float above the bright bg */
+  html:not(.dark) [data-radix-popper-content-wrapper] {
+    filter: drop-shadow(0 8px 24px rgba(30,40,80,0.14));
   }
 
   /* Scrollbar styling */
