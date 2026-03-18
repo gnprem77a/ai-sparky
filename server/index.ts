@@ -12,6 +12,10 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+// ── Trust proxy (required when behind nginx/load balancer) ───────────────────
+// Without this, secure cookies fail and req.ip returns the proxy IP.
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
