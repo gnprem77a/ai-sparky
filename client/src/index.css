@@ -9,39 +9,38 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .025);
   --elevate-2: rgba(0,0,0, .06);
-  /* Blue-slate tinted background — modern, not flat grey */
-  --background: 220 30% 97%;
-  --foreground: 222 25% 9%;
-  /* Cards are pure white — visible elevation above blue-slate bg */
+  /* Near-pure white main content — the "paper" surface */
+  --background: 220 20% 98%;
+  --foreground: 222 35% 9%;
+  /* Cards float above background */
   --card: 0 0% 100%;
-  --card-foreground: 222 25% 9%;
-  --card-border: 220 18% 88%;
-  /* Sidebar clearly distinct from main area */
-  --sidebar: 220 22% 92%;
-  --sidebar-foreground: 222 20% 13%;
-  --sidebar-border: 220 18% 85%;
+  --card-foreground: 222 35% 9%;
+  --card-border: 220 20% 88%;
+  /* Sidebar is a strong blue-slate — clearly a distinct navigation panel */
+  --sidebar: 222 42% 83%;
+  --sidebar-foreground: 222 40% 15%;
+  --sidebar-border: 222 38% 76%;
   --sidebar-primary: 250 84% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 20% 87%;
-  --sidebar-accent-foreground: 222 20% 11%;
+  --sidebar-accent: 222 48% 77%;
+  --sidebar-accent-foreground: 222 45% 10%;
   --sidebar-ring: 250 84% 54%;
-  /* Popovers float above — pure white */
+  /* Popovers are pure white — elevated above everything */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 25% 9%;
-  --popover-border: 220 18% 86%;
+  --popover-foreground: 222 35% 9%;
+  --popover-border: 220 20% 84%;
   --primary: 250 84% 54%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 20% 91%;
-  --secondary-foreground: 222 20% 13%;
-  --muted: 220 22% 93%;
-  --muted-foreground: 222 12% 40%;
-  --accent: 220 20% 91%;
-  --accent-foreground: 222 20% 13%;
+  --secondary: 220 18% 93%;
+  --secondary-foreground: 222 25% 14%;
+  --muted: 220 20% 95%;
+  --muted-foreground: 220 14% 40%;
+  --accent: 220 18% 93%;
+  --accent-foreground: 222 25% 14%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  /* Borders more visible — design requires clear structure in light mode */
-  --border: 220 18% 82%;
-  --input: 220 18% 76%;
+  --border: 220 18% 84%;
+  --input: 220 18% 78%;
   --ring: 250 84% 54%;
   --chart-1: 250 84% 54%;
   --chart-2: 280 70% 48%;
@@ -52,15 +51,14 @@
   --font-serif: Georgia, serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --radius: .625rem;
-  /* Stronger shadows in light mode for proper elevation */
-  --shadow-2xs: 0px 1px 2px 0px rgba(30,40,80,0.06);
-  --shadow-xs: 0px 1px 3px 0px rgba(30,40,80,0.08);
-  --shadow-sm: 0px 2px 6px 0px rgba(30,40,80,0.08), 0px 1px 2px 0px rgba(30,40,80,0.05);
-  --shadow: 0px 4px 12px 0px rgba(30,40,80,0.10), 0px 1px 3px 0px rgba(30,40,80,0.06);
-  --shadow-md: 0px 6px 20px 0px rgba(30,40,80,0.12), 0px 2px 6px 0px rgba(30,40,80,0.07);
-  --shadow-lg: 0px 12px 32px 0px rgba(30,40,80,0.14), 0px 4px 8px 0px rgba(30,40,80,0.07);
-  --shadow-xl: 0px 20px 48px 0px rgba(30,40,80,0.16), 0px 8px 16px 0px rgba(30,40,80,0.09);
-  --shadow-2xl: 0px 32px 64px 0px rgba(30,40,80,0.18);
+  --shadow-2xs: 0px 1px 2px 0px rgba(20,30,70,0.07);
+  --shadow-xs: 0px 1px 3px 0px rgba(20,30,70,0.09);
+  --shadow-sm: 0px 2px 6px 0px rgba(20,30,70,0.09), 0px 1px 2px 0px rgba(20,30,70,0.06);
+  --shadow: 0px 4px 12px 0px rgba(20,30,70,0.11), 0px 1px 3px 0px rgba(20,30,70,0.07);
+  --shadow-md: 0px 6px 20px 0px rgba(20,30,70,0.13), 0px 2px 6px 0px rgba(20,30,70,0.08);
+  --shadow-lg: 0px 12px 32px 0px rgba(20,30,70,0.15), 0px 4px 8px 0px rgba(20,30,70,0.08);
+  --shadow-xl: 0px 20px 48px 0px rgba(20,30,70,0.18), 0px 8px 16px 0px rgba(20,30,70,0.10);
+  --shadow-2xl: 0px 32px 64px 0px rgba(20,30,70,0.20);
   --tracking-normal: -0.01em;
   --spacing: 0.25rem;
 
@@ -432,22 +430,47 @@
 
   /* ── Light mode refinements ── */
 
-  /* Light mode: chat input card — white on a blue-tinted background needs proper shadow */
+  /* Sidebar: rich gradient from darker top to lighter bottom for depth */
+  html:not(.dark) [data-sidebar="sidebar"] {
+    background: linear-gradient(175deg, hsl(224 50% 79%) 0%, hsl(222 40% 86%) 100%);
+    border-right-color: hsl(222 38% 74%);
+  }
+
+  /* Header: white backing so it reads as a distinct "chrome" area above the message pane */
+  html:not(.dark) header.flex.items-center.justify-between {
+    background: hsl(0 0% 100% / 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom-color: hsl(220 18% 88%);
+  }
+
+  /* Chat input: strong float effect — it's the focal point of the whole UI */
   html:not(.dark) .rounded-3xl.bg-card {
-    box-shadow: 0 4px 24px rgba(30,40,80,0.09), 0 1px 4px rgba(30,40,80,0.06);
+    background: #ffffff;
+    box-shadow: 0 4px 28px rgba(20,30,70,0.11), 0 1px 6px rgba(20,30,70,0.07);
+    border-color: hsl(220 20% 88%);
   }
   html:not(.dark) .rounded-3xl.bg-card:focus-within {
-    box-shadow: 0 8px 32px rgba(30,40,80,0.13), 0 2px 8px rgba(30,40,80,0.07), 0 0 0 2px hsl(var(--primary) / 0.16);
+    box-shadow: 0 8px 40px rgba(20,30,70,0.15), 0 2px 10px rgba(20,30,70,0.09), 0 0 0 2.5px hsl(250 84% 54% / 0.22);
+    border-color: hsl(250 84% 54% / 0.30);
   }
 
-  /* Light mode: user message bubble — lighten the violet glow */
+  /* User bubble: lighter purple glow that works on white background */
   html:not(.dark) .shadow-lg.shadow-violet-900\/30 {
-    box-shadow: 0 4px 16px rgba(109, 40, 217, 0.18);
+    box-shadow: 0 4px 16px rgba(109, 40, 217, 0.22), 0 1px 4px rgba(109, 40, 217, 0.12);
   }
 
-  /* Light mode: popovers and dropdowns need a stronger shadow to float above the bright bg */
+  /* Popovers: clean white panels with proper depth shadow */
   html:not(.dark) [data-radix-popper-content-wrapper] {
-    filter: drop-shadow(0 8px 24px rgba(30,40,80,0.14));
+    filter: drop-shadow(0 8px 28px rgba(20,30,70,0.15)) drop-shadow(0 2px 6px rgba(20,30,70,0.08));
+  }
+
+  /* Sidebar new-chat button and action area: slightly lighter than sidebar so it shows through */
+  html:not(.dark) [data-sidebar="sidebar"] button[data-testid="button-new-chat-sidebar"] {
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.35);
+  }
+  html:not(.dark) [data-sidebar="sidebar"] button[data-testid="button-new-chat-sidebar"]:hover {
+    background: rgba(255,255,255,0.40);
   }
 
   /* Scrollbar styling */
