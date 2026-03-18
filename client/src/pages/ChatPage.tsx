@@ -1467,7 +1467,7 @@ ${messagesHtml}
             )}
 
             {/* Messages */}
-            <div className="flex-1 relative overflow-y-auto custom-scrollbar" ref={messagesContainerRef}>
+            <div className="flex-1 relative overflow-y-auto overscroll-contain custom-scrollbar" style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties} ref={messagesContainerRef}>
               {isLoadingMessages ? (
                 <div className="flex items-center justify-center h-full gap-2">
                   <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />

@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { CSSProperties } from "react";
 import { LanguageProvider } from "@/lib/i18n";
@@ -45,9 +45,25 @@ const style: CSSProperties = {
   "--sidebar-width-icon": "3.5rem",
 } as CSSProperties;
 
+function PageLoader() {
+  return (
+    <div className="flex h-dvh w-full items-center justify-center bg-background">
+      <div className="flex gap-1.5">
+        <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+        <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+        <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
+      </div>
+    </div>
+  );
+}
+
 function AppInner() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
+
+  useEffect(() => {
+    (window as any).__hideBootScreen?.();
+  }, []);
 
   if (location.startsWith("/reset-password")) {
     return (
@@ -95,15 +111,7 @@ function AppInner() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="flex gap-1.5">
-          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-muted-foreground inline-block" />
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (!user) {
@@ -122,9 +130,9 @@ function AppInner() {
       );
     }
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<PageLoader />}>
         <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
-          <div className="flex h-screen w-full overflow-hidden bg-background">
+          <div className="flex h-dvh w-full overflow-hidden bg-background">
             <ChatPage />
           </div>
         </SidebarProvider>
@@ -133,7 +141,7 @@ function AppInner() {
   }
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/admin">
           <AdminPage />
@@ -152,7 +160,7 @@ function AppInner() {
         </Route>
         <Route>
           <SidebarProvider style={style} defaultOpen={window.innerWidth > 768}>
-            <div className="flex h-screen w-full overflow-hidden bg-background">
+            <div className="flex h-dvh w-full overflow-hidden bg-background">
               <ChatPage />
             </div>
           </SidebarProvider>

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.json">
@@ -29,9 +29,48 @@
         }
       })();
     </script>
+    <style>
+      /* Inline boot screen — shows instantly before any JS loads */
+      #boot-screen {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: #f9f9fb;
+        transition: opacity 0.2s ease;
+      }
+      html.dark #boot-screen { background: #07070f; }
+      #boot-screen.hidden { opacity: 0; pointer-events: none; }
+      .boot-dots { display: flex; gap: 6px; }
+      .boot-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #a0a0b0;
+        animation: boot-pulse 1.2s ease-in-out infinite;
+      }
+      .boot-dot:nth-child(2) { animation-delay: 0.2s; }
+      .boot-dot:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes boot-pulse {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
+        40% { opacity: 1; transform: scale(1); }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-screen">
+      <div class="boot-dots">
+        <div class="boot-dot"></div>
+        <div class="boot-dot"></div>
+        <div class="boot-dot"></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Expose global helper so React can dismiss the boot screen on first render
+      window.__hideBootScreen = function() {
+        var el = document.getElementById('boot-screen');
+        if (!el) return;
+        el.classList.add('hidden');
+        setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+      };
+    </script>
   </body>
 </html>

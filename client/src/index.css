@@ -203,11 +203,26 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    height: 100%;
+    /* Prevent iOS bounce scroll on the root */
+    overscroll-behavior: none;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
+    height: 100%;
+    /* Prevent pull-to-refresh and root scroll bleed on mobile */
+    overscroll-behavior: none;
+    /* Disable tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Prevent iOS from zooming on input focus (font-size ≥ 16px avoids the zoom) */
+  @media (max-width: 768px) {
+    input, textarea, select {
+      font-size: max(16px, 1em);
+    }
   }
 
   ::selection {
