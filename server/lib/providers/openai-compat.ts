@@ -461,6 +461,41 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   // Responses API streaming
   // ---------------------------------------------------------------------------
 
+  // Build input messages for the OpenAI Responses API.
+  // Uses "input_text" / "input_image" content types (different from Chat Completions).
+  private static buildResponsesMessages(
+    messages: RawMessage[],
+    systemPrompt?: string,
+  ): Array<{ role: string; content: unknown }> {
+    const out: Array<{ role: string; content: unknown }> = [];
+    if (systemPrompt) out.push({ role: "system", content: systemPrompt });
+    for (const m of messages) {
+      const images = (m.attachments ?? []).filter((a) => a.type === "image");
+      const textAtts = (m.attachments ?? []).filter((a) => a.type !== "image");
+
+      if (images.length === 0 && textAtts.length === 0) {
+        out.push({ role: m.role, content: m.content });
+        continue;
+      }
+
+      const parts: unknown[] = [];
+      let text = m.content || "";
+      for (const att of textAtts) {
+        text += `\n\n--- File: ${att.name} ---\n${att.data}\n--- End of ${att.name} ---`;
+      }
+      if (text.trim()) parts.push({ type: "input_text", text });
+
+      for (const att of images) {
+        // Responses API expects "input_image" with a plain string URL (not nested object)
+        const url = att.data.startsWith("data:") ? att.data : `data:${att.mimeType};base64,${att.data}`;
+        parts.push({ type: "input_image", image_url: url, detail: "auto" });
+      }
+
+      out.push({ role: m.role, content: parts });
+    }
+    return out;
+  }
+
   private async streamResponsesApi(
     endpoint: string,
     messages: RawMessage[],
@@ -468,7 +503,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     maxTokens: number,
     res: Response,
   ): Promise<UsageResult> {
-    const builtMsgs = buildMessages(messages, systemPrompt);
+    const builtMsgs = OpenAICompatAdapter.buildResponsesMessages(messages, systemPrompt);
     const body = this.buildResponsesBody(builtMsgs, maxTokens, true);
 
     const response = await fetch(endpoint, {
