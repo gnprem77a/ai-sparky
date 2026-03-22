@@ -1460,6 +1460,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ error: "User not found" });
 
     const pro = isProActive(user);
+    const planCfg = await storage.getPlanLimits();
 
     /* ── Pro monthly token budget check ── */
     if (pro) {
@@ -1503,7 +1504,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     /* ── Free plan enforcement (DB-configurable limits) ── */
     let effectiveModel = model;
-    const planCfg = await storage.getPlanLimits();
     const freeAllowed = planCfg.freeAllowedModels ?? ["auto", "fast"];
     if (!pro) {
       /* Redirect to best allowed model if selected one is not permitted */
