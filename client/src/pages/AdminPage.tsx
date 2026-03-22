@@ -11,6 +11,7 @@ import {
   Server, Plus, Edit2, PlayCircle, ChevronUp, Power, PowerOff, Loader2, CheckCircle2, AlertCircle,
   ArrowUp, ArrowDown, Key, Globe, Cpu, Copy, Settings2, Activity, Flag, FlagOff, BarChart2,
   Mail, FlaskConical, CheckCircle, XCircle, RefreshCw,
+  Gift, Ticket, Clipboard, ClipboardCheck, ToggleLeft, ToggleRight, Hash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -862,6 +863,386 @@ interface EmailLogEntry {
   createdAt: string;
 }
 
+function TrialSection() {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState<string | null>(null);
+
+  // Global trial state
+  const [trialDuration, setTrialDuration] = useState("7");
+  const [enrollWindow, setEnrollWindow] = useState("30");
+  const [applyToExisting, setApplyToExisting] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
+  // Redeem code form state
+  const [codeLabel, setCodeLabel] = useState("");
+  const [codeDays, setCodeDays] = useState("30");
+  const [codeMaxUses, setCodeMaxUses] = useState("");
+  const [codeValidUntil, setCodeValidUntil] = useState("");
+  const [generatingCode, setGeneratingCode] = useState(false);
+
+  const { data: globalTrial, refetch: refetchTrial } = useQuery<any>({
+    queryKey: ["/api/admin/global-trial"],
+    queryFn: () => fetch("/api/admin/global-trial", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const { data: redeemCodes = [], refetch: refetchCodes } = useQuery<any[]>({
+    queryKey: ["/api/admin/redeem-codes"],
+    queryFn: () => fetch("/api/admin/redeem-codes", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const handleApplyTrial = async () => {
+    if (!trialDuration || Number(trialDuration) < 1) return;
+    setApplying(true);
+    try {
+      const res = await apiRequest("POST", "/api/admin/global-trial/apply", {
+        durationDays: Number(trialDuration),
+        enrollWindowDays: Number(enrollWindow),
+        applyToExisting,
+      });
+      const data = await res.json();
+      toast({ title: "Trial applied!", description: applyToExisting ? `Pro trial activated for ${data.usersUpdated} users.` : "New user enrollment window set." });
+      refetchTrial();
+    } catch {
+      toast({ title: "Error", description: "Failed to apply trial.", variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleDeactivateTrial = async () => {
+    setDeactivating(true);
+    try {
+      await apiRequest("POST", "/api/admin/global-trial/deactivate", {});
+      toast({ title: "Trial deactivated", description: "New users will no longer receive a free trial." });
+      refetchTrial();
+    } catch {
+      toast({ title: "Error", description: "Failed to deactivate.", variant: "destructive" });
+    } finally {
+      setDeactivating(false);
+    }
+  };
+
+  const handleGenerateCode = async () => {
+    if (!codeDays || Number(codeDays) < 1) return;
+    setGeneratingCode(true);
+    try {
+      const res = await apiRequest("POST", "/api/admin/redeem-codes", {
+        label: codeLabel,
+        planDays: Number(codeDays),
+        maxUses: codeMaxUses ? Number(codeMaxUses) : null,
+        validUntil: codeValidUntil || null,
+      });
+      const created = await res.json();
+      if (created.error) throw new Error(created.error);
+      toast({ title: "Code generated!", description: created.code });
+      setCodeLabel(""); setCodeDays("30"); setCodeMaxUses(""); setCodeValidUntil("");
+      refetchCodes();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to generate code.", variant: "destructive" });
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
+  const handleDeleteCode = async (id: string) => {
+    try {
+      await apiRequest("DELETE", `/api/admin/redeem-codes/${id}`);
+      toast({ title: "Code deleted" });
+      refetchCodes();
+    } catch {
+      toast({ title: "Error", description: "Failed to delete code.", variant: "destructive" });
+    }
+  };
+
+  const handleDeactivateCode = async (id: string) => {
+    try {
+      await apiRequest("PATCH", `/api/admin/redeem-codes/${id}/deactivate`);
+      toast({ title: "Code deactivated" });
+      refetchCodes();
+    } catch {
+      toast({ title: "Error", description: "Failed to deactivate code.", variant: "destructive" });
+    }
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopied(code);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const trialActive = globalTrial?.isActive;
+  const enrollUntil = globalTrial?.newUserEnrollUntil ? new Date(globalTrial.newUserEnrollUntil) : null;
+  const enrollExpired = enrollUntil && enrollUntil < new Date();
+
+  return (
+    <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+      {/* Global Free Trial */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Gift className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground">Global Free Trial</h2>
+            <p className="text-xs text-muted-foreground">Give all users (existing + new) a timed Pro trial</p>
+          </div>
+          {trialActive && !enrollExpired && (
+            <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-500/10 text-green-600 dark:text-green-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Active
+            </span>
+          )}
+          {trialActive && enrollExpired && (
+            <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-yellow-500/10 text-yellow-600">
+              Enrollment Ended
+            </span>
+          )}
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {globalTrial?.appliedAt && (
+            <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-4 py-3 space-y-1">
+              <div>Last applied: <span className="text-foreground font-medium">{new Date(globalTrial.appliedAt).toLocaleString()}</span></div>
+              {enrollUntil && (
+                <div>New user enrollment {enrollExpired ? "ended" : "until"}: <span className="text-foreground font-medium">{enrollUntil.toLocaleDateString()}</span></div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Trial Duration</label>
+              <select
+                value={trialDuration}
+                onChange={e => setTrialDuration(e.target.value)}
+                data-testid="select-trial-duration"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="3">3 days</option>
+                <option value="7">1 week</option>
+                <option value="14">2 weeks</option>
+                <option value="30">1 month</option>
+                <option value="60">2 months</option>
+                <option value="90">3 months</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">New User Enrollment Window</label>
+              <select
+                value={enrollWindow}
+                onChange={e => setEnrollWindow(e.target.value)}
+                data-testid="select-enroll-window"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="1">1 day</option>
+                <option value="3">3 days</option>
+                <option value="7">1 week</option>
+                <option value="14">2 weeks</option>
+                <option value="30">1 month</option>
+                <option value="0">Don't apply to new users</option>
+              </select>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer select-none" data-testid="toggle-apply-existing">
+            <button
+              type="button"
+              onClick={() => setApplyToExisting(v => !v)}
+              className={cn("relative w-10 h-5 rounded-full transition-colors", applyToExisting ? "bg-primary" : "bg-muted-foreground/30")}
+            >
+              <span className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform", applyToExisting ? "translate-x-5" : "translate-x-0")} />
+            </button>
+            <span className="text-sm text-foreground">Apply to all existing users immediately</span>
+          </label>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleApplyTrial}
+              disabled={applying}
+              data-testid="button-apply-trial"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+            >
+              {applying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Gift className="w-3.5 h-3.5" />}
+              Apply Trial
+            </button>
+            {trialActive && (
+              <button
+                onClick={handleDeactivateTrial}
+                disabled={deactivating}
+                data-testid="button-deactivate-trial"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-background text-foreground text-sm font-medium hover:bg-muted transition-colors disabled:opacity-60"
+              >
+                {deactivating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                Deactivate
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Redeem Codes */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Ticket className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground">Redeem Codes</h2>
+            <p className="text-xs text-muted-foreground">Generate codes users can redeem for Pro access</p>
+          </div>
+          <span className="ml-auto text-xs text-muted-foreground">{redeemCodes.length} code{redeemCodes.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {/* Generate form */}
+        <div className="px-6 py-5 border-b border-border/40 space-y-4 bg-muted/20">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Generate New Code</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Label (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Beta testers"
+                value={codeLabel}
+                onChange={e => setCodeLabel(e.target.value)}
+                data-testid="input-code-label"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Pro Plan Duration</label>
+              <select
+                value={codeDays}
+                onChange={e => setCodeDays(e.target.value)}
+                data-testid="select-code-days"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">1 month</option>
+                <option value="60">2 months</option>
+                <option value="90">3 months</option>
+                <option value="180">6 months</option>
+                <option value="365">1 year</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Max Uses (blank = unlimited)</label>
+              <input
+                type="number"
+                min="1"
+                placeholder="Unlimited"
+                value={codeMaxUses}
+                onChange={e => setCodeMaxUses(e.target.value)}
+                data-testid="input-code-max-uses"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Expires On (blank = never)</label>
+              <input
+                type="date"
+                value={codeValidUntil}
+                onChange={e => setCodeValidUntil(e.target.value)}
+                data-testid="input-code-valid-until"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleGenerateCode}
+            disabled={generatingCode}
+            data-testid="button-generate-code"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            {generatingCode ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Hash className="w-3.5 h-3.5" />}
+            Generate Code
+          </button>
+        </div>
+
+        {/* Codes table */}
+        <div className="overflow-x-auto">
+          {redeemCodes.length === 0 ? (
+            <div className="px-6 py-10 text-center text-muted-foreground text-sm">No codes generated yet.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left">
+                  <th className="px-6 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Code</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Label</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Duration</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Uses</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Expires</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {redeemCodes.map((c: any) => {
+                  const isExpired = c.validUntil && new Date(c.validUntil) < new Date();
+                  const isFull = c.maxUses !== null && c.usedCount >= c.maxUses;
+                  const statusBadge = !c.isActive ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">Inactive</span>
+                  ) : isExpired ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-500">Expired</span>
+                  ) : isFull ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/10 text-orange-500">Full</span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 text-green-600 dark:text-green-400">Active</span>
+                  );
+                  return (
+                    <tr key={c.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-code-${c.id}`}>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-xs bg-muted px-2 py-1 rounded text-foreground">{c.code}</code>
+                          <button onClick={() => copyCode(c.code)} className="text-muted-foreground hover:text-foreground transition-colors" data-testid={`button-copy-${c.id}`}>
+                            {copied === c.code ? <ClipboardCheck className="w-3.5 h-3.5 text-green-500" /> : <Clipboard className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.label || "—"}</td>
+                      <td className="px-4 py-3 text-foreground font-medium">{c.planDays}d Pro</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {c.usedCount}{c.maxUses !== null ? ` / ${c.maxUses}` : " / ∞"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {c.validUntil ? new Date(c.validUntil).toLocaleDateString() : "Never"}
+                      </td>
+                      <td className="px-4 py-3">{statusBadge}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {c.isActive && (
+                            <button
+                              onClick={() => handleDeactivateCode(c.id)}
+                              title="Deactivate"
+                              data-testid={`button-deactivate-code-${c.id}`}
+                              className="text-muted-foreground hover:text-orange-500 transition-colors"
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteCode(c.id)}
+                            title="Delete"
+                            data-testid={`button-delete-code-${c.id}`}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmailSection() {
   const { toast } = useToast();
   const [form, setForm] = useState<SmtpFormData>({
@@ -1449,7 +1830,7 @@ export default function AdminPage() {
   const [userSort, setUserSort] = useState<"name" | "plan" | "tokens" | "joined">("joined");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "api" | "providers" | "broadcast" | "email">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "api" | "providers" | "broadcast" | "trial" | "email">("overview");
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [generatedKey, setGeneratedKey] = useState<{ userId: string; key: string } | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
@@ -1662,14 +2043,15 @@ export default function AdminPage() {
         </div>
         {/* Tab navigation */}
         <nav className="max-w-5xl mx-auto px-6 flex items-center gap-0 mt-3 overflow-x-auto no-scrollbar">
-          {([
+          {(([
             { id: "overview", label: "Overview", icon: BarChart2 },
             { id: "users",    label: "Users",    icon: Users,     badge: users.length > 0 ? users.length : undefined },
             { id: "api",      label: "API Access", icon: Key },
             { id: "providers", label: "Providers", icon: Server },
             { id: "broadcast", label: "Broadcast", icon: Megaphone },
+            { id: "trial",    label: "Trial Access", icon: Gift },
             { id: "email",    label: "Email", icon: Mail },
-          ] as const).map((tab) => (
+          ]) as { id: "overview"|"users"|"api"|"providers"|"broadcast"|"trial"|"email"; label: string; icon: React.ElementType; badge?: number }[]).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -1763,6 +2145,7 @@ export default function AdminPage() {
 
         {/* Providers tab */}
         {activeTab === "providers" && <ProvidersSection />}
+        {activeTab === "trial" && <TrialSection />}
         {activeTab === "email" && <EmailSection />}
 
         {/* Token Usage — Overview tab */}

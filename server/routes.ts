@@ -367,6 +367,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     await storage.markEmailVerified(record.userId);
     await storage.deleteEmailVerificationToken(token);
+    await storage.checkAndApplyNewUserTrial(record.userId);
     const user = await storage.getUser(record.userId);
     if (user?.email) {
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
@@ -1332,6 +1333,93 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const limit = Math.min(parseInt(req.query.limit as string ?? "200"), 500);
     const logs = await storage.getEmailLogs(limit);
     return res.json(logs);
+  });
+
+  /* ── admin: global trial ── */
+  app.get("/api/admin/global-trial", requireAdmin as any, async (_req: Request, res: Response) => {
+    const trial = await storage.getGlobalTrial();
+    return res.json(trial ?? { isActive: false, durationDays: 7, newUserEnrollUntil: null, appliedAt: null });
+  });
+
+  app.post("/api/admin/global-trial/apply", requireAdmin as any, async (req: Request, res: Response) => {
+    const { durationDays = 7, enrollWindowDays = 30, applyToExisting = true } = req.body;
+    if (!durationDays || durationDays < 1 || durationDays > 365) return res.status(400).json({ error: "durationDays must be between 1 and 365" });
+    await storage.applyGlobalTrial(durationDays, enrollWindowDays);
+    let usersUpdated = 0;
+    if (applyToExisting) {
+      usersUpdated = await storage.applyTrialToAllUsers(durationDays);
+    }
+    return res.json({ ok: true, usersUpdated });
+  });
+
+  app.post("/api/admin/global-trial/deactivate", requireAdmin as any, async (_req: Request, res: Response) => {
+    await storage.deactivateGlobalTrial();
+    return res.json({ ok: true });
+  });
+
+  /* ── admin: redeem codes ── */
+  app.get("/api/admin/redeem-codes", requireAdmin as any, async (_req: Request, res: Response) => {
+    const codes = await storage.getRedeemCodes();
+    return res.json(codes);
+  });
+
+  app.post("/api/admin/redeem-codes", requireAdmin as any, async (req: Request, res: Response) => {
+    const { label = "", planDays = 30, maxUses = null, validUntil = null } = req.body;
+    if (!planDays || planDays < 1) return res.status(400).json({ error: "planDays must be at least 1" });
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "SPARKY-";
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    const created = await storage.createRedeemCode({
+      code,
+      label,
+      planDays,
+      maxUses: maxUses ? Number(maxUses) : null,
+      validUntil: validUntil ? new Date(validUntil) : null,
+    });
+    return res.json(created);
+  });
+
+  app.delete("/api/admin/redeem-codes/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    await storage.deleteRedeemCode(String(req.params.id));
+    return res.json({ ok: true });
+  });
+
+  app.patch("/api/admin/redeem-codes/:id/deactivate", requireAdmin as any, async (req: Request, res: Response) => {
+    await storage.deactivateRedeemCode(String(req.params.id));
+    return res.json({ ok: true });
+  });
+
+  /* ── user: check redeem code ── */
+  app.get("/api/redeem/check/:code", requireAuth as any, async (req: Request, res: Response) => {
+    const entry = await storage.getRedeemCode(String(req.params.code));
+    if (!entry || !entry.isActive) return res.status(404).json({ error: "Invalid or expired code." });
+    const now = new Date();
+    if (entry.validUntil && entry.validUntil < now) return res.status(410).json({ error: "This code has expired." });
+    if (entry.maxUses !== null && entry.usedCount >= entry.maxUses) return res.status(410).json({ error: "This code has reached its maximum number of uses." });
+    const alreadyRedeemed = await storage.hasUserRedeemedCode(entry.id, req.session.userId!);
+    if (alreadyRedeemed) return res.status(409).json({ error: "You have already redeemed this code." });
+    return res.json({ planDays: entry.planDays, label: entry.label });
+  });
+
+  /* ── user: redeem code ── */
+  app.post("/api/redeem", requireAuth as any, async (req: Request, res: Response) => {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: "Code is required." });
+    const entry = await storage.getRedeemCode(code.trim().toUpperCase());
+    if (!entry || !entry.isActive) return res.status(404).json({ error: "Invalid or expired code." });
+    const now = new Date();
+    if (entry.validUntil && entry.validUntil < now) return res.status(410).json({ error: "This code has expired." });
+    if (entry.maxUses !== null && entry.usedCount >= entry.maxUses) return res.status(410).json({ error: "This code has reached its maximum number of uses." });
+    const alreadyRedeemed = await storage.hasUserRedeemedCode(entry.id, req.session.userId!);
+    if (alreadyRedeemed) return res.status(409).json({ error: "You have already redeemed this code." });
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "User not found." });
+    const currentExpiry = user.planExpiresAt && user.planExpiresAt > now ? user.planExpiresAt : now;
+    const planExpiresAt = new Date(currentExpiry.getTime() + entry.planDays * 24 * 60 * 60 * 1000);
+    await storage.setPlan(user.id, "pro", planExpiresAt);
+    await storage.redeemCode(entry.id, user.id, planExpiresAt);
+    await storage.incrementCodeUsage(entry.id);
+    return res.json({ ok: true, planDays: entry.planDays, planExpiresAt });
   });
 
   /* ── chat (protected) ── */

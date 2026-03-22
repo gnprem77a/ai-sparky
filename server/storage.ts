@@ -29,6 +29,9 @@ import {
   type EmailLog, emailLogs,
   type SmtpConfig, smtpConfig,
   featureEvents,
+  type GlobalTrial, globalTrial,
+  type RedeemCode, redeemCodes,
+  type CodeRedemption, codeRedemptions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -156,6 +159,22 @@ export interface IStorage {
 
   getSmtpConfig(): Promise<SmtpConfig | undefined>;
   saveSmtpConfig(data: Partial<Omit<SmtpConfig, "id" | "updatedAt">>): Promise<SmtpConfig>;
+
+  getGlobalTrial(): Promise<GlobalTrial | undefined>;
+  applyGlobalTrial(durationDays: number, enrollWindowDays: number): Promise<GlobalTrial>;
+  deactivateGlobalTrial(): Promise<void>;
+  applyTrialToAllUsers(durationDays: number): Promise<number>;
+  checkAndApplyNewUserTrial(userId: string): Promise<boolean>;
+
+  createRedeemCode(data: { code: string; label: string; planDays: number; maxUses?: number | null; validUntil?: Date | null }): Promise<RedeemCode>;
+  getRedeemCodes(): Promise<RedeemCode[]>;
+  getRedeemCode(code: string): Promise<RedeemCode | undefined>;
+  deactivateRedeemCode(id: string): Promise<void>;
+  deleteRedeemCode(id: string): Promise<void>;
+  redeemCode(codeId: string, userId: string, planExpiresAt: Date): Promise<CodeRedemption>;
+  hasUserRedeemedCode(codeId: string, userId: string): Promise<boolean>;
+  incrementCodeUsage(codeId: string): Promise<void>;
+  getCodeRedemptions(codeId: string): Promise<CodeRedemption[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -999,6 +1018,106 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return row;
     }
+  }
+
+  async getGlobalTrial(): Promise<GlobalTrial | undefined> {
+    const [row] = await db.select().from(globalTrial).where(eq(globalTrial.id, 1));
+    return row;
+  }
+
+  async applyGlobalTrial(durationDays: number, enrollWindowDays: number): Promise<GlobalTrial> {
+    const now = new Date();
+    const newUserEnrollUntil = new Date(now.getTime() + enrollWindowDays * 24 * 60 * 60 * 1000);
+    const existing = await this.getGlobalTrial();
+    if (existing) {
+      const [row] = await db.update(globalTrial)
+        .set({ isActive: true, durationDays, newUserEnrollUntil, appliedAt: now, updatedAt: now })
+        .where(eq(globalTrial.id, 1))
+        .returning();
+      return row;
+    } else {
+      const [row] = await db.insert(globalTrial)
+        .values({ id: 1, isActive: true, durationDays, newUserEnrollUntil, appliedAt: now, updatedAt: now } as any)
+        .returning();
+      return row;
+    }
+  }
+
+  async deactivateGlobalTrial(): Promise<void> {
+    await db.update(globalTrial)
+      .set({ isActive: false, newUserEnrollUntil: null, updatedAt: new Date() })
+      .where(eq(globalTrial.id, 1));
+  }
+
+  async applyTrialToAllUsers(durationDays: number): Promise<number> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    const allUsers = await db.select().from(users);
+    let count = 0;
+    for (const u of allUsers) {
+      const currentExpiry = u.planExpiresAt;
+      const newExpiry = currentExpiry && currentExpiry > expiresAt ? currentExpiry : expiresAt;
+      await db.update(users)
+        .set({ plan: "pro", planExpiresAt: newExpiry })
+        .where(eq(users.id, u.id));
+      count++;
+    }
+    return count;
+  }
+
+  async checkAndApplyNewUserTrial(userId: string): Promise<boolean> {
+    const trial = await this.getGlobalTrial();
+    if (!trial || !trial.isActive) return false;
+    const now = new Date();
+    if (trial.newUserEnrollUntil && trial.newUserEnrollUntil < now) return false;
+    const expiresAt = new Date(now.getTime() + trial.durationDays * 24 * 60 * 60 * 1000);
+    await db.update(users)
+      .set({ plan: "pro", planExpiresAt: expiresAt })
+      .where(eq(users.id, userId));
+    return true;
+  }
+
+  async createRedeemCode(data: { code: string; label: string; planDays: number; maxUses?: number | null; validUntil?: Date | null }): Promise<RedeemCode> {
+    const [row] = await db.insert(redeemCodes).values({ ...data }).returning();
+    return row;
+  }
+
+  async getRedeemCodes(): Promise<RedeemCode[]> {
+    return db.select().from(redeemCodes).orderBy(desc(redeemCodes.createdAt));
+  }
+
+  async getRedeemCode(code: string): Promise<RedeemCode | undefined> {
+    const [row] = await db.select().from(redeemCodes).where(eq(redeemCodes.code, code.toUpperCase()));
+    return row;
+  }
+
+  async deactivateRedeemCode(id: string): Promise<void> {
+    await db.update(redeemCodes).set({ isActive: false }).where(eq(redeemCodes.id, id));
+  }
+
+  async deleteRedeemCode(id: string): Promise<void> {
+    await db.delete(redeemCodes).where(eq(redeemCodes.id, id));
+  }
+
+  async redeemCode(codeId: string, userId: string, planExpiresAt: Date): Promise<CodeRedemption> {
+    const [row] = await db.insert(codeRedemptions).values({ codeId, userId, planExpiresAt }).returning();
+    return row;
+  }
+
+  async hasUserRedeemedCode(codeId: string, userId: string): Promise<boolean> {
+    const [row] = await db.select().from(codeRedemptions)
+      .where(and(eq(codeRedemptions.codeId, codeId), eq(codeRedemptions.userId, userId)));
+    return !!row;
+  }
+
+  async incrementCodeUsage(codeId: string): Promise<void> {
+    await db.update(redeemCodes)
+      .set({ usedCount: drizzleSql`${redeemCodes.usedCount} + 1` })
+      .where(eq(redeemCodes.id, codeId));
+  }
+
+  async getCodeRedemptions(codeId: string): Promise<CodeRedemption[]> {
+    return db.select().from(codeRedemptions).where(eq(codeRedemptions.codeId, codeId));
   }
 }
 

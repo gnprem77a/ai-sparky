@@ -326,3 +326,38 @@ export const featureEvents = pgTable("feature_events", {
 });
 
 export type FeatureEvent = typeof featureEvents.$inferSelect;
+
+export const globalTrial = pgTable("global_trial", {
+  id: integer("id").primaryKey().default(1),
+  isActive: boolean("is_active").notNull().default(false),
+  durationDays: integer("duration_days").notNull().default(7),
+  newUserEnrollUntil: timestamp("new_user_enroll_until"),
+  appliedAt: timestamp("applied_at"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export type GlobalTrial = typeof globalTrial.$inferSelect;
+
+export const redeemCodes = pgTable("redeem_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  label: text("label").notNull().default(""),
+  planDays: integer("plan_days").notNull().default(30),
+  maxUses: integer("max_uses"),
+  usedCount: integer("used_count").notNull().default(0),
+  validUntil: timestamp("valid_until"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type RedeemCode = typeof redeemCodes.$inferSelect;
+
+export const codeRedemptions = pgTable("code_redemptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  codeId: varchar("code_id").notNull().references(() => redeemCodes.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  redeemedAt: timestamp("redeemed_at").notNull().default(sql`now()`),
+  planExpiresAt: timestamp("plan_expires_at").notNull(),
+});
+
+export type CodeRedemption = typeof codeRedemptions.$inferSelect;

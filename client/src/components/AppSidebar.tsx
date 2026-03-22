@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Ticket, Loader2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -117,6 +117,10 @@ export function AppSidebar({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [redeemCodeInput, setRedeemCodeInput] = useState("");
+  const [redeemLoading, setRedeemLoading] = useState(false);
+  const [redeemResult, setRedeemResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -504,7 +508,90 @@ export function AppSidebar({
     );
   };
 
+  const handleRedeem = async () => {
+    if (!redeemCodeInput.trim()) return;
+    setRedeemLoading(true);
+    setRedeemResult(null);
+    try {
+      const res = await apiRequest("POST", "/api/redeem", { code: redeemCodeInput.trim() });
+      const data = await res.json();
+      if (!res.ok) {
+        setRedeemResult({ ok: false, message: data.error || "Failed to redeem code." });
+      } else {
+        setRedeemResult({ ok: true, message: `Success! You now have ${data.planDays} days of Pro access.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
+      }
+    } catch {
+      setRedeemResult({ ok: false, message: "Something went wrong. Please try again." });
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
   return (
+    <>
+    {redeemDialogOpen && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setRedeemDialogOpen(false)} />
+        <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-border/60 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Ticket className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground text-base">Redeem a Code</h3>
+              <p className="text-xs text-muted-foreground">Enter your code to activate Pro access</p>
+            </div>
+            <button onClick={() => setRedeemDialogOpen(false)} className="ml-auto text-muted-foreground hover:text-foreground transition-colors" data-testid="button-close-redeem">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Promo Code</label>
+              <input
+                type="text"
+                placeholder="e.g. SPARKY-ABC12345"
+                value={redeemCodeInput}
+                onChange={e => { setRedeemCodeInput(e.target.value.toUpperCase()); setRedeemResult(null); }}
+                onKeyDown={e => e.key === "Enter" && !redeemLoading && handleRedeem()}
+                autoFocus
+                data-testid="input-redeem-code"
+                className="w-full px-3 py-2.5 text-sm rounded-lg border border-input bg-background text-foreground font-mono placeholder:text-muted-foreground placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            {redeemResult && (
+              <div className={`flex items-start gap-2.5 px-3.5 py-3 rounded-lg text-sm ${redeemResult.ok ? "bg-green-500/10 text-green-700 dark:text-green-400" : "bg-destructive/10 text-destructive"}`}>
+                {redeemResult.ok
+                  ? <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  : <X className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                }
+                {redeemResult.message}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleRedeem}
+                disabled={redeemLoading || !redeemCodeInput.trim() || redeemResult?.ok}
+                data-testid="button-submit-redeem"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+              >
+                {redeemLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ticket className="w-3.5 h-3.5" />}
+                Redeem
+              </button>
+              <button
+                onClick={() => setRedeemDialogOpen(false)}
+                data-testid="button-cancel-redeem"
+                className="px-4 py-2.5 rounded-lg border border-border text-foreground text-sm font-medium hover:bg-muted transition-colors"
+              >
+                {redeemResult?.ok ? "Done" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     <Sidebar>
       <SidebarHeader className="px-3 pt-4 pb-3">
         <div className="flex items-center justify-between">
@@ -878,6 +965,15 @@ export function AppSidebar({
                       Settings
                     </button>
 
+                    <button
+                      onClick={() => { setProfileMenuOpen(false); setRedeemCodeInput(""); setRedeemResult(null); setRedeemDialogOpen(true); }}
+                      data-testid="button-sidebar-redeem"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                    >
+                      <Ticket className="w-4 h-4 text-muted-foreground" />
+                      Redeem Code
+                    </button>
+
                     <a
                       href="/profile"
                       onClick={() => setProfileMenuOpen(false)}
@@ -973,6 +1069,7 @@ export function AppSidebar({
         </div>
       </SidebarFooter>
     </Sidebar>
+    </>
   );
 }
 
