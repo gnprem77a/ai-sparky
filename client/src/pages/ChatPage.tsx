@@ -353,14 +353,7 @@ export default function ChatPage() {
     enabled: !!user,
   });
 
-  /* ── Restore last active conversation on mount ── */
-  useEffect(() => {
-    if (!user || conversations.length === 0) return;
-    const savedId = getActiveConversationId();
-    if (savedId && conversations.some((c) => c.id === savedId) && !activeId) {
-      handleSelectConversation(savedId);
-    }
-  }, [user, conversations.length]);
+  /* ── Always start with a new chat on mount (no conversation restored) ── */
 
   /* ── Sync activeIdRef ── */
   useEffect(() => {
