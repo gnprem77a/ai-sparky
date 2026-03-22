@@ -4,6 +4,7 @@
  *
  * Chat models:
  *   powerful  → Claude Opus 4.6      (claude-opus-4-6)
+ *   sonnet    → Claude Sonnet 4.5    (claude-sonnet-4-5)
  *   balanced  → Mistral Large 3      (Mistral-Large-3)
  *   creative  → GPT 5.3              (gpt-5.3-chat)
  *   fast      → Claude Haiku         (claude-haiku-prod2)
@@ -13,7 +14,7 @@
  *   Cohere-rerank-v4.0-pro → result reranking for Knowledge Base search
  */
 
-export type ModelKey = "auto" | "balanced" | "powerful" | "creative" | "fast";
+export type ModelKey = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet";
 
 export interface ModelDefinition {
   key: ModelKey;
@@ -34,6 +35,15 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
     providerType: "azure",
     description: "Most intelligent model, complex reasoning",
     badgeLabel: "Opus 4.6",
+  },
+  sonnet: {
+    key: "sonnet",
+    friendlyName: "Sonnet",
+    exactName: "Claude Sonnet 4.5",
+    apiModelId: "claude-sonnet-4-5",
+    providerType: "anthropic",
+    description: "Smart and efficient, great for most tasks",
+    badgeLabel: "Sonnet 4.5",
   },
   balanced: {
     key: "balanced",
@@ -80,6 +90,7 @@ export function getModel(key: string): ModelDefinition {
 export function getProviderPatterns(modelKey: string): string[] {
   const map: Record<string, string[]> = {
     powerful: ["opus"],
+    sonnet:   ["sonnet"],
     balanced: ["mistral"],
     creative: ["gpt"],
     fast:     ["haiku"],

@@ -2100,6 +2100,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       object: "list",
       data: [
         { id: "powerful", object: "model", created: now, owned_by: "aisparky", description: "Most powerful model (Claude Opus)" },
+        { id: "sonnet",   object: "model", created: now, owned_by: "aisparky", description: "Smart and efficient (Claude Sonnet 4.5)" },
         { id: "balanced", object: "model", created: now, owned_by: "aisparky", description: "Balanced performance (Mistral Large)" },
         { id: "fast",     object: "model", created: now, owned_by: "aisparky", description: "Fastest responses (Claude Haiku)" },
         { id: "creative", object: "model", created: now, owned_by: "aisparky", description: "Most creative (GPT)" },
@@ -2141,9 +2142,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     // Map OpenAI model names → our slugs; default balanced
     const modelMap: Record<string, string> = {
+      "claude-sonnet-4-5": "sonnet", "claude-sonnet": "sonnet",
       "gpt-4": "powerful", "gpt-4o": "powerful", "gpt-3.5-turbo": "fast",
       "claude-3-opus": "powerful", "claude-3-sonnet": "balanced", "claude-3-haiku": "fast",
-      "powerful": "powerful", "balanced": "balanced", "fast": "fast", "creative": "creative",
+      "powerful": "powerful", "sonnet": "sonnet", "balanced": "balanced", "fast": "fast", "creative": "creative",
     };
     const modelSlug: string = modelMap[modelParam] ?? "balanced";
 
@@ -2278,6 +2280,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Default pricing per 1M tokens (fallback when provider has no custom price set)
   const API_PRICING: Record<string, { input: number; output: number }> = {
     powerful:  { input: 5.00,  output: 25.00 },  // Claude Opus 4.6
+    sonnet:    { input: 3.00,  output: 15.00 },  // Claude Sonnet 4.5
     fast:      { input: 0.80,  output: 4.00  },  // Claude Haiku
     creative:  { input: 2.00,  output: 8.00  },  // GPT-5.3
     balanced:  { input: 1.00,  output: 3.00  },  // Mistral Large 3
@@ -2285,6 +2288,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Per-model max output tokens
   const API_MODEL_MAX_TOKENS: Record<string, number> = {
     powerful: 32000,  // Claude Opus 4.6
+    sonnet:   16000,  // Claude Sonnet 4.5
     fast:     4096,   // Claude Haiku
     creative: 8192,   // GPT-5.3
     balanced: 8192,   // Mistral Large 3
@@ -2372,7 +2376,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { messages: rawMessages, message, model: modelParam, systemPrompt, stream: wantStream, maxTokens: reqMaxTokens } = req.body;
 
     // Normalize model slug
-    const modelSlug: string = ["powerful", "fast", "creative", "balanced"].includes(modelParam) ? modelParam : "balanced";
+    const modelSlug: string = ["powerful", "sonnet", "fast", "creative", "balanced"].includes(modelParam) ? modelParam : "balanced";
 
     let messages: { role: string; content: string }[] = [];
     if (Array.isArray(rawMessages) && rawMessages.length > 0) {

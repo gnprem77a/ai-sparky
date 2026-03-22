@@ -2,7 +2,7 @@ import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown, Search } from "lucid
 import { MODEL_REGISTRY } from "@shared/models";
 import { cn } from "@/lib/utils";
 
-export type ModelId = "auto" | "balanced" | "powerful" | "creative" | "fast";
+export type ModelId = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet";
 
 export interface ModelOption {
   id: ModelId;
@@ -42,6 +42,18 @@ export const MODELS: ModelOption[] = [
     proOnly: true,
     isNew: true,
     isFeatured: true,
+  },
+  {
+    id: "sonnet",
+    friendlyName: "Sonnet",
+    exactName: MODEL_REGISTRY.sonnet.exactName,
+    description: MODEL_REGISTRY.sonnet.description,
+    badgeLabel: MODEL_REGISTRY.sonnet.badgeLabel,
+    icon: <Brain className="w-4 h-4" />,
+    iconBg: "bg-rose-500/10",
+    iconColor: "text-rose-400",
+    proOnly: false,
+    isNew: true,
   },
   {
     id: "balanced",
@@ -84,16 +96,19 @@ export const MODELS: ModelOption[] = [
  */
 export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   // ── Friendly badge labels ──────────────────────────────────────
-  "Opus 4.6":   { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "Mistral L3": { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "GPT 5.3":    { color: "text-emerald-400", bg: "bg-emerald-500/10" },
-  "Haiku":      { color: "text-blue-400",    bg: "bg-blue-500/10"    },
-  "Auto":       { color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
+  "Opus 4.6":    { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "Sonnet 4.5":  { color: "text-rose-400",    bg: "bg-rose-500/10"    },
+  "Mistral L3":  { color: "text-violet-400",  bg: "bg-violet-500/10"  },
+  "GPT 5.3":     { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  "Haiku":       { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+  "Auto":        { color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
 
   // ── Raw Anthropic / Azure model names ─────────────────────────
   "claude-opus-1715":          { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   "claude-opus-4-6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   "claude-opus-4.6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-sonnet-4-5":         { color: "text-rose-400",    bg: "bg-rose-500/10"    },
+  "claude-sonnet":             { color: "text-rose-400",    bg: "bg-rose-500/10"    },
   "claude-haiku-prod2":        { color: "text-blue-400",    bg: "bg-blue-500/10"    },
   "claude-3-5-haiku-20241022": { color: "text-blue-400",    bg: "bg-blue-500/10"    },
   "claude-haiku-3-5":          { color: "text-blue-400",    bg: "bg-blue-500/10"    },
@@ -125,6 +140,8 @@ const RAW_TO_FRIENDLY: Record<string, string> = {
   "claude-opus-1715":    "Opus 4.6",
   "claude-opus-4-6":     "Opus 4.6",
   "claude-opus-4.6":     "Opus 4.6",
+  "claude-sonnet-4-5":   "Sonnet 4.5",
+  "claude-sonnet":       "Sonnet 4.5",
   "claude-haiku-prod2":  "Haiku",
   "Mistral-Large-3":     "Mistral L3",
   "mistral-large-3":     "Mistral L3",
