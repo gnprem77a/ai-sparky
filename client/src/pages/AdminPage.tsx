@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { type Broadcast, type AiProvider } from "@shared/schema";
+import { MODELS } from "@/components/ModelSelector";
 
 interface TokenStats {
   totalInputTokens: number;

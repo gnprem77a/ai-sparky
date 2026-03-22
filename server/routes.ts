@@ -1335,6 +1335,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json(logs);
   });
 
+  /* ── admin: plan limits ── */
+  app.get("/api/admin/plan-limits", requireAdmin as any, async (_req: Request, res: Response) => {
+    const limits = await storage.getPlanLimits();
+    return res.json(limits);
+  });
+
+  app.put("/api/admin/plan-limits", requireAdmin as any, async (req: Request, res: Response) => {
+    const { freeAllowedModels, freeDailyLimit } = req.body;
+    if (!Array.isArray(freeAllowedModels)) return res.status(400).json({ error: "freeAllowedModels must be an array" });
+    if (typeof freeDailyLimit !== "number" || freeDailyLimit < 1) return res.status(400).json({ error: "freeDailyLimit must be a positive number" });
+    const saved = await storage.savePlanLimits({ freeAllowedModels, freeDailyLimit });
+    return res.json(saved);
+  });
+
+  /* ── public: plan limits (for frontend) ── */
+  app.get("/api/config/plan-limits", async (_req: Request, res: Response) => {
+    const limits = await storage.getPlanLimits();
+    return res.json({ freeAllowedModels: limits.freeAllowedModels, freeDailyLimit: limits.freeDailyLimit });
+  });
+
   /* ── admin: global trial ── */
   app.get("/api/admin/global-trial", requireAdmin as any, async (_req: Request, res: Response) => {
     const trial = await storage.getGlobalTrial();
@@ -1475,15 +1495,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       auto:       8192,
       fast:       4096,
     };
-    /* ── Free plan enforcement ── */
+    /* ── Free plan enforcement (DB-configurable limits) ── */
     let effectiveModel = model;
+    const planCfg = await storage.getPlanLimits();
+    const freeAllowed = planCfg.freeAllowedModels ?? ["auto", "fast"];
     if (!pro) {
-      /* Only the "powerful" model requires Pro — cap it to "balanced" */
-      if (effectiveModel === "powerful") effectiveModel = "balanced";
+      /* Redirect to best allowed model if selected one is not permitted */
+      if (effectiveModel !== "auto" && !freeAllowed.includes(effectiveModel)) {
+        effectiveModel = freeAllowed.find(m => m !== "auto") ?? "fast";
+      }
       const today = new Date().toISOString().split("T")[0];
       const settings = await storage.getUserSettings(user.id);
       const count = settings.lastMessageDate === today ? settings.dailyMessageCount : 0;
-      const FREE_DAILY_LIMIT = 20;
+      const FREE_DAILY_LIMIT = planCfg.freeDailyLimit ?? 20;
       if (count >= FREE_DAILY_LIMIT) {
         return res.status(429).json({
           error: `Daily message limit reached (${FREE_DAILY_LIMIT}/day). Upgrade to Pro for unlimited access.`,

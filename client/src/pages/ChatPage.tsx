@@ -211,6 +211,12 @@ export default function ChatPage() {
 
   const isPro = isProActive(user);
 
+  /* ── Plan limits (for model selector UI) ── */
+  const { data: planLimitsData } = useQuery<{ freeAllowedModels: string[]; freeDailyLimit: number }>({
+    queryKey: ["/api/config/plan-limits"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   /* ── Usage tracking & approaching-limit notification ── */
   const { data: usageData } = useQuery<{ count: number; limit: number; isPro: boolean }>({
     queryKey: ["/api/settings/usage"],
@@ -745,7 +751,7 @@ ${messagesHtml}
     abortRef.current = controller;
 
     setIsStreaming(true);
-    setStreamingModel(isPro ? (modelOverride ?? model) : "fast");
+    setStreamingModel(modelOverride ?? model);
     setStreamingMessageId(assistantMsgId);
 
     const historyForApi = msgs
@@ -774,10 +780,11 @@ ${messagesHtml}
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: historyForApi,
-          model: isPro ? (modelOverride ?? model) : "fast",
-          maxTokens: isPro
-            ? ((modelOverride ?? model) === "powerful" ? 32000 : (modelOverride ?? model) === "fast" ? 4096 : 8192)
-            : 4096,
+          model: modelOverride ?? model,
+          maxTokens: (() => {
+            const m = modelOverride ?? model;
+            return m === "powerful" ? 32000 : m === "fast" ? 4096 : 8192;
+          })(),
           webSearch: webSearchMode,
         }),
         signal: controller.signal,
@@ -1045,7 +1052,7 @@ ${messagesHtml}
         : (text.slice(0, 40) || attachments[0]?.name || "New Conversation");
       const res = await apiRequest("POST", "/api/conversations", {
         title,
-        model: isPro ? model : "fast",
+        model,
       });
       const newConv: Conversation = await res.json();
       convId = newConv.id;
@@ -1594,9 +1601,10 @@ ${messagesHtml}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 isStreaming={isStreaming}
-                model={isPro ? model : "fast"}
+                model={model}
                 onModelChange={handleModelChange}
                 isPro={isPro}
+                freeAllowedModels={isPro ? undefined : planLimitsData?.freeAllowedModels}
                 quotedMessage={quotedMessage ?? undefined}
                 onClearQuote={() => setQuotedMessage(null)}
                 isWebSearch={webSearchMode}

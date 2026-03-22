@@ -87,6 +87,7 @@ interface ChatInputProps {
   model: ModelId;
   onModelChange: (model: ModelId) => void;
   isPro?: boolean;
+  freeAllowedModels?: string[];
   quotedMessage?: { id: string; snippet: string };
   onClearQuote?: () => void;
   isWebSearch?: boolean;
@@ -96,7 +97,7 @@ interface ChatInputProps {
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick, externalFiles }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, freeAllowedModels, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick, externalFiles }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -416,7 +417,11 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   const removeAttachment = (id: string) => setAttachments(prev => prev.filter(a => a.id !== id));
   const canSubmit = (value.trim().length > 0 || attachments.length > 0) && !isStreaming && !disabled && !isProcessing;
 
-  const effectiveModel = isPro ? model : "fast";
+  const effectiveModel = isPro
+    ? model
+    : freeAllowedModels
+      ? (freeAllowedModels.includes(model) ? model : (freeAllowedModels[0] as ModelId ?? "fast"))
+      : "fast";
   const selectedModel = MODELS.find(m => m.id === effectiveModel) ?? MODELS[MODELS.length - 1];
 
   return (
@@ -629,7 +634,10 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                         )}
                       </div>
 
-                      {MODELS.filter(m => m.proOnly).map(m => {
+                      {(freeAllowedModels
+                        ? MODELS.filter(m => !freeAllowedModels.includes(m.id))
+                        : MODELS.filter(m => m.proOnly)
+                      ).map(m => {
                         const locked = !isPro;
                         const active = m.id === effectiveModel && !locked;
                         return (
@@ -687,7 +695,10 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                         Free Tier
                       </p>
 
-                      {MODELS.filter(m => !m.proOnly).map(m => {
+                      {(freeAllowedModels
+                        ? MODELS.filter(m => freeAllowedModels.includes(m.id))
+                        : MODELS.filter(m => !m.proOnly)
+                      ).map(m => {
                         const active = m.id === effectiveModel;
                         return (
                           <button

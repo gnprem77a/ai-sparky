@@ -327,6 +327,15 @@ export const featureEvents = pgTable("feature_events", {
 
 export type FeatureEvent = typeof featureEvents.$inferSelect;
 
+export const planLimits = pgTable("plan_limits", {
+  id: integer("id").primaryKey().default(1),
+  freeAllowedModels: text("free_allowed_models").array().notNull().default(sql`'{auto,fast}'`),
+  freeDailyLimit: integer("free_daily_limit").notNull().default(20),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export type PlanLimits = typeof planLimits.$inferSelect;
+
 export const globalTrial = pgTable("global_trial", {
   id: integer("id").primaryKey().default(1),
   isActive: boolean("is_active").notNull().default(false),

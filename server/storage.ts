@@ -32,6 +32,7 @@ import {
   type GlobalTrial, globalTrial,
   type RedeemCode, redeemCodes,
   type CodeRedemption, codeRedemptions,
+  type PlanLimits, planLimits,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -159,6 +160,9 @@ export interface IStorage {
 
   getSmtpConfig(): Promise<SmtpConfig | undefined>;
   saveSmtpConfig(data: Partial<Omit<SmtpConfig, "id" | "updatedAt">>): Promise<SmtpConfig>;
+
+  getPlanLimits(): Promise<PlanLimits>;
+  savePlanLimits(data: Partial<Omit<PlanLimits, "id" | "updatedAt">>): Promise<PlanLimits>;
 
   getGlobalTrial(): Promise<GlobalTrial | undefined>;
   applyGlobalTrial(durationDays: number, enrollWindowDays: number): Promise<GlobalTrial>;
@@ -1018,6 +1022,30 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return row;
     }
+  }
+
+  async getPlanLimits(): Promise<PlanLimits> {
+    const [row] = await db.select().from(planLimits).where(eq(planLimits.id, 1));
+    if (row) return row;
+    const [created] = await db.insert(planLimits)
+      .values({ id: 1, freeAllowedModels: ["auto", "fast"], freeDailyLimit: 20, updatedAt: new Date() } as any)
+      .returning();
+    return created;
+  }
+
+  async savePlanLimits(data: Partial<Omit<PlanLimits, "id" | "updatedAt">>): Promise<PlanLimits> {
+    const existing = await db.select().from(planLimits).where(eq(planLimits.id, 1));
+    if (existing.length > 0) {
+      const [row] = await db.update(planLimits)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(planLimits.id, 1))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(planLimits)
+      .values({ id: 1, ...data, updatedAt: new Date() } as any)
+      .returning();
+    return row;
   }
 
   async getGlobalTrial(): Promise<GlobalTrial | undefined> {
