@@ -4,44 +4,44 @@
 
 /* LIGHT MODE */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .06);
+  --button-outline: rgba(0,0,0, .09);
+  --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .025);
-  --elevate-2: rgba(0,0,0, .06);
-  /* Cool blue-white background — crisp, not just plain white */
-  --background: 218 40% 96%;
-  --foreground: 222 45% 8%;
-  /* Cards are pure white — float above the background */
+  --elevate-2: rgba(0,0,0, .055);
+  /* Crisp white main content — pure paper */
+  --background: 210 20% 98%;
+  --foreground: 222 47% 8%;
+  /* Cards — pure white, clearly elevated */
   --card: 0 0% 100%;
-  --card-foreground: 222 45% 8%;
-  --card-border: 220 28% 83%;
-  /* Sidebar — richer, deeper blue-slate */
-  --sidebar: 222 48% 74%;
-  --sidebar-foreground: 222 50% 10%;
-  --sidebar-border: 222 44% 65%;
-  --sidebar-primary: 250 86% 52%;
+  --card-foreground: 222 47% 8%;
+  --card-border: 220 18% 86%;
+  /* Sidebar — deep navy, strong visual anchor (like Linear/Slack) */
+  --sidebar: 222 55% 20%;
+  --sidebar-foreground: 220 20% 88%;
+  --sidebar-border: 222 50% 26%;
+  --sidebar-primary: 252 90% 68%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 52% 67%;
-  --sidebar-accent-foreground: 222 50% 8%;
-  --sidebar-ring: 250 86% 52%;
-  /* Popovers are pure white — elevated above everything */
+  --sidebar-accent: 222 52% 27%;
+  --sidebar-accent-foreground: 220 20% 93%;
+  --sidebar-ring: 252 90% 68%;
+  /* Popovers — pure white elevated surface */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 45% 8%;
-  --popover-border: 220 28% 82%;
-  --primary: 250 86% 52%;
+  --popover-foreground: 222 47% 8%;
+  --popover-border: 220 18% 84%;
+  --primary: 250 86% 54%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 218 30% 91%;
-  --secondary-foreground: 222 35% 12%;
-  --muted: 218 30% 92%;
-  --muted-foreground: 220 22% 34%;
-  --accent: 218 30% 91%;
-  --accent-foreground: 222 35% 12%;
+  --secondary: 215 20% 93%;
+  --secondary-foreground: 222 35% 14%;
+  --muted: 215 20% 93%;
+  --muted-foreground: 220 16% 38%;
+  --accent: 215 20% 93%;
+  --accent-foreground: 222 35% 14%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 28% 80%;
-  --input: 220 28% 74%;
-  --ring: 250 86% 52%;
+  --border: 220 16% 88%;
+  --input: 220 16% 84%;
+  --ring: 250 86% 54%;
   --chart-1: 250 84% 54%;
   --chart-2: 280 70% 48%;
   --chart-3: 160 60% 42%;

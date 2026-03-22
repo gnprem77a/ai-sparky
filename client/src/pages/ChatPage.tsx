@@ -1556,20 +1556,6 @@ ${messagesHtml}
               </button>
             )}
 
-            {/* Plan banner for free users */}
-            {!isPro && messages.length === 0 && !activeId && (
-              <div className="flex-shrink-0 mx-4 mb-1">
-                <div className="max-w-3xl mx-auto px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center gap-2">
-                  <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    <span className="font-semibold">Free plan:</span> 20 messages/day · Fast model only ·{" "}
-                    <span className="underline cursor-pointer" onClick={() => { setSettingsOpen(false); navigate("/admin"); }}>
-                      Admin can upgrade your plan
-                    </span>
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Follow-up suggestion chips */}
             {followUpSuggestions.length > 0 && !isStreaming && (
