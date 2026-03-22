@@ -212,7 +212,15 @@ export default function ChatPage() {
   const isPro = isProActive(user);
 
   /* ── Plan limits (for model selector UI) ── */
-  const { data: planLimitsData } = useQuery<{ freeAllowedModels: string[]; freeDailyLimit: number }>({
+  const { data: planLimitsData } = useQuery<{
+    freeAllowedModels: string[];
+    freeDailyLimit: number;
+    freeMaxTokens: number;
+    freeMaxFilesCount: number;
+    freeMaxFileSizeMb: number;
+    proMaxFilesCount: number;
+    proMaxFileSizeMb: number;
+  }>({
     queryKey: ["/api/config/plan-limits"],
     staleTime: 5 * 60 * 1000,
   });
@@ -781,10 +789,6 @@ ${messagesHtml}
         body: JSON.stringify({
           messages: historyForApi,
           model: modelOverride ?? model,
-          maxTokens: (() => {
-            const m = modelOverride ?? model;
-            return m === "powerful" ? 32000 : m === "fast" ? 4096 : 8192;
-          })(),
           webSearch: webSearchMode,
         }),
         signal: controller.signal,
@@ -1605,6 +1609,8 @@ ${messagesHtml}
                 onModelChange={handleModelChange}
                 isPro={isPro}
                 freeAllowedModels={isPro ? undefined : planLimitsData?.freeAllowedModels}
+                maxFilesCount={isPro ? (planLimitsData?.proMaxFilesCount ?? 5) : (planLimitsData?.freeMaxFilesCount ?? 2)}
+                maxFileSizeMb={isPro ? (planLimitsData?.proMaxFileSizeMb ?? 25) : (planLimitsData?.freeMaxFileSizeMb ?? 5)}
                 quotedMessage={quotedMessage ?? undefined}
                 onClearQuote={() => setQuotedMessage(null)}
                 isWebSearch={webSearchMode}

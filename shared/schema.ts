@@ -331,6 +331,11 @@ export const planLimits = pgTable("plan_limits", {
   id: integer("id").primaryKey().default(1),
   freeAllowedModels: text("free_allowed_models").array().notNull().default(sql`'{auto,fast}'`),
   freeDailyLimit: integer("free_daily_limit").notNull().default(20),
+  freeMaxTokens: integer("free_max_tokens").notNull().default(4096),
+  freeMaxFilesCount: integer("free_max_files_count").notNull().default(2),
+  freeMaxFileSizeMb: integer("free_max_file_size_mb").notNull().default(5),
+  proMaxFilesCount: integer("pro_max_files_count").notNull().default(5),
+  proMaxFileSizeMb: integer("pro_max_file_size_mb").notNull().default(25),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
 

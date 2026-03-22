@@ -1028,7 +1028,7 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(planLimits).where(eq(planLimits.id, 1));
     if (row) return row;
     const [created] = await db.insert(planLimits)
-      .values({ id: 1, freeAllowedModels: ["auto", "fast"], freeDailyLimit: 20, updatedAt: new Date() } as any)
+      .values({ id: 1, freeAllowedModels: ["auto", "fast"], freeDailyLimit: 20, freeMaxTokens: 4096, freeMaxFilesCount: 2, freeMaxFileSizeMb: 5, proMaxFilesCount: 5, proMaxFileSizeMb: 25, updatedAt: new Date() } as any)
       .returning();
     return created;
   }

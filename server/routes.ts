@@ -1342,17 +1342,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.put("/api/admin/plan-limits", requireAdmin as any, async (req: Request, res: Response) => {
-    const { freeAllowedModels, freeDailyLimit } = req.body;
+    const {
+      freeAllowedModels, freeDailyLimit,
+      freeMaxTokens, freeMaxFilesCount, freeMaxFileSizeMb,
+      proMaxFilesCount, proMaxFileSizeMb,
+    } = req.body;
     if (!Array.isArray(freeAllowedModels)) return res.status(400).json({ error: "freeAllowedModels must be an array" });
     if (typeof freeDailyLimit !== "number" || freeDailyLimit < 1) return res.status(400).json({ error: "freeDailyLimit must be a positive number" });
-    const saved = await storage.savePlanLimits({ freeAllowedModels, freeDailyLimit });
+    const saved = await storage.savePlanLimits({
+      freeAllowedModels, freeDailyLimit,
+      ...(typeof freeMaxTokens === "number" && { freeMaxTokens }),
+      ...(typeof freeMaxFilesCount === "number" && { freeMaxFilesCount }),
+      ...(typeof freeMaxFileSizeMb === "number" && { freeMaxFileSizeMb }),
+      ...(typeof proMaxFilesCount === "number" && { proMaxFilesCount }),
+      ...(typeof proMaxFileSizeMb === "number" && { proMaxFileSizeMb }),
+    });
     return res.json(saved);
   });
 
   /* ── public: plan limits (for frontend) ── */
   app.get("/api/config/plan-limits", async (_req: Request, res: Response) => {
     const limits = await storage.getPlanLimits();
-    return res.json({ freeAllowedModels: limits.freeAllowedModels, freeDailyLimit: limits.freeDailyLimit });
+    return res.json({
+      freeAllowedModels: limits.freeAllowedModels,
+      freeDailyLimit: limits.freeDailyLimit,
+      freeMaxTokens: limits.freeMaxTokens,
+      freeMaxFilesCount: limits.freeMaxFilesCount,
+      freeMaxFileSizeMb: limits.freeMaxFileSizeMb,
+      proMaxFilesCount: limits.proMaxFilesCount,
+      proMaxFileSizeMb: limits.proMaxFileSizeMb,
+    });
   });
 
   /* ── admin: global trial ── */
@@ -1547,10 +1566,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       void storage.trackFeatureEvent(user.id, "send_message");
     }
 
-    /* ── maxTokens: pro gets model-specific limit, free gets 4096 cap ── */
+    /* ── maxTokens: pro gets model-specific limit, free gets DB-configured cap ── */
+    const freeTokenCap = planCfg.freeMaxTokens ?? 4096;
     const maxTokens = pro
       ? (MODEL_TOKEN_LIMITS[effectiveModel] ?? 8192)
-      : Math.min(MODEL_TOKEN_LIMITS[effectiveModel] ?? 4096, 4096);
+      : Math.min(MODEL_TOKEN_LIMITS[effectiveModel] ?? freeTokenCap, freeTokenCap);
 
     /* ── load system prompt ── */
     const settings = await storage.getUserSettings(user.id);

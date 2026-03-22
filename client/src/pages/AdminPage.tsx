@@ -1244,6 +1244,198 @@ function TrialSection() {
   );
 }
 
+function PlanLimitsSection() {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const { data: limits, refetch } = useQuery<any>({
+    queryKey: ["/api/admin/plan-limits"],
+    queryFn: () => fetch("/api/admin/plan-limits", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const [freeModels, setFreeModels] = useState<string[]>([]);
+  const [freeDailyLimit, setFreeDailyLimit] = useState("20");
+  const [freeMaxTokens, setFreeMaxTokens] = useState("4096");
+  const [freeMaxFiles, setFreeMaxFiles] = useState("2");
+  const [freeMaxFileMb, setFreeMaxFileMb] = useState("5");
+  const [proMaxFiles, setProMaxFiles] = useState("5");
+  const [proMaxFileMb, setProMaxFileMb] = useState("25");
+
+  useEffect(() => {
+    if (!limits) return;
+    setFreeModels(limits.freeAllowedModels ?? ["auto", "fast"]);
+    setFreeDailyLimit(String(limits.freeDailyLimit ?? 20));
+    setFreeMaxTokens(String(limits.freeMaxTokens ?? 4096));
+    setFreeMaxFiles(String(limits.freeMaxFilesCount ?? 2));
+    setFreeMaxFileMb(String(limits.freeMaxFileSizeMb ?? 5));
+    setProMaxFiles(String(limits.proMaxFilesCount ?? 5));
+    setProMaxFileMb(String(limits.proMaxFileSizeMb ?? 25));
+  }, [limits]);
+
+  const toggleModel = (id: string) => {
+    setFreeModels(prev =>
+      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
+    );
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/plan-limits", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          freeAllowedModels: freeModels,
+          freeDailyLimit: Number(freeDailyLimit),
+          freeMaxTokens: Number(freeMaxTokens),
+          freeMaxFilesCount: Number(freeMaxFiles),
+          freeMaxFileSizeMb: Number(freeMaxFileMb),
+          proMaxFilesCount: Number(proMaxFiles),
+          proMaxFileSizeMb: Number(proMaxFileMb),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/config/plan-limits"] });
+      toast({ title: "Plan limits saved", description: "Changes are live immediately." });
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 mt-6">
+      <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-primary" />
+          <h2 className="font-semibold text-foreground">Free Plan Limits</h2>
+          <span className="text-[11px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full ml-auto">All values are applied immediately on save</span>
+        </div>
+
+        <div className="p-6 space-y-6">
+
+          {/* Models */}
+          <div>
+            <p className="text-sm font-medium text-foreground mb-1">Models available to free users</p>
+            <p className="text-[12px] text-muted-foreground mb-3">Models not checked here will be locked (Pro only) for free users.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {MODELS.map(m => {
+                const checked = freeModels.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => toggleModel(m.id)}
+                    data-testid={`toggle-free-model-${m.id}`}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all",
+                      checked
+                        ? "border-primary/40 bg-primary/6 text-primary"
+                        : "border-border/60 bg-muted/20 text-muted-foreground hover:border-border"
+                    )}
+                  >
+                    <div className={cn("w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors",
+                      checked ? "bg-primary border-primary" : "border-border/60"
+                    )}>
+                      {checked && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                    </div>
+                    <div className={cn("w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0", m.iconBg)}>
+                      <span className={m.iconColor}>{m.icon}</span>
+                    </div>
+                    <span className="text-sm font-medium">{m.friendlyName}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="border-t border-border/40" />
+
+          {/* Numeric limits */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Daily message limit (free)</label>
+              <p className="text-[11px] text-muted-foreground mb-2">Max messages a free user can send per day.</p>
+              <input
+                type="number" min="1" max="9999"
+                value={freeDailyLimit}
+                onChange={e => setFreeDailyLimit(e.target.value)}
+                data-testid="input-free-daily-limit"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Max tokens per reply (free)</label>
+              <p className="text-[11px] text-muted-foreground mb-2">Maximum output tokens per message for free users.</p>
+              <input
+                type="number" min="512" max="32000" step="512"
+                value={freeMaxTokens}
+                onChange={e => setFreeMaxTokens(e.target.value)}
+                data-testid="input-free-max-tokens"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Max file attachments (free)</label>
+              <input
+                type="number" min="1" max="20"
+                value={freeMaxFiles}
+                onChange={e => setFreeMaxFiles(e.target.value)}
+                data-testid="input-free-max-files"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Max file size MB (free)</label>
+              <input
+                type="number" min="1" max="100"
+                value={freeMaxFileMb}
+                onChange={e => setFreeMaxFileMb(e.target.value)}
+                data-testid="input-free-max-file-mb"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Max file attachments (Pro)</label>
+              <input
+                type="number" min="1" max="50"
+                value={proMaxFiles}
+                onChange={e => setProMaxFiles(e.target.value)}
+                data-testid="input-pro-max-files"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1">Max file size MB (Pro)</label>
+              <input
+                type="number" min="1" max="500"
+                value={proMaxFileMb}
+                onChange={e => setProMaxFileMb(e.target.value)}
+                data-testid="input-pro-max-file-mb"
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="button-save-plan-limits"
+              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Save Limits
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmailSection() {
   const { toast } = useToast();
   const [form, setForm] = useState<SmtpFormData>({
@@ -2146,7 +2338,7 @@ export default function AdminPage() {
 
         {/* Providers tab */}
         {activeTab === "providers" && <ProvidersSection />}
-        {activeTab === "trial" && <TrialSection />}
+        {activeTab === "trial" && <><TrialSection /><PlanLimitsSection /></>}
         {activeTab === "email" && <EmailSection />}
 
         {/* Token Usage — Overview tab */}
