@@ -9,39 +9,39 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .025);
   --elevate-2: rgba(0,0,0, .06);
-  /* Near-pure white main content — the "paper" surface */
-  --background: 220 20% 98%;
-  --foreground: 222 35% 9%;
-  /* Cards float above background */
+  /* Cool blue-white background — crisp, not just plain white */
+  --background: 218 40% 96%;
+  --foreground: 222 45% 8%;
+  /* Cards are pure white — float above the background */
   --card: 0 0% 100%;
-  --card-foreground: 222 35% 9%;
-  --card-border: 220 20% 88%;
-  /* Sidebar is a strong blue-slate — clearly a distinct navigation panel */
-  --sidebar: 222 42% 83%;
-  --sidebar-foreground: 222 40% 15%;
-  --sidebar-border: 222 38% 76%;
-  --sidebar-primary: 250 84% 54%;
+  --card-foreground: 222 45% 8%;
+  --card-border: 220 28% 83%;
+  /* Sidebar — richer, deeper blue-slate */
+  --sidebar: 222 48% 74%;
+  --sidebar-foreground: 222 50% 10%;
+  --sidebar-border: 222 44% 65%;
+  --sidebar-primary: 250 86% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 222 48% 77%;
-  --sidebar-accent-foreground: 222 45% 10%;
-  --sidebar-ring: 250 84% 54%;
+  --sidebar-accent: 222 52% 67%;
+  --sidebar-accent-foreground: 222 50% 8%;
+  --sidebar-ring: 250 86% 52%;
   /* Popovers are pure white — elevated above everything */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 35% 9%;
-  --popover-border: 220 20% 84%;
-  --primary: 250 84% 54%;
+  --popover-foreground: 222 45% 8%;
+  --popover-border: 220 28% 82%;
+  --primary: 250 86% 52%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 18% 93%;
-  --secondary-foreground: 222 25% 14%;
-  --muted: 220 20% 95%;
-  --muted-foreground: 220 14% 40%;
-  --accent: 220 18% 93%;
-  --accent-foreground: 222 25% 14%;
+  --secondary: 218 30% 91%;
+  --secondary-foreground: 222 35% 12%;
+  --muted: 218 30% 92%;
+  --muted-foreground: 220 22% 34%;
+  --accent: 218 30% 91%;
+  --accent-foreground: 222 35% 12%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 18% 84%;
-  --input: 220 18% 78%;
-  --ring: 250 84% 54%;
+  --border: 220 28% 80%;
+  --input: 220 28% 74%;
+  --ring: 250 86% 52%;
   --chart-1: 250 84% 54%;
   --chart-2: 280 70% 48%;
   --chart-3: 160 60% 42%;
@@ -226,6 +226,21 @@
   @media (max-width: 768px) {
     input, textarea, select {
       font-size: max(16px, 1em);
+    }
+    /* Hide scrollbars on mobile — scroll still works, just invisible */
+    .custom-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .custom-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  }
+
+  /* iOS safe area — pads chat input above home indicator */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .safe-bottom {
+      padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
     }
   }
 

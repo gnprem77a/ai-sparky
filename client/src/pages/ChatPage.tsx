@@ -1159,7 +1159,7 @@ ${messagesHtml}
         onLogin={() => setLoginModalOpen(true)}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 h-dvh overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Header */}
         <header className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-border/40">
           <div className="flex items-center gap-1">
@@ -1601,7 +1601,7 @@ ${messagesHtml}
               </div>
             )}
 
-            <div className="flex-shrink-0" data-testid="chat-input-area">
+            <div className="flex-shrink-0 safe-bottom" data-testid="chat-input-area">
               <ChatInput
                 value={input}
                 onChange={setInput}
