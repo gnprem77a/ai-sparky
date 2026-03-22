@@ -215,11 +215,7 @@ export default function ChatPage() {
   const { data: planLimitsData } = useQuery<{
     freeAllowedModels: string[];
     freeDailyLimit: number;
-    freeMaxTokens: number;
-    freeMaxFilesCount: number;
-    freeMaxFileSizeMb: number;
-    proMaxFilesCount: number;
-    proMaxFileSizeMb: number;
+    proMonthlyTokens: number;
   }>({
     queryKey: ["/api/config/plan-limits"],
     staleTime: 5 * 60 * 1000,
@@ -1609,8 +1605,6 @@ ${messagesHtml}
                 onModelChange={handleModelChange}
                 isPro={isPro}
                 freeAllowedModels={isPro ? undefined : planLimitsData?.freeAllowedModels}
-                maxFilesCount={isPro ? (planLimitsData?.proMaxFilesCount ?? 5) : (planLimitsData?.freeMaxFilesCount ?? 2)}
-                maxFileSizeMb={isPro ? (planLimitsData?.proMaxFileSizeMb ?? 25) : (planLimitsData?.freeMaxFileSizeMb ?? 5)}
                 quotedMessage={quotedMessage ?? undefined}
                 onClearQuote={() => setQuotedMessage(null)}
                 isWebSearch={webSearchMode}

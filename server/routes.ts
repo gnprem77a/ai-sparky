@@ -728,7 +728,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(401).json({ error: "User not found" });
     const pro = isProActive(user);
-    const PRO_MONTHLY_LIMIT = 2_200_000;
+    const planCfgUsage = await storage.getPlanLimits();
+    const PRO_MONTHLY_LIMIT = planCfgUsage.proMonthlyTokens ?? 2_200_000;
     const now = new Date();
     let resetAt = user.monthlyTokensResetAt;
     let used    = user.monthlyOutputTokens ?? 0;
@@ -1342,35 +1343,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.put("/api/admin/plan-limits", requireAdmin as any, async (req: Request, res: Response) => {
-    const {
-      freeAllowedModels, freeDailyLimit,
-      freeMaxTokens, freeMaxFilesCount, freeMaxFileSizeMb,
-      proMaxFilesCount, proMaxFileSizeMb,
-    } = req.body;
+    const { freeAllowedModels, freeDailyLimit, proMonthlyTokens } = req.body;
     if (!Array.isArray(freeAllowedModels)) return res.status(400).json({ error: "freeAllowedModels must be an array" });
     if (typeof freeDailyLimit !== "number" || freeDailyLimit < 1) return res.status(400).json({ error: "freeDailyLimit must be a positive number" });
-    const saved = await storage.savePlanLimits({
-      freeAllowedModels, freeDailyLimit,
-      ...(typeof freeMaxTokens === "number" && { freeMaxTokens }),
-      ...(typeof freeMaxFilesCount === "number" && { freeMaxFilesCount }),
-      ...(typeof freeMaxFileSizeMb === "number" && { freeMaxFileSizeMb }),
-      ...(typeof proMaxFilesCount === "number" && { proMaxFilesCount }),
-      ...(typeof proMaxFileSizeMb === "number" && { proMaxFileSizeMb }),
-    });
+    if (typeof proMonthlyTokens !== "number" || proMonthlyTokens < 1) return res.status(400).json({ error: "proMonthlyTokens must be a positive number" });
+    const saved = await storage.savePlanLimits({ freeAllowedModels, freeDailyLimit, proMonthlyTokens });
     return res.json(saved);
   });
 
-  /* ── public: plan limits (for frontend) ── */
+  /* ── public: plan limits (for frontend model selector) ── */
   app.get("/api/config/plan-limits", async (_req: Request, res: Response) => {
     const limits = await storage.getPlanLimits();
     return res.json({
       freeAllowedModels: limits.freeAllowedModels,
       freeDailyLimit: limits.freeDailyLimit,
-      freeMaxTokens: limits.freeMaxTokens,
-      freeMaxFilesCount: limits.freeMaxFilesCount,
-      freeMaxFileSizeMb: limits.freeMaxFileSizeMb,
-      proMaxFilesCount: limits.proMaxFilesCount,
-      proMaxFileSizeMb: limits.proMaxFileSizeMb,
+      proMonthlyTokens: limits.proMonthlyTokens,
     });
   });
 
@@ -1496,7 +1483,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
         used = 0;
       }
-      const PRO_MONTHLY_LIMIT = 2_200_000;
+      const PRO_MONTHLY_LIMIT = planCfg.proMonthlyTokens ?? 2_200_000;
       if (used >= PRO_MONTHLY_LIMIT) {
         return res.status(429).json({
           error: `Monthly token limit reached (${PRO_MONTHLY_LIMIT.toLocaleString()} output tokens). Resets on ${resetAt!.toLocaleDateString()}.`,
@@ -1693,9 +1680,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         );
         const freshUser = await storage.getUser(user.id);
         const newUsed = freshUser?.monthlyOutputTokens ?? 0;
-        const PRO_MONTHLY_LIMIT = 2_200_000;
-        const warnAt = Math.floor(PRO_MONTHLY_LIMIT * 0.9);
-        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources, monthlyTokensUsed: newUsed, monthlyTokensLimit: PRO_MONTHLY_LIMIT, monthlyWarn: newUsed >= warnAt })}\n\n`);
+        const PRO_MONTHLY_LIMIT_DONE = planCfg.proMonthlyTokens ?? 2_200_000;
+        const warnAt = Math.floor(PRO_MONTHLY_LIMIT_DONE * 0.9);
+        res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources, monthlyTokensUsed: newUsed, monthlyTokensLimit: PRO_MONTHLY_LIMIT_DONE, monthlyWarn: newUsed >= warnAt })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, sources: searchSources })}\n\n`);
       }

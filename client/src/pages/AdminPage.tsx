@@ -1244,8 +1244,13 @@ function TrialSection() {
   );
 }
 
+const FREE_DEFAULT_DAILY = 20;
+const PRO_DEFAULT_MONTHLY = 2_200_000;
+
 function PlanLimitsSection() {
   const { toast } = useToast();
+  const [tab, setTab] = useState<"free" | "pro">("free");
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const { data: limits, refetch } = useQuery<any>({
@@ -1253,29 +1258,19 @@ function PlanLimitsSection() {
     queryFn: () => fetch("/api/admin/plan-limits", { credentials: "include" }).then(r => r.json()),
   });
 
-  const [freeModels, setFreeModels] = useState<string[]>([]);
-  const [freeDailyLimit, setFreeDailyLimit] = useState("20");
-  const [freeMaxTokens, setFreeMaxTokens] = useState("4096");
-  const [freeMaxFiles, setFreeMaxFiles] = useState("2");
-  const [freeMaxFileMb, setFreeMaxFileMb] = useState("5");
-  const [proMaxFiles, setProMaxFiles] = useState("5");
-  const [proMaxFileMb, setProMaxFileMb] = useState("25");
+  const [freeModels, setFreeModels]       = useState<string[]>(["auto", "fast"]);
+  const [freeDailyLimit, setFreeDailyLimit] = useState(String(FREE_DEFAULT_DAILY));
+  const [proMonthlyTokens, setProMonthlyTokens] = useState(String(PRO_DEFAULT_MONTHLY));
 
   useEffect(() => {
     if (!limits) return;
     setFreeModels(limits.freeAllowedModels ?? ["auto", "fast"]);
-    setFreeDailyLimit(String(limits.freeDailyLimit ?? 20));
-    setFreeMaxTokens(String(limits.freeMaxTokens ?? 4096));
-    setFreeMaxFiles(String(limits.freeMaxFilesCount ?? 2));
-    setFreeMaxFileMb(String(limits.freeMaxFileSizeMb ?? 5));
-    setProMaxFiles(String(limits.proMaxFilesCount ?? 5));
-    setProMaxFileMb(String(limits.proMaxFileSizeMb ?? 25));
+    setFreeDailyLimit(String(limits.freeDailyLimit ?? FREE_DEFAULT_DAILY));
+    setProMonthlyTokens(String(limits.proMonthlyTokens ?? PRO_DEFAULT_MONTHLY));
   }, [limits]);
 
-  const toggleModel = (id: string) => {
-    setFreeModels(prev =>
-      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
-    );
+  const toggleFreeModel = (id: string) => {
+    setFreeModels(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
   };
 
   const handleSave = async () => {
@@ -1288,17 +1283,13 @@ function PlanLimitsSection() {
         body: JSON.stringify({
           freeAllowedModels: freeModels,
           freeDailyLimit: Number(freeDailyLimit),
-          freeMaxTokens: Number(freeMaxTokens),
-          freeMaxFilesCount: Number(freeMaxFiles),
-          freeMaxFileSizeMb: Number(freeMaxFileMb),
-          proMaxFilesCount: Number(proMaxFiles),
-          proMaxFileSizeMb: Number(proMaxFileMb),
+          proMonthlyTokens: Number(proMonthlyTokens),
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       await refetch();
       queryClient.invalidateQueries({ queryKey: ["/api/config/plan-limits"] });
-      toast({ title: "Plan limits saved", description: "Changes are live immediately." });
+      toast({ title: "Limits saved", description: "Changes are live immediately." });
     } catch (e: any) {
       toast({ title: "Save failed", description: e.message, variant: "destructive" });
     } finally {
@@ -1306,129 +1297,176 @@ function PlanLimitsSection() {
     }
   };
 
+  const handleReset = () => {
+    if (tab === "free") {
+      setFreeDailyLimit(String(FREE_DEFAULT_DAILY));
+    } else {
+      setProMonthlyTokens(String(PRO_DEFAULT_MONTHLY));
+    }
+  };
+
+  const proModels = MODELS;
+  const visibleModels = tab === "free" ? MODELS : proModels;
+
+  const activeModelObj = selectedModel ? MODELS.find(m => m.id === selectedModel) : null;
+
   return (
-    <div className="space-y-6 mt-6">
+    <div className="space-y-4 mt-6">
       <div className="rounded-2xl border border-border bg-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
           <Settings2 className="w-4 h-4 text-primary" />
-          <h2 className="font-semibold text-foreground">Free Plan Limits</h2>
-          <span className="text-[11px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full ml-auto">All values are applied immediately on save</span>
+          <h2 className="font-semibold text-foreground">Plan Limits</h2>
+          <div className="ml-auto flex items-center gap-1 p-1 bg-muted/50 rounded-xl">
+            {(["free", "pro"] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => { setTab(t); setSelectedModel(null); }}
+                data-testid={`tab-plan-${t}`}
+                className={cn(
+                  "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  tab === t
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t === "free" ? "Free Plan" : "Pro Plan"}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="p-6 space-y-6">
-
-          {/* Models */}
-          <div>
-            <p className="text-sm font-medium text-foreground mb-1">Models available to free users</p>
-            <p className="text-[12px] text-muted-foreground mb-3">Models not checked here will be locked (Pro only) for free users.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {MODELS.map(m => {
-                const checked = freeModels.includes(m.id);
+        <div className="flex min-h-[340px]">
+          {/* Left — model grid */}
+          <div className="flex-1 p-5 border-r border-border/40">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-3">
+              {tab === "free" ? "Models available to free users" : "All models (Pro)"}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {visibleModels.map(m => {
+                const isFreeEnabled = tab === "free" && freeModels.includes(m.id);
+                const isSelected = selectedModel === m.id;
                 return (
                   <button
                     key={m.id}
-                    onClick={() => toggleModel(m.id)}
-                    data-testid={`toggle-free-model-${m.id}`}
+                    onClick={() => {
+                      setSelectedModel(m.id);
+                      if (tab === "free") toggleFreeModel(m.id);
+                    }}
+                    data-testid={`card-model-${tab}-${m.id}`}
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all",
-                      checked
-                        ? "border-primary/40 bg-primary/6 text-primary"
-                        : "border-border/60 bg-muted/20 text-muted-foreground hover:border-border"
+                      isSelected
+                        ? "border-primary/50 bg-primary/8 ring-1 ring-primary/20"
+                        : "border-border/50 hover:border-border hover:bg-muted/30",
+                      tab === "free" && !isFreeEnabled && !isSelected && "opacity-50"
                     )}
                   >
-                    <div className={cn("w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors",
-                      checked ? "bg-primary border-primary" : "border-border/60"
-                    )}>
-                      {checked && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
-                    </div>
-                    <div className={cn("w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0", m.iconBg)}>
+                    <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", m.iconBg)}>
                       <span className={m.iconColor}>{m.icon}</span>
                     </div>
-                    <span className="text-sm font-medium">{m.friendlyName}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={cn("text-sm font-medium truncate", isSelected ? "text-primary" : "text-foreground/90")}>
+                        {m.friendlyName}
+                      </p>
+                      {tab === "free" && (
+                        <p className={cn("text-[10px]", isFreeEnabled ? "text-emerald-500" : "text-muted-foreground/50")}>
+                          {isFreeEnabled ? "Accessible" : "Pro only"}
+                        </p>
+                      )}
+                      {tab === "pro" && (
+                        <p className="text-[10px] text-muted-foreground/50">Always available</p>
+                      )}
+                    </div>
+                    {tab === "free" && (
+                      <div className={cn(
+                        "w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 transition-colors",
+                        isFreeEnabled ? "bg-emerald-500 border-emerald-500" : "border-border/60"
+                      )}>
+                        {isFreeEnabled && <Check className="w-2.5 h-2.5 text-white" />}
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="border-t border-border/40" />
+          {/* Right — limit detail */}
+          <div className="w-64 p-5 flex flex-col">
+            {activeModelObj ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", activeModelObj.iconBg)}>
+                    <span className={activeModelObj.iconColor}>{activeModelObj.icon}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{activeModelObj.friendlyName}</p>
+                    <p className="text-[10px] text-muted-foreground">{tab === "free" ? "Free Plan" : "Pro Plan"}</p>
+                  </div>
+                </div>
 
-          {/* Numeric limits */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Daily message limit (free)</label>
-              <p className="text-[11px] text-muted-foreground mb-2">Max messages a free user can send per day.</p>
-              <input
-                type="number" min="1" max="9999"
-                value={freeDailyLimit}
-                onChange={e => setFreeDailyLimit(e.target.value)}
-                data-testid="input-free-daily-limit"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Max tokens per reply (free)</label>
-              <p className="text-[11px] text-muted-foreground mb-2">Maximum output tokens per message for free users.</p>
-              <input
-                type="number" min="512" max="32000" step="512"
-                value={freeMaxTokens}
-                onChange={e => setFreeMaxTokens(e.target.value)}
-                data-testid="input-free-max-tokens"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Max file attachments (free)</label>
-              <input
-                type="number" min="1" max="20"
-                value={freeMaxFiles}
-                onChange={e => setFreeMaxFiles(e.target.value)}
-                data-testid="input-free-max-files"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Max file size MB (free)</label>
-              <input
-                type="number" min="1" max="100"
-                value={freeMaxFileMb}
-                onChange={e => setFreeMaxFileMb(e.target.value)}
-                data-testid="input-free-max-file-mb"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Max file attachments (Pro)</label>
-              <input
-                type="number" min="1" max="50"
-                value={proMaxFiles}
-                onChange={e => setProMaxFiles(e.target.value)}
-                data-testid="input-pro-max-files"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Max file size MB (Pro)</label>
-              <input
-                type="number" min="1" max="500"
-                value={proMaxFileMb}
-                onChange={e => setProMaxFileMb(e.target.value)}
-                data-testid="input-pro-max-file-mb"
-                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
+                {tab === "free" ? (
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 block mb-2">
+                      Daily Message Limit
+                    </label>
+                    <input
+                      type="number" min="1" max="9999"
+                      value={freeDailyLimit}
+                      onChange={e => setFreeDailyLimit(e.target.value)}
+                      data-testid="input-free-daily-limit"
+                      className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 mb-1"
+                    />
+                    <p className="text-[10px] text-muted-foreground">messages / day</p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60 block mb-2">
+                      Monthly Token Limit
+                    </label>
+                    <input
+                      type="number" min="1000" step="100000"
+                      value={proMonthlyTokens}
+                      onChange={e => setProMonthlyTokens(e.target.value)}
+                      data-testid="input-pro-monthly-tokens"
+                      className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 mb-1"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      {Number(proMonthlyTokens).toLocaleString()} output tokens / month
+                    </p>
+                  </div>
+                )}
 
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              data-testid="button-save-plan-limits"
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              Save Limits
-            </button>
+                <div className="mt-auto pt-4 flex flex-col gap-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    data-testid="button-save-plan-limits"
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    Save
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    data-testid="button-reset-plan-limits"
+                    className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-border/60 text-muted-foreground text-sm hover:text-foreground hover:border-border transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Reset to Default
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-center">
+                <div>
+                  <Settings2 className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground/60">
+                    Click any model to{tab === "free" ? " toggle access and" : ""} view its limit
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

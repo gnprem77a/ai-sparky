@@ -88,8 +88,6 @@ interface ChatInputProps {
   onModelChange: (model: ModelId) => void;
   isPro?: boolean;
   freeAllowedModels?: string[];
-  maxFilesCount?: number;
-  maxFileSizeMb?: number;
   quotedMessage?: { id: string; snippet: string };
   onClearQuote?: () => void;
   isWebSearch?: boolean;
@@ -99,7 +97,7 @@ interface ChatInputProps {
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, freeAllowedModels, maxFilesCount = isPro ? 5 : 2, maxFileSizeMb = isPro ? 25 : 5, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick, externalFiles }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disabled, model, onModelChange, isPro = true, freeAllowedModels, quotedMessage, onClearQuote, isWebSearch = false, onToggleWebSearch, onUpgradeClick, externalFiles }: ChatInputProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
   const allInputRef    = useRef<HTMLInputElement>(null);
   const imgInputRef    = useRef<HTMLInputElement>(null);
@@ -246,8 +244,8 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
   /* process raw files */
   const processFiles = useCallback(async (files: FileList | File[]) => {
     setIsProcessing(true);
-    const maxFiles   = maxFilesCount;
-    const maxSizeMB  = maxFileSizeMb;
+    const maxFiles   = isPro ? 5 : 2;
+    const maxSizeMB  = isPro ? 25 : 5;
     const maxSizeB   = maxSizeMB * 1024 * 1024;
 
     const incoming = Array.from(files);
@@ -350,7 +348,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
     if (text.length < THRESHOLD) return;
     e.preventDefault();
 
-    const maxFiles = maxFilesCount;
+    const maxFiles = isPro ? 5 : 2;
     if (attachments.length >= maxFiles) return;
 
     const looksLikeCode =
