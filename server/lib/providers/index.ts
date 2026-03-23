@@ -17,9 +17,14 @@ export { resolvePath } from "./custom";
 export function buildAdapter(config: ProviderConfig): ProviderAdapter {
   switch (config.providerType) {
     case "openai":
-    case "azure":
     case "gemini":
     case "openai-compatible":
+      return new OpenAICompatAdapter(config);
+    case "azure":
+      // Azure AI Foundry Anthropic endpoints use /anthropic/ in the URL — route to Anthropic adapter
+      if (config.apiUrl?.toLowerCase().includes("/anthropic/")) {
+        return new AnthropicAdapter(config);
+      }
       return new OpenAICompatAdapter(config);
     case "anthropic":
       return new AnthropicAdapter(config);

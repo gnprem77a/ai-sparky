@@ -13,7 +13,9 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   private get baseUrl(): string {
-    return (this.config.apiUrl ?? "https://api.anthropic.com").replace(/\/$/, "");
+    const url = (this.config.apiUrl ?? "https://api.anthropic.com").replace(/\/$/, "");
+    // Strip trailing /v1/messages if the user pasted the full endpoint URL
+    return url.replace(/\/v1\/messages$/, "");
   }
 
   private buildHeaders(): Record<string, string> {
