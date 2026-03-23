@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail, welcomeEmail, verificationEmail, passwordChangedEmail, testEmail, encryptSmtpPassword, decryptSmtpPassword } from "./lib/email";
+import { isDisposableEmail } from "./lib/disposable-domains";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
@@ -307,6 +308,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const { email, password } = parsed.data;
     const normalizedEmail = email.toLowerCase().trim();
+
+    if (isDisposableEmail(normalizedEmail)) {
+      return res.status(400).json({ error: "Temporary or disposable email addresses are not allowed. Please use a real email address." });
+    }
 
     const existingEmail = await storage.getUserByEmail(normalizedEmail);
     if (existingEmail) return res.status(409).json({ error: "An account with this email already exists." });
