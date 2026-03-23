@@ -21,9 +21,18 @@ export class AnthropicAdapter implements ProviderAdapter {
   private buildHeaders(): Record<string, string> {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
-      "x-api-key": this.config.apiKey ?? "",
       "anthropic-version": "2023-06-01",
     };
+    const key = this.config.apiKey ?? "";
+    const style = this.config.authStyle ?? "x-api-key";
+    if (style === "bearer") {
+      h["Authorization"] = `Bearer ${key}`;
+    } else if (style === "api-key") {
+      h["api-key"] = key;
+    } else {
+      // default: Anthropic native style
+      h["x-api-key"] = key;
+    }
     if (this.config.headers) {
       try { Object.assign(h, JSON.parse(this.config.headers)); } catch {}
     }
@@ -109,7 +118,14 @@ export class AnthropicAdapter implements ProviderAdapter {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`Anthropic error ${response.status}`);
+        const errBody = await response.text().catch(() => "");
+        let errMsg = `Anthropic error ${response.status}`;
+        try {
+          const errJson = JSON.parse(errBody);
+          errMsg += `: ${errJson?.error?.message ?? errBody.slice(0, 300)}`;
+        } catch { if (errBody) errMsg += `: ${errBody.slice(0, 300)}`; }
+        console.error(`[Anthropic] Stream failed — ${errMsg}`);
+        throw new Error(errMsg);
       }
 
       const reader = response.body.getReader();
