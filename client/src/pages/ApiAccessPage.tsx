@@ -24,7 +24,9 @@ interface ApiKeyData {
   totalSpent: number;
   todaySpent: number;
   monthSpent: number;
-  byModel: Record<string, { calls: number; spent: number }>;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  byModel: Record<string, { calls: number; spent: number; inputTokens: number; outputTokens: number }>;
 }
 
 interface ApiLog {
@@ -42,6 +44,7 @@ interface ApiLog {
 
 const MODEL_LABELS: Record<string, string> = {
   powerful: "Claude Opus 4.6",
+  sonnet: "Claude Sonnet 4.5",
   fast: "Claude Haiku",
   creative: "GPT-5.3",
   balanced: "Mistral Large 3",
@@ -596,22 +599,65 @@ func main() {
               </div>
             )}
 
+            {/* Token usage summary */}
+            {!isLoading && ((data?.totalInputTokens ?? 0) + (data?.totalOutputTokens ?? 0)) > 0 && (
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <h2 className="font-semibold text-foreground flex items-center gap-2 mb-4">
+                  <BarChart2 className="w-4 h-4 text-primary" /> Token Usage (All Time)
+                </h2>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: "Input Tokens", value: data?.totalInputTokens ?? 0, color: "text-blue-500" },
+                    { label: "Output Tokens", value: data?.totalOutputTokens ?? 0, color: "text-violet-500" },
+                    { label: "Total Tokens", value: (data?.totalInputTokens ?? 0) + (data?.totalOutputTokens ?? 0), color: "text-foreground" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">{label}</p>
+                      <p className={cn("text-base font-bold tabular-nums", color)} data-testid={`text-tokens-${label.toLowerCase().replace(/ /g, "-")}`}>
+                        {value >= 1_000_000
+                          ? `${(value / 1_000_000).toFixed(2)}M`
+                          : value >= 1_000
+                          ? `${(value / 1_000).toFixed(1)}K`
+                          : value.toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Model usage breakdown */}
             {!isLoading && data?.byModel && Object.keys(data.byModel).length > 0 && (
               <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
                 <h2 className="font-semibold text-foreground flex items-center gap-2">
-                  <TrendingDown className="w-4 h-4 text-primary" /> Spending by Model
+                  <TrendingDown className="w-4 h-4 text-primary" /> Usage by Model
                 </h2>
-                <div className="space-y-3">
-                  {Object.entries(data.byModel).map(([model, stats]) => (
-                    <div key={model} className="flex items-center justify-between text-sm" data-testid={`row-model-${model}`}>
-                      <div>
-                        <span className="font-medium text-foreground">{MODEL_LABELS[model] ?? model}</span>
-                        <span className="text-xs text-muted-foreground ml-2">({stats.calls} calls)</span>
-                      </div>
-                      <span className="font-mono text-foreground tabular-nums">${stats.spent.toFixed(4)}</span>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/60">
+                        <th className="text-left py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Model</th>
+                        <th className="text-right py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Calls</th>
+                        <th className="text-right py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Input Tok</th>
+                        <th className="text-right py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Output Tok</th>
+                        <th className="text-right py-2 text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {Object.entries(data.byModel).map(([model, stats]) => {
+                        const fmtTok = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n/1_000).toFixed(1)}K` : n.toString();
+                        return (
+                          <tr key={model} data-testid={`row-model-${model}`} className="hover:bg-muted/20 transition-colors">
+                            <td className="py-3 font-medium text-foreground">{MODEL_LABELS[model] ?? model}</td>
+                            <td className="py-3 text-right tabular-nums text-muted-foreground text-xs">{stats.calls}</td>
+                            <td className="py-3 text-right tabular-nums text-blue-500 text-xs font-mono">{fmtTok(stats.inputTokens)}</td>
+                            <td className="py-3 text-right tabular-nums text-violet-500 text-xs font-mono">{fmtTok(stats.outputTokens)}</td>
+                            <td className="py-3 text-right tabular-nums font-mono text-foreground">${stats.spent.toFixed(4)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

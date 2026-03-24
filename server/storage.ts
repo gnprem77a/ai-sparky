@@ -56,7 +56,7 @@ export interface IStorage {
   getApiLogs(userId: string, limit?: number): Promise<ApiLog[]>;
   adjustApiBalance(id: string, delta: number): Promise<User | undefined>;
   deductApiBalance(id: string, cost: number): Promise<{ success: boolean; newBalance: number; balanceBefore: number }>;
-  getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }>;
+  getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; totalInputTokens: number; totalOutputTokens: number; byModel: Record<string, { calls: number; spent: number; inputTokens: number; outputTokens: number }> }>;
 
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -347,26 +347,30 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; byModel: Record<string, { calls: number; spent: number }> }> {
+  async getApiStats(userId: string): Promise<{ totalSpent: number; todaySpent: number; monthSpent: number; totalInputTokens: number; totalOutputTokens: number; byModel: Record<string, { calls: number; spent: number; inputTokens: number; outputTokens: number }> }> {
     const logs = await db.select().from(apiLogs).where(eq(apiLogs.userId, userId));
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const monthStr = now.toISOString().slice(0, 7);
-    let totalSpent = 0, todaySpent = 0, monthSpent = 0;
-    const byModel: Record<string, { calls: number; spent: number }> = {};
+    let totalSpent = 0, todaySpent = 0, monthSpent = 0, totalInputTokens = 0, totalOutputTokens = 0;
+    const byModel: Record<string, { calls: number; spent: number; inputTokens: number; outputTokens: number }> = {};
     for (const log of logs) {
       const cost = log.costDeducted ?? 0;
       totalSpent += cost;
+      totalInputTokens += log.inputTokens ?? 0;
+      totalOutputTokens += log.outputTokens ?? 0;
       const logDate = new Date(log.createdAt).toISOString().slice(0, 10);
       const logMonth = new Date(log.createdAt).toISOString().slice(0, 7);
       if (logDate === todayStr) todaySpent += cost;
       if (logMonth === monthStr) monthSpent += cost;
       const model = log.modelUsed ?? "unknown";
-      if (!byModel[model]) byModel[model] = { calls: 0, spent: 0 };
+      if (!byModel[model]) byModel[model] = { calls: 0, spent: 0, inputTokens: 0, outputTokens: 0 };
       byModel[model].calls++;
       byModel[model].spent += cost;
+      byModel[model].inputTokens += log.inputTokens ?? 0;
+      byModel[model].outputTokens += log.outputTokens ?? 0;
     }
-    return { totalSpent, todaySpent, monthSpent, byModel };
+    return { totalSpent, todaySpent, monthSpent, totalInputTokens, totalOutputTokens, byModel };
   }
 
   async getConversations(userId: string): Promise<Conversation[]> {
