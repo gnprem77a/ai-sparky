@@ -2273,7 +2273,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
     const modelSlug: string = modelMap[modelParam] ?? "balanced";
 
-    const messages: { role: string; content: string }[] = rawMessages
+    // Context-window limits per model slug (tokens, ~4 chars/token). Keep a safety margin.
+    const MODEL_CONTEXT_TOKENS: Record<string, number> = {
+      sonnet: 185_000, powerful: 185_000, fast: 185_000, // Claude 200k context
+      balanced: 100_000, creative: 100_000,               // Mistral/GPT ~128k context
+    };
+    const contextTokenLimit = MODEL_CONTEXT_TOKENS[modelSlug] ?? 100_000;
+    const CHARS_PER_TOKEN = 4;
+    const maxContextChars = contextTokenLimit * CHARS_PER_TOKEN;
+
+    // Estimate message length in characters
+    const msgChars = (m: any): number =>
+      typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length;
+
+    // Trim oldest non-system messages until we're under the limit (always keep last 2 turns)
+    const trimmedMessages: any[] = [...rawMessages];
+    while (trimmedMessages.reduce((s, m) => s + msgChars(m), 0) > maxContextChars && trimmedMessages.length > 3) {
+      const idx = trimmedMessages.findIndex((m: any) => m.role !== "system");
+      if (idx === -1) break;
+      trimmedMessages.splice(idx, 1);
+    }
+
+    const messages: { role: string; content: string }[] = trimmedMessages
       .filter((m: any) => m.role !== "system")
       .map((m: any) => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
 
@@ -2384,7 +2405,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
           messages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
-          ...(hasExternalTools ? { externalTools: reqTools, oaiMessages: rawMessages } : {}),
+          ...(hasExternalTools ? { externalTools: reqTools, oaiMessages: trimmedMessages } : {}),
         });
         // Restore original write, send final OpenAI done chunk + [DONE]
         (res as any).write = originalWrite;
