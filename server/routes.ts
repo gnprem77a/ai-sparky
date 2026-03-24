@@ -2282,9 +2282,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const CHARS_PER_TOKEN = 4;
     const maxContextChars = contextTokenLimit * CHARS_PER_TOKEN;
 
-    // Estimate character length of a message
-    const msgChars = (m: any): number =>
-      typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length;
+    // Estimate character length of a message.
+    // Images are huge as base64 but cost ~2k tokens each — don't let them skew the count.
+    const IMAGE_TOKEN_ESTIMATE = 2_000 * CHARS_PER_TOKEN; // 8,000 chars per image
+    const msgChars = (m: any): number => {
+      if (typeof m.content === "string") return m.content.length;
+      if (Array.isArray(m.content)) {
+        return m.content.reduce((s: number, block: any) => {
+          if (block.type === "image_url" || block.type === "image") return s + IMAGE_TOKEN_ESTIMATE;
+          const text = block.text ?? block.content ?? JSON.stringify(block);
+          return s + (typeof text === "string" ? text.length : 0);
+        }, 0);
+      }
+      return JSON.stringify(m.content ?? "").length;
+    };
 
     // Extract system message first so we can account for its size when trimming
     let systemMsg: string = system ?? rawMessages.find((m: any) => m.role === "system")?.content ?? "";

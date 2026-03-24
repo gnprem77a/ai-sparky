@@ -92,12 +92,33 @@ export class AnthropicAdapter implements ProviderAdapter {
         continue;
       }
 
-      // Regular user/assistant message
+      // Regular user/assistant message — may contain text + image blocks
       const role = m.role === "assistant" ? "assistant" : "user";
-      const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
 
-      // Merge consecutive same-role messages (Anthropic restriction)
-      if (out.length > 0 && out[out.length - 1].role === role && typeof out[out.length - 1].content === "string") {
+      let content: string | any[];
+      if (Array.isArray(m.content)) {
+        content = m.content.map((block: any) => {
+          if (block.type === "text") return { type: "text", text: block.text ?? "" };
+          if (block.type === "image_url") {
+            const url: string = block.image_url?.url ?? "";
+            if (url.startsWith("data:")) {
+              // data:image/jpeg;base64,<data>
+              const semi = url.indexOf(";");
+              const comma = url.indexOf(",");
+              const mediaType = semi !== -1 ? url.slice(5, semi) : "image/jpeg";
+              const data = comma !== -1 ? url.slice(comma + 1) : "";
+              return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+            }
+            return { type: "image", source: { type: "url", url } };
+          }
+          return { type: "text", text: JSON.stringify(block) };
+        });
+      } else {
+        content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+      }
+
+      // Merge consecutive same-role plain-text messages (Anthropic restriction)
+      if (out.length > 0 && out[out.length - 1].role === role && typeof out[out.length - 1].content === "string" && typeof content === "string") {
         out[out.length - 1].content += "\n" + content;
       } else {
         out.push({ role, content });
