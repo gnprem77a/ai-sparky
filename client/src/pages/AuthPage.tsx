@@ -42,6 +42,38 @@ export default function AuthPage() {
   /* ── unverified login state ── */
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
+  /* ── standalone resend-verification mode ── */
+  const [resendMode, setResendMode] = useState(false);
+  const [resendModeEmail, setResendModeEmail] = useState("");
+  const [resendModeLoading, setResendModeLoading] = useState(false);
+  const [resendModeSent, setResendModeSent] = useState(false);
+  const [resendModeError, setResendModeError] = useState<string | null>(null);
+
+  const handleResendMode = async () => {
+    if (!resendModeEmail.trim()) return;
+    setResendModeLoading(true);
+    setResendModeError(null);
+    setResendModeSent(false);
+    try {
+      const res = await fetch("/api/auth/resend-verification-public", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resendModeEmail.trim().toLowerCase() }),
+        credentials: "include",
+      });
+      if (res.ok) {
+        setResendModeSent(true);
+      } else {
+        const d = await res.json();
+        setResendModeError(d.error ?? "Failed to send. Please try again.");
+      }
+    } catch {
+      setResendModeError("Something went wrong. Please try again.");
+    } finally {
+      setResendModeLoading(false);
+    }
+  };
+
   const { login, register } = useAuth();
   const [, navigate] = useLocation();
 
@@ -72,9 +104,9 @@ export default function AuthPage() {
       } else {
         navigate("/");
       }
-    } catch {
+    } catch (err) {
       if (isLogin) {
-        const msg = (mutation.error as Error)?.message ?? "";
+        const msg = (err as Error)?.message ?? "";
         if (msg.toLowerCase().includes("verify your email")) {
           setUnverifiedEmail(data.email);
         }
@@ -129,6 +161,10 @@ export default function AuthPage() {
     setUnverifiedEmail(null);
     setResendSent(false);
     setResendError(null);
+    setResendMode(false);
+    setResendModeSent(false);
+    setResendModeError(null);
+    setResendModeEmail("");
   };
 
   /* ── "Check your email" screen (shown after successful register) ── */
@@ -210,14 +246,77 @@ export default function AuthPage() {
             {forgotMode ? "Reset password" : isLogin ? t("auth.login") : t("auth.register")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {forgotMode ? "We'll send you a link to reset your password" : t("auth.tagline")}
+            {resendMode ? "We'll send you a new verification link" : forgotMode ? "We'll send you a link to reset your password" : t("auth.tagline")}
           </p>
         </div>
 
         {/* Card */}
         <div className="rounded-2xl border border-border bg-card shadow-lg p-6">
 
-          {forgotMode ? (
+          {resendMode ? (
+            resendModeSent ? (
+              <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <CheckCircle2 className="w-12 h-12 text-green-500" />
+                <p className="font-semibold text-foreground">Verification email sent</p>
+                <p className="text-sm text-muted-foreground">
+                  If an unverified account with that email exists, we've sent a new verification link. Check your inbox (and spam folder).
+                </p>
+                <button
+                  onClick={() => { setResendMode(false); setResendModeSent(false); setResendModeEmail(""); }}
+                  className="mt-2 text-sm text-primary hover:underline font-medium"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="resend-email">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                    <input
+                      id="resend-email"
+                      type="email"
+                      autoComplete="email"
+                      data-testid="input-resend-email"
+                      placeholder="you@example.com"
+                      value={resendModeEmail}
+                      onChange={(e) => setResendModeEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleResendMode(); } }}
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl text-sm bg-background border border-border hover:border-border/80 transition-colors outline-none placeholder:text-muted-foreground/50 text-foreground focus:ring-2 focus:ring-primary/30 focus:border-primary/60"
+                    />
+                  </div>
+                </div>
+
+                {resendModeError && (
+                  <div className="px-3.5 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                    {resendModeError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleResendMode}
+                  disabled={resendModeLoading || !resendModeEmail.trim()}
+                  data-testid="button-submit-resend-mode"
+                  className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {resendModeLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Send verification link
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setResendMode(false); setResendModeError(null); setResendModeEmail(""); }}
+                  className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Back to sign in
+                </button>
+              </div>
+            )
+          ) : forgotMode ? (
             forgotSent ? (
               <div className="flex flex-col items-center gap-3 py-4 text-center">
                 <CheckCircle2 className="w-12 h-12 text-green-500" />
@@ -425,6 +524,21 @@ export default function AuthPage() {
                   {isLogin ? "Sign up" : "Sign in"}
                 </button>
               </p>
+
+              {/* Resend verification link — only shown on login tab */}
+              {isLogin && (
+                <p className="text-center text-xs text-muted-foreground/70 mt-2">
+                  Didn't verify your email?{" "}
+                  <button
+                    type="button"
+                    onClick={() => { setResendMode(true); setResendModeError(null); setResendModeSent(false); }}
+                    data-testid="link-resend-verification"
+                    className="text-muted-foreground hover:text-foreground underline transition-colors"
+                  >
+                    Resend verification link
+                  </button>
+                </p>
+              )}
 
               {/* Legal links */}
               <div className="flex items-center justify-center gap-4 mt-6 pt-4 border-t border-border/40">
