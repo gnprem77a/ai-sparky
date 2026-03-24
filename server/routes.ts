@@ -2282,13 +2282,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const CHARS_PER_TOKEN = 4;
     const maxContextChars = contextTokenLimit * CHARS_PER_TOKEN;
 
-    // Estimate message length in characters
+    // Estimate character length of a message
     const msgChars = (m: any): number =>
       typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length;
 
-    // Trim oldest non-system messages until we're under the limit (always keep last 2 turns)
+    // Extract system message first so we can account for its size when trimming
+    let systemMsg: string = system ?? rawMessages.find((m: any) => m.role === "system")?.content ?? "";
+
+    // If the system prompt itself is enormous (Cline's tool definitions can be huge),
+    // hard-cap it at 60k tokens worth of chars to leave room for the conversation.
+    const maxSystemChars = 60_000 * CHARS_PER_TOKEN; // 240k chars ≈ 60k tokens
+    if (systemMsg.length > maxSystemChars) {
+      systemMsg = systemMsg.slice(0, maxSystemChars);
+    }
+
+    const systemChars = systemMsg.length;
+
+    // Trim oldest non-system messages until system + messages fits within the context limit.
+    // Always keep at least the last 2 non-system messages so the model has something to reply to.
     const trimmedMessages: any[] = [...rawMessages];
-    while (trimmedMessages.reduce((s, m) => s + msgChars(m), 0) > maxContextChars && trimmedMessages.length > 3) {
+    while (
+      (systemChars + trimmedMessages.reduce((s, m) => s + msgChars(m), 0)) > maxContextChars &&
+      trimmedMessages.filter((m: any) => m.role !== "system").length > 2
+    ) {
       const idx = trimmedMessages.findIndex((m: any) => m.role !== "system");
       if (idx === -1) break;
       trimmedMessages.splice(idx, 1);
@@ -2297,9 +2313,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const messages: { role: string; content: string }[] = trimmedMessages
       .filter((m: any) => m.role !== "system")
       .map((m: any) => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }));
-
-    // Extract system message from messages array if not provided separately
-    const systemMsg = system ?? rawMessages.find((m: any) => m.role === "system")?.content ?? "";
 
     const dbProviders = await storage.getActiveProviders();
     const patterns = getProviderPatterns(modelSlug as any);
