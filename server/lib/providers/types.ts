@@ -12,6 +12,10 @@ export interface StreamOptions {
   maxTokens: number;
   useTools: boolean;
   res: Response;
+  /** OpenAI-format tools array passed from external API (Cline etc.) */
+  externalTools?: any[];
+  /** Raw OpenAI messages, used when externalTools are present to preserve tool_calls/tool structure */
+  oaiMessages?: any[];
 }
 
 export interface UsageResult {

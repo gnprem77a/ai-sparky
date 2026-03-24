@@ -2258,7 +2258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
     }
 
-    const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system } = req.body;
+    const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system, tools: reqTools } = req.body;
 
     if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
       return res.status(400).json({ error: { message: "messages array is required", type: "invalid_request_error" } });
@@ -2324,9 +2324,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Wrap res.write to convert our SSE chunks → OpenAI SSE format
       const originalWrite = res.write.bind(res);
       let fullContent = "";
+      let finishReasonOverride: string | null = null;
+      const pendingOaiToolCalls: Record<number, { id: string; name: string; arguments: string }> = {};
       (res as any).write = (chunk: any) => {
         const raw = typeof chunk === "string" ? chunk : chunk.toString();
-        // Our SSE lines: "data: <text>\n\n" — extract the text and re-emit in OpenAI format
         for (const line of raw.split("\n")) {
           const trimmed = line.trim();
           if (!trimmed.startsWith("data:")) continue;
@@ -2334,8 +2335,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!payload || payload === "[DONE]") continue;
           try {
             const parsed = JSON.parse(payload);
-            // Skip our internal done/metadata object
             if (parsed.done === true || parsed.error) continue;
+
+            // Tool call start (from Anthropic adapter external-tools mode)
+            if (parsed.oai_tool_call_start) {
+              const { index, id, name } = parsed.oai_tool_call_start;
+              pendingOaiToolCalls[index] = { id, name, arguments: "" };
+              const oaiChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+                choices: [{ index: 0, delta: { tool_calls: [{ index, id, type: "function", function: { name, arguments: "" } }] }, finish_reason: null }] };
+              originalWrite(`data: ${JSON.stringify(oaiChunk)}\n\n`);
+              continue;
+            }
+            // Tool call arguments delta
+            if (parsed.oai_tool_call_delta) {
+              const { index, arguments: args } = parsed.oai_tool_call_delta;
+              if (pendingOaiToolCalls[index]) pendingOaiToolCalls[index].arguments += args;
+              const oaiChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+                choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: args } }] }, finish_reason: null }] };
+              originalWrite(`data: ${JSON.stringify(oaiChunk)}\n\n`);
+              continue;
+            }
+            // Finish reason override (tool_calls)
+            if (parsed.oai_finish_reason) {
+              finishReasonOverride = parsed.oai_finish_reason;
+              continue;
+            }
+
+            // Regular text delta
             const text = typeof parsed === "string" ? parsed : (parsed.content ?? parsed.text ?? parsed.delta ?? "");
             if (!text) continue;
             fullContent += text;
@@ -2343,7 +2369,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }] };
             originalWrite(`data: ${JSON.stringify(oaiChunk)}\n\n`);
           } catch {
-            // raw text chunk (not JSON) — treat the whole payload as content
             if (payload && payload !== "[DONE]") {
               fullContent += payload;
               const oaiChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
@@ -2355,14 +2380,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return true;
       };
 
+      const hasExternalTools = Array.isArray(reqTools) && reqTools.length > 0;
       try {
         const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
           messages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
+          ...(hasExternalTools ? { externalTools: reqTools, oaiMessages: rawMessages } : {}),
         });
         // Restore original write, send final OpenAI done chunk + [DONE]
         (res as any).write = originalWrite;
         const doneChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
-          choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+          choices: [{ index: 0, delta: {}, finish_reason: finishReasonOverride ?? "stop" }] };
         res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
         res.write("data: [DONE]\n\n");
 

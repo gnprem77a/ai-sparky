@@ -48,6 +48,65 @@ export class AnthropicAdapter implements ProviderAdapter {
     ];
   }
 
+  /** Convert OpenAI-format tools array → Anthropic tools array */
+  private static oaiToolsToAnthropic(tools: any[]): any[] {
+    return tools.map((t: any) => ({
+      name: t.function?.name ?? t.name,
+      description: t.function?.description ?? t.description ?? "",
+      input_schema: t.function?.parameters ?? t.parameters ?? { type: "object", properties: {} },
+    }));
+  }
+
+  /**
+   * Convert an array of OpenAI-format messages to Anthropic messages format.
+   * Handles role:"tool" (tool results) and assistant messages with tool_calls.
+   * Merges consecutive same-role messages as required by Anthropic.
+   */
+  private static oaiMessagesToAnthropic(msgs: any[]): any[] {
+    const out: { role: "user" | "assistant"; content: any }[] = [];
+
+    for (const m of msgs) {
+      if (m.role === "system") continue; // handled separately
+
+      if (m.role === "tool") {
+        // Tool result — must be inside a "user" turn
+        const block = { type: "tool_result", tool_use_id: m.tool_call_id ?? "", content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) };
+        if (out.length > 0 && out[out.length - 1].role === "user" && Array.isArray(out[out.length - 1].content)) {
+          out[out.length - 1].content.push(block);
+        } else {
+          out.push({ role: "user", content: [block] });
+        }
+        continue;
+      }
+
+      if (m.role === "assistant" && m.tool_calls?.length) {
+        // Assistant requested tool calls
+        const blocks: any[] = [];
+        if (m.content) blocks.push({ type: "text", text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) });
+        for (const tc of m.tool_calls) {
+          let input: Record<string, unknown> = {};
+          try { input = JSON.parse(tc.function?.arguments ?? "{}"); } catch {}
+          blocks.push({ type: "tool_use", id: tc.id, name: tc.function?.name ?? tc.name, input });
+        }
+        out.push({ role: "assistant", content: blocks });
+        continue;
+      }
+
+      // Regular user/assistant message
+      const role = m.role === "assistant" ? "assistant" : "user";
+      const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+
+      // Merge consecutive same-role messages (Anthropic restriction)
+      if (out.length > 0 && out[out.length - 1].role === role && typeof out[out.length - 1].content === "string") {
+        out[out.length - 1].content += "\n" + content;
+      } else {
+        out.push({ role, content });
+      }
+    }
+
+    return out;
+  }
+
   async testConnection(): Promise<TestResult> {
     const start = Date.now();
     try {
@@ -95,11 +154,17 @@ export class AnthropicAdapter implements ProviderAdapter {
     return text;
   }
 
-  async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
+  async stream({ messages, systemPrompt, maxTokens, useTools, res, externalTools, oaiMessages }: StreamOptions): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    const anthropicMessages = messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const isExternal = Array.isArray(externalTools) && externalTools.length > 0;
+
+    // When Cline/external caller passes tools, convert their OpenAI messages to Anthropic format.
+    // Otherwise use the standard RawMessage conversion.
+    const anthropicMessages: any[] = isExternal && oaiMessages
+      ? AnthropicAdapter.oaiMessagesToAnthropic(oaiMessages)
+      : messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     for (let round = 0; round < 6; round++) {
       const body: Record<string, unknown> = {
@@ -109,7 +174,11 @@ export class AnthropicAdapter implements ProviderAdapter {
         stream: true,
       };
       if (systemPrompt) body.system = systemPrompt;
-      if (useTools) body.tools = this.buildAnthropicTools();
+      if (isExternal) {
+        body.tools = AnthropicAdapter.oaiToolsToAnthropic(externalTools!);
+      } else if (useTools) {
+        body.tools = this.buildAnthropicTools();
+      }
 
       const response = await fetch(`${this.baseUrl}/v1/messages`, {
         method: "POST",
@@ -165,6 +234,10 @@ export class AnthropicAdapter implements ProviderAdapter {
               if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
                 const idx = String(ev.index ?? 0);
                 pendingToolUse[idx] = { id: ev.content_block.id ?? idx, name: ev.content_block.name ?? "", input: "" };
+                if (isExternal) {
+                  // Emit OpenAI SSE tool_call start chunk
+                  res.write(`data: ${JSON.stringify({ oai_tool_call_start: { index: ev.index ?? 0, id: ev.content_block.id ?? idx, name: ev.content_block.name ?? "" } })}\n\n`);
+                }
               }
               if (ev.type === "content_block_delta") {
                 const idx = String(ev.index ?? 0);
@@ -172,7 +245,13 @@ export class AnthropicAdapter implements ProviderAdapter {
                   res.write(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`);
                 }
                 if (ev.delta?.type === "input_json_delta" && ev.delta.partial_json) {
-                  if (pendingToolUse[idx]) pendingToolUse[idx].input += ev.delta.partial_json;
+                  if (pendingToolUse[idx]) {
+                    pendingToolUse[idx].input += ev.delta.partial_json;
+                    if (isExternal) {
+                      // Stream arguments delta in OpenAI SSE format
+                      res.write(`data: ${JSON.stringify({ oai_tool_call_delta: { index: ev.index ?? 0, arguments: ev.delta.partial_json } })}\n\n`);
+                    }
+                  }
                 }
               }
               if (ev.type === "content_block_stop") {
@@ -181,6 +260,14 @@ export class AnthropicAdapter implements ProviderAdapter {
             } catch {}
           }
         }
+      }
+
+      // External callers (Cline) handle tool execution themselves — return after emitting tool_calls
+      if (isExternal) {
+        if (finishReason === "tool_use" && Object.keys(pendingToolUse).length > 0) {
+          res.write(`data: ${JSON.stringify({ oai_finish_reason: "tool_calls" })}\n\n`);
+        }
+        break;
       }
 
       if (finishReason !== "tool_use" || !Object.keys(pendingToolUse).length) break;
