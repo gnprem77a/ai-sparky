@@ -2247,6 +2247,86 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // OpenAI-compatible legacy completions — used by Continue.dev tab autocomplete (FIM)
+  app.post("/api/v1/completions", async (req: Request, res: Response) => {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    }
+    const apiKey = authHeader.slice(7).trim();
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
+    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+
+    const currentBalance = user.apiBalance ?? 0;
+    if (currentBalance < 0.01) {
+      return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
+    }
+
+    const { model: modelParam, prompt = "", suffix = "", max_tokens: reqMaxTokens, temperature } = req.body;
+    const requestId = "cmpl-" + randomBytes(12).toString("hex");
+    const created = Math.floor(Date.now() / 1000);
+    const startTime = Date.now();
+
+    // Map model name → slug (same prefix logic as chat completions)
+    const m = (modelParam ?? "").toLowerCase();
+    const slug =
+      m.includes("opus") ? "powerful" :
+      m.includes("sonnet") ? "sonnet" :
+      m.includes("haiku") ? "fast" :
+      m.includes("gpt-4") || m.includes("gpt4") ? "powerful" :
+      m.includes("gpt") ? "creative" :
+      m.includes("mistral") ? "balanced" : "balanced";
+
+    const dbProviders = await storage.getActiveProviders();
+    const patterns = getProviderPatterns(slug as any);
+    let selectedProviders = dbProviders.filter((p) =>
+      p.isEnabled && patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat))
+    );
+    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled);
+    if (selectedProviders.length === 0) {
+      return res.status(503).json({ error: { message: "No active AI providers configured", type: "server_error" } });
+    }
+
+    const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      authStyle: (p.authStyle ?? "bearer") as ProviderConfig["authStyle"],
+      authHeaderName: p.authHeaderName ?? null,
+      streamMode: (p.streamMode ?? "none") as ProviderConfig["streamMode"],
+      bodyTemplate: p.bodyTemplate ?? null, responsePath: p.responsePath ?? null,
+      isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    }));
+
+    try {
+      const maxTokens = Math.min(reqMaxTokens ?? 256, 1024);
+      // Build a FIM prompt: show prefix, ask model to fill in the middle before the suffix
+      const systemPrompt = suffix
+        ? `You are a code completion assistant. Complete the code between the prefix and suffix. Output ONLY the completion text, no explanation, no markdown, no code fences.`
+        : `You are a code completion assistant. Continue the code from where it left off. Output ONLY the completion code, no explanation.`;
+      const userPrompt = suffix
+        ? `Prefix:\n${prompt}\n\nSuffix:\n${suffix}\n\nWrite the middle part that bridges prefix to suffix:`
+        : prompt;
+
+      const text = await generateText(providerConfigs, systemPrompt, userPrompt, maxTokens);
+      const inputTokens = Math.ceil((prompt.length + suffix.length) / 4);
+      const outputTokens = Math.ceil(text.length / 4);
+      const primaryProvider = selectedProviders[0];
+      const { totalCost } = computeCost(slug, inputTokens, outputTokens, primaryProvider?.inputPricePerMillion ?? null, primaryProvider?.outputPricePerMillion ?? null);
+      const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
+      const deduction = await storage.deductApiBalance(user.id, roundedTotal);
+      storage.createApiLog({ userId: user.id, messages: JSON.stringify([{ role: "user", content: prompt }]), response: text, inputTokens, outputTokens, modelUsed: slug, endpoint: "/api/v1/completions", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+      return res.json({
+        id: requestId, object: "text_completion", created, model: modelParam ?? slug,
+        choices: [{ text, index: 0, logprobs: null, finish_reason: "stop" }],
+        usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: { message: err?.message ?? "Completion failed", type: "server_error" } });
+    }
+  });
+
   // OpenAI-compatible chat completions — works with CodeGPT, Continue.dev, Cursor, etc.
   app.post("/api/v1/chat/completions", async (req: Request, res: Response) => {
     const authHeader = req.headers["authorization"] as string | undefined;
@@ -2282,12 +2362,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     // Map OpenAI model names → our slugs; default balanced
     const modelMap: Record<string, string> = {
-      "claude-sonnet-4-5": "sonnet", "claude-sonnet": "sonnet",
-      "gpt-4": "powerful", "gpt-4o": "powerful", "gpt-3.5-turbo": "fast",
-      "claude-3-opus": "powerful", "claude-3-sonnet": "balanced", "claude-3-haiku": "fast",
+      // Our slugs
       "powerful": "powerful", "sonnet": "sonnet", "balanced": "balanced", "fast": "fast", "creative": "creative",
+      // GPT aliases
+      "gpt-4": "powerful", "gpt-4o": "powerful", "gpt-4-turbo": "powerful",
+      "gpt-3.5-turbo": "fast", "gpt-3.5-turbo-instruct": "fast",
+      // Claude 4 / current
+      "claude-opus-4": "powerful", "claude-opus-4-5": "powerful",
+      "claude-sonnet-4": "sonnet", "claude-sonnet-4-5": "sonnet",
+      "claude-haiku-4": "fast",
+      // Claude 3.x
+      "claude-3-opus": "powerful", "claude-3-opus-20240229": "powerful",
+      "claude-3-5-sonnet": "sonnet", "claude-3-5-sonnet-20241022": "sonnet",
+      "claude-3-sonnet": "sonnet", "claude-3-sonnet-20240229": "sonnet",
+      "claude-3-haiku": "fast", "claude-3-haiku-20240307": "fast",
+      // Generic claude-opus-* / claude-sonnet-* patterns → map by prefix
+      "claude-opus": "powerful", "claude-sonnet": "sonnet", "claude-haiku": "fast",
+      // Wildcard entries Continue may send (model name + date suffix)
+      "claude-opus-1715": "powerful", "claude-opus-20240229": "powerful",
+      // Mistral
+      "mistral-large": "balanced", "mistral-large-latest": "balanced",
     };
-    const modelSlug: string = modelMap[modelParam] ?? "balanced";
+    // Exact match first, then prefix-based fallback for any claude-*/gpt-* model names
+    const modelSlugExact = modelMap[modelParam?.toLowerCase?.() ?? ""];
+    const modelSlug: string = modelSlugExact ?? (() => {
+      const m = (modelParam ?? "").toLowerCase();
+      if (m.includes("opus"))    return "powerful";
+      if (m.includes("sonnet"))  return "sonnet";
+      if (m.includes("haiku"))   return "fast";
+      if (m.includes("gpt-4") || m.includes("gpt4")) return "powerful";
+      if (m.includes("gpt"))     return "creative";
+      if (m.includes("mistral")) return "balanced";
+      return "balanced";
+    })();
 
     // Context-window limits per model slug (tokens, ~4 chars/token). Keep a safety margin.
     const MODEL_CONTEXT_TOKENS: Record<string, number> = {
