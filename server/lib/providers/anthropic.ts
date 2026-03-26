@@ -181,11 +181,14 @@ export class AnthropicAdapter implements ProviderAdapter {
 
     const isExternal = Array.isArray(externalTools) && externalTools.length > 0;
 
-    // When Cline/external caller passes tools, convert their OpenAI messages to Anthropic format.
-    // Otherwise use the standard RawMessage conversion.
-    const anthropicMessages: any[] = isExternal && oaiMessages
+    // Use oaiMessages conversion whenever oaiMessages is provided — it properly converts
+    // role:"tool" → tool_result blocks. Also always filter role:"tool" from the fallback
+    // path so a stale history entry never causes a 400 from Anthropic.
+    const anthropicMessages: any[] = oaiMessages
       ? AnthropicAdapter.oaiMessagesToAnthropic(oaiMessages)
-      : messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      : messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     for (let round = 0; round < 6; round++) {
       const body: Record<string, unknown> = {

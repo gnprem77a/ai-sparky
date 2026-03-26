@@ -463,15 +463,16 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     oaiMessages?: any[],
     externalTools?: any[],
   ): Promise<UsageResult> {
-    // When external caller (Cline) provides OAI-format messages, use proper conversion
-    // so role:"tool" becomes tool_result blocks — Anthropic rejects the "tool" role.
-    const hasExternal = Array.isArray(oaiMessages) && oaiMessages.length > 0;
-    const anthropicMessages = hasExternal
+    // Use oaiMessages conversion whenever provided — converts role:"tool" → tool_result blocks.
+    // Also filter role:"tool" from fallback so stale history never causes Anthropic 400.
+    const anthropicMessages = Array.isArray(oaiMessages) && oaiMessages.length > 0
       ? OpenAICompatAdapter.oaiMessagesToAnthropic(oaiMessages!)
-      : messages.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: OpenAICompatAdapter.buildAnthropicContent(m),
-        }));
+      : messages
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: OpenAICompatAdapter.buildAnthropicContent(m),
+          }));
     let inputTokens = 0;
     let outputTokens = 0;
 
