@@ -327,23 +327,93 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   // stream
   // ---------------------------------------------------------------------------
 
-  async stream({ messages, systemPrompt, maxTokens, useTools, res }: StreamOptions): Promise<UsageResult> {
+  async stream({ messages, systemPrompt, maxTokens, useTools, res, oaiMessages, externalTools }: StreamOptions): Promise<UsageResult> {
     const endpoint = this.chatEndpoint();
 
     if (this.isAnthropicApi) {
-      return this.streamAnthropicApi(endpoint, messages, systemPrompt, maxTokens, useTools, res);
+      return this.streamAnthropicApi(endpoint, messages, systemPrompt, maxTokens, useTools, res, oaiMessages, externalTools);
     }
 
     if (this.isResponsesApi) {
       return this.streamResponsesApi(endpoint, messages, systemPrompt, maxTokens, res);
     }
 
-    return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res);
+    return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res, oaiMessages);
   }
 
   // ---------------------------------------------------------------------------
   // Anthropic Messages API streaming (Azure /anthropic/v1/messages endpoint)
   // ---------------------------------------------------------------------------
+
+  /**
+   * Convert an array of OpenAI-format messages to Anthropic messages format.
+   * Handles role:"tool" (tool results) and assistant messages with tool_calls.
+   * Merges consecutive same-role messages as required by Anthropic.
+   */
+  private static oaiMessagesToAnthropic(msgs: any[]): any[] {
+    const out: { role: "user" | "assistant"; content: any }[] = [];
+
+    for (const m of msgs) {
+      if (m.role === "system") continue;
+
+      if (m.role === "tool") {
+        const block = {
+          type: "tool_result",
+          tool_use_id: m.tool_call_id ?? "",
+          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        };
+        if (out.length > 0 && out[out.length - 1].role === "user" && Array.isArray(out[out.length - 1].content)) {
+          out[out.length - 1].content.push(block);
+        } else {
+          out.push({ role: "user", content: [block] });
+        }
+        continue;
+      }
+
+      if (m.role === "assistant" && m.tool_calls?.length) {
+        const blocks: any[] = [];
+        if (m.content) blocks.push({ type: "text", text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) });
+        for (const tc of m.tool_calls) {
+          let input: Record<string, unknown> = {};
+          try { input = JSON.parse(tc.function?.arguments ?? "{}"); } catch {}
+          blocks.push({ type: "tool_use", id: tc.id, name: tc.function?.name ?? tc.name, input });
+        }
+        out.push({ role: "assistant", content: blocks });
+        continue;
+      }
+
+      const role = m.role === "assistant" ? "assistant" : "user";
+
+      let content: string | any[];
+      if (Array.isArray(m.content)) {
+        content = m.content.map((block: any) => {
+          if (block.type === "text") return { type: "text", text: block.text ?? "" };
+          if (block.type === "image_url") {
+            const url: string = block.image_url?.url ?? "";
+            if (url.startsWith("data:")) {
+              const semi = url.indexOf(";");
+              const comma = url.indexOf(",");
+              const mediaType = semi !== -1 ? url.slice(5, semi) : "image/jpeg";
+              const data = comma !== -1 ? url.slice(comma + 1) : "";
+              return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+            }
+            return { type: "image", source: { type: "url", url } };
+          }
+          return { type: "text", text: JSON.stringify(block) };
+        });
+      } else {
+        content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+      }
+
+      if (out.length > 0 && out[out.length - 1].role === role && typeof out[out.length - 1].content === "string" && typeof content === "string") {
+        out[out.length - 1].content += "\n" + content;
+      } else {
+        out.push({ role, content });
+      }
+    }
+
+    return out;
+  }
 
   // Build Anthropic-format content blocks for a single message, including images.
   private static buildAnthropicContent(m: RawMessage): unknown {
@@ -390,11 +460,18 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     maxTokens: number,
     useTools: boolean,
     res: Response,
+    oaiMessages?: any[],
+    externalTools?: any[],
   ): Promise<UsageResult> {
-    const anthropicMessages = messages.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: OpenAICompatAdapter.buildAnthropicContent(m),
-    }));
+    // When external caller (Cline) provides OAI-format messages, use proper conversion
+    // so role:"tool" becomes tool_result blocks — Anthropic rejects the "tool" role.
+    const hasExternal = Array.isArray(oaiMessages) && oaiMessages.length > 0;
+    const anthropicMessages = hasExternal
+      ? OpenAICompatAdapter.oaiMessagesToAnthropic(oaiMessages!)
+      : messages.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: OpenAICompatAdapter.buildAnthropicContent(m),
+        }));
     let inputTokens = 0;
     let outputTokens = 0;
 
@@ -571,10 +648,17 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     maxTokens: number,
     useTools: boolean,
     res: Response,
+    oaiMessages?: any[],
   ): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
-    let conversationMessages = buildMessages(messages, systemPrompt);
+    // When oaiMessages are provided (external/Cline path), use them directly —
+    // they're already in proper OAI format with role:"tool" tool results.
+    // Standard OpenAI Chat Completions endpoints support role:"tool" natively.
+    let conversationMessages: Array<{ role: string; content: unknown }> =
+      Array.isArray(oaiMessages) && oaiMessages.length > 0
+        ? oaiMessages
+        : buildMessages(messages, systemPrompt);
     // Some models (o-series, gpt-5+) require max_completion_tokens instead of max_tokens.
     // We detect this on first failure and switch permanently for this request.
     let tokenParam: "max_tokens" | "max_completion_tokens" = "max_tokens";
