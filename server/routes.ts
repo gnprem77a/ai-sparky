@@ -2220,15 +2220,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
     if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
     const now = Math.floor(Date.now() / 1000);
+    const modelList = [
+      { id: "powerful", name: "Claude Opus 4.6",    context_length: 200_000, max_tokens: 32_000 },
+      { id: "sonnet",   name: "Claude Sonnet 4.5",  context_length: 200_000, max_tokens: 16_000 },
+      { id: "balanced", name: "Mistral Large 3",    context_length: 128_000, max_tokens:  8_192 },
+      { id: "fast",     name: "Claude Haiku",        context_length: 200_000, max_tokens:  4_096 },
+      { id: "creative", name: "GPT-5.3",             context_length: 128_000, max_tokens:  8_192 },
+    ];
     return res.json({
       object: "list",
-      data: [
-        { id: "powerful", object: "model", created: now, owned_by: "aisparky", description: "Most powerful model (Claude Opus)" },
-        { id: "sonnet",   object: "model", created: now, owned_by: "aisparky", description: "Smart and efficient (Claude Sonnet 4.5)" },
-        { id: "balanced", object: "model", created: now, owned_by: "aisparky", description: "Balanced performance (Mistral Large)" },
-        { id: "fast",     object: "model", created: now, owned_by: "aisparky", description: "Fastest responses (Claude Haiku)" },
-        { id: "creative", object: "model", created: now, owned_by: "aisparky", description: "Most creative (GPT)" },
-      ],
+      data: modelList.map(({ id, name, context_length, max_tokens }) => ({
+        id,
+        object: "model",
+        created: now,
+        owned_by: "aisparky",
+        name,
+        description: name,
+        context_length,
+        max_tokens,
+        // Extra fields some clients (Cline, Continue.dev) look for
+        context_window: context_length,
+        max_output_tokens: max_tokens,
+        supports_vision: ["powerful", "sonnet", "balanced", "creative"].includes(id),
+        supports_computer_use: false,
+      })),
     });
   });
 
@@ -2258,7 +2273,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
     }
 
-    const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system, tools: reqTools } = req.body;
+    const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system, tools: reqTools, stream_options: streamOptions } = req.body;
+    const includeUsage = streamOptions?.include_usage === true || wantStream === true; // always include usage in streaming for Cline compatibility
 
     if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
       return res.status(400).json({ error: { message: "messages array is required", type: "invalid_request_error" } });
@@ -2433,8 +2449,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
         // Restore original write, send final OpenAI done chunk + [DONE]
         (res as any).write = originalWrite;
-        const doneChunk = { id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
-          choices: [{ index: 0, delta: {}, finish_reason: finishReasonOverride ?? "stop" }] };
+        const doneChunk: Record<string, unknown> = {
+          id: requestId, object: "chat.completion.chunk", created, model: modelSlug,
+          choices: [{ index: 0, delta: {}, finish_reason: finishReasonOverride ?? "stop" }],
+        };
+        // Always include usage so Cline / Continue.dev / Cursor can display token counts
+        if (includeUsage) {
+          doneChunk.usage = {
+            prompt_tokens: inputTokens,
+            completion_tokens: outputTokens,
+            total_tokens: inputTokens + outputTokens,
+          };
+        }
         res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
         res.write("data: [DONE]\n\n");
 
