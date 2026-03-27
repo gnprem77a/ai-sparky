@@ -1042,6 +1042,73 @@ func main() {
                 ))}
               </div>
             </div>
+
+            {/* Claude CLI */}
+            <div className="rounded-2xl border border-violet-500/25 bg-violet-500/5 p-6 space-y-5" data-testid="section-claude-cli">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+                  <Terminal className="w-5 h-5 text-violet-500" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground">Claude CLI</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Use your AI Sparky API directly in the terminal with Claude's agentic coding tool</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 1 — Install Claude CLI</p>
+                <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="bash" />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 2 — Run with your key (one-off)</p>
+                <CodeBlock
+                  code={`ANTHROPIC_BASE_URL=${baseUrl}/api \\\nANTHROPIC_API_KEY=${displayKey} \\\nclaude`}
+                  language="bash"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 3 — Permanent setup (add to shell profile)</p>
+                <CodeBlock
+                  code={`# Add these lines to ~/.zshrc or ~/.bashrc\nexport ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}\n\n# Then just run from any project folder:\nclaude`}
+                  language="~/.zshrc / ~/.bashrc"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-violet-500/8 border border-violet-500/15 text-xs">
+                  <span className="text-lg leading-none mt-0.5">💡</span>
+                  <div className="space-y-1">
+                    <p className="font-semibold text-foreground">Model names work automatically</p>
+                    <p className="text-muted-foreground">Any Claude model name (e.g. <code className="font-mono text-violet-400">claude-opus-4-5</code>, <code className="font-mono text-violet-400">claude-sonnet-4-5</code>) is mapped to the right tier — no extra config needed.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-blue-500/8 border border-blue-500/15 text-xs">
+                  <span className="text-lg leading-none mt-0.5">🔌</span>
+                  <div className="space-y-1">
+                    <p className="font-semibold text-foreground">Works with any Anthropic SDK</p>
+                    <p className="text-muted-foreground">Set <code className="font-mono text-blue-400">ANTHROPIC_BASE_URL</code> in any Python or Node.js project using <code className="font-mono text-blue-400">@anthropic-ai/sdk</code> and it routes through your account.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Anthropic SDK (Python)</p>
+                <CodeBlock
+                  code={`import anthropic\nimport os\n\nos.environ["ANTHROPIC_BASE_URL"] = "${baseUrl}/api"\nos.environ["ANTHROPIC_API_KEY"]  = "${displayKey}"\n\nclient = anthropic.Anthropic()\n\nmessage = client.messages.create(\n    model="claude-opus-4-5",  # or: sonnet, haiku, balanced, fast\n    max_tokens=1024,\n    messages=[{"role": "user", "content": "Hello!"}]\n)\nprint(message.content[0].text)`}
+                  language="Python — @anthropic-ai/sdk"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Anthropic SDK (Node.js / TypeScript)</p>
+                <CodeBlock
+                  code={`import Anthropic from "@anthropic-ai/sdk";\n\nconst client = new Anthropic({\n  baseURL: "${baseUrl}/api",\n  apiKey:  "${displayKey}",\n});\n\nconst message = await client.messages.create({\n  model:     "claude-opus-4-5",  // or: sonnet, haiku, balanced, fast\n  max_tokens: 1024,\n  messages:  [{ role: "user", content: "Hello!" }],\n});\n\nconsole.log(message.content[0].text);`}
+                  language="Node.js / TypeScript — @anthropic-ai/sdk"
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>
