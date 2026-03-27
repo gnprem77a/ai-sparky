@@ -1077,55 +1077,142 @@ func main() {
               )}
             </div>
 
-            {/* Step 2 — Install */}
-            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Install Claude CLI</p>
-                  <p className="text-xs text-muted-foreground">Make sure Node.js is installed, then run this command once in your terminal:</p>
-                </div>
+            {/* OS Selector */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-primary" />
+                <p className="font-semibold text-foreground text-sm">Choose your operating system</p>
               </div>
-              <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="Terminal" />
-            </div>
+              <div className="flex gap-2">
+                {(["mac", "linux", "windows"] as const).map((os) => (
+                  <button
+                    key={os}
+                    onClick={() => setCliOs(os)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-xs font-semibold border transition-colors",
+                      cliOs === os
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted/40 text-muted-foreground border-border hover:text-foreground"
+                    )}
+                  >
+                    {os === "mac" ? "macOS" : os === "linux" ? "Linux" : "Windows"}
+                  </button>
+                ))}
+              </div>
 
-            {/* Step 3 — Connect */}
-            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Connect Claude CLI to your AI Sparky account</p>
-                  <p className="text-xs text-muted-foreground">
-                    Open your shell profile file — <code className="font-mono">~/.zshrc</code> on Mac, <code className="font-mono">~/.bashrc</code> on Linux — and paste these two lines at the very bottom.{" "}
-                    <span className="text-amber-500 font-medium">Replace <code className="font-mono">YOUR_API_KEY</code> with the key you copied in Step 1.</span>
-                  </p>
+              {/* ── macOS ── */}
+              {cliOs === "mac" && (
+                <div className="space-y-4 pt-1">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 1 — Install Claude CLI</p>
+                    <p className="text-xs text-muted-foreground">Make sure Node.js is installed, then run this once in your terminal:</p>
+                    <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 2 — Open your shell profile</p>
+                    <p className="text-xs text-muted-foreground">This opens the file where your terminal settings live:</p>
+                    <CodeBlock code={`nano ~/.zshrc`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 3 — Scroll to the bottom and add these two lines</p>
+                    <p className="text-xs text-muted-foreground">Replace <code className="font-mono bg-muted px-1 py-0.5 rounded">sk-sparky-your-key-here</code> with the key you copied in Step 1 above.</p>
+                    <CodeBlock code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=sk-sparky-your-key-here`} language="Add at the bottom of ~/.zshrc" />
+                    <p className="text-xs text-muted-foreground">To save in nano: press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Ctrl+O</kbd> → <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Enter</kbd> → <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Ctrl+X</kbd></p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 4 — Reload your terminal</p>
+                    <CodeBlock code={`source ~/.zshrc`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 5 — Navigate into any project folder and run</p>
+                    <CodeBlock code={`cd ~/your-project-folder\nclaude`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
+                    <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="Terminal" />
+                    <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your <code className="font-mono bg-muted px-1 py-0.5 rounded">~/.zshrc</code>:</p>
+                    <CodeBlock code={`export ANTHROPIC_MODEL=claude-sonnet-4-5`} language="Add to ~/.zshrc" />
+                    <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>
+                  </div>
                 </div>
-              </div>
-              <CodeBlock
-                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}`}
-                language="Paste at the bottom of ~/.zshrc  or  ~/.bashrc"
-              />
-              <div className="space-y-1.5 pl-1 text-xs text-muted-foreground">
-                <p>These two lines tell Claude CLI:</p>
-                <ul className="space-y-1 list-none">
-                  <li className="flex gap-2"><span className="text-primary font-mono flex-shrink-0">ANTHROPIC_BASE_URL</span><span>→ send requests to AI Sparky instead of Anthropic</span></li>
-                  <li className="flex gap-2"><span className="text-primary font-mono flex-shrink-0">ANTHROPIC_API_KEY</span><span>→ your AI Sparky key (authenticates you)</span></li>
-                </ul>
-                <p className="pt-1">After saving, reload your shell: <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code></p>
-              </div>
-            </div>
+              )}
 
-            {/* Step 4 — Run */}
-            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">4</span>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Open any project folder and start Claude</p>
-                  <p className="text-xs text-muted-foreground">Navigate to a project on your computer and run:</p>
+              {/* ── Linux ── */}
+              {cliOs === "linux" && (
+                <div className="space-y-4 pt-1">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 1 — Install Claude CLI</p>
+                    <p className="text-xs text-muted-foreground">Make sure Node.js is installed, then run this once in your terminal:</p>
+                    <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 2 — Open your shell profile</p>
+                    <p className="text-xs text-muted-foreground">This opens the file where your terminal settings live:</p>
+                    <CodeBlock code={`nano ~/.bashrc`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 3 — Scroll to the bottom and add these two lines</p>
+                    <p className="text-xs text-muted-foreground">Replace <code className="font-mono bg-muted px-1 py-0.5 rounded">sk-sparky-your-key-here</code> with the key you copied in Step 1 above.</p>
+                    <CodeBlock code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=sk-sparky-your-key-here`} language="Add at the bottom of ~/.bashrc" />
+                    <p className="text-xs text-muted-foreground">To save in nano: press <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Ctrl+O</kbd> → <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Enter</kbd> → <kbd className="font-mono bg-muted px-1 py-0.5 rounded text-[11px]">Ctrl+X</kbd></p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 4 — Reload your terminal</p>
+                    <CodeBlock code={`source ~/.bashrc`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 5 — Navigate into any project folder and run</p>
+                    <CodeBlock code={`cd ~/your-project-folder\nclaude`} language="Terminal" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
+                    <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="Terminal" />
+                    <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your <code className="font-mono bg-muted px-1 py-0.5 rounded">~/.bashrc</code>:</p>
+                    <CodeBlock code={`export ANTHROPIC_MODEL=claude-sonnet-4-5`} language="Add to ~/.bashrc" />
+                    <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.bashrc</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>
+                  </div>
                 </div>
-              </div>
-              <CodeBlock code={`cd /path/to/your/project\nclaude`} language="Terminal" />
-              <p className="text-xs text-muted-foreground pl-1">Claude opens in that folder. Try asking: <em>"what does this project do?"</em>, <em>"fix the bug in login.ts"</em>, or <em>"add a dark mode toggle"</em>.</p>
+              )}
+
+              {/* ── Windows ── */}
+              {cliOs === "windows" && (
+                <div className="space-y-4 pt-1">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 1 — Install Claude CLI</p>
+                    <p className="text-xs text-muted-foreground">Make sure Node.js is installed, then open <strong>PowerShell</strong> and run:</p>
+                    <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="PowerShell" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 2 — Open your PowerShell profile</p>
+                    <p className="text-xs text-muted-foreground">This opens the file where your terminal settings live. If it says "file not found", run the second line first to create it:</p>
+                    <CodeBlock code={`New-Item -Path $PROFILE -Type File -Force\nnotepad $PROFILE`} language="PowerShell" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 3 — Add these two lines at the bottom</p>
+                    <p className="text-xs text-muted-foreground">Replace <code className="font-mono bg-muted px-1 py-0.5 rounded">sk-sparky-your-key-here</code> with the key you copied in Step 1 above.</p>
+                    <CodeBlock code={`$env:ANTHROPIC_BASE_URL = "${baseUrl}/api"\n$env:ANTHROPIC_API_KEY = "sk-sparky-your-key-here"`} language="Add at the bottom of your PowerShell profile" />
+                    <p className="text-xs text-muted-foreground">Save and close Notepad.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 4 — Reload your profile</p>
+                    <CodeBlock code={`. $PROFILE`} language="PowerShell" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Step 5 — Navigate into any project folder and run</p>
+                    <CodeBlock code={`cd C:\\Users\\YourName\\your-project-folder\nclaude`} language="PowerShell" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
+                    <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="PowerShell" />
+                    <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your PowerShell profile alongside the other two lines:</p>
+                    <CodeBlock code={`$env:ANTHROPIC_MODEL = "claude-sonnet-4-5"`} language="Add to PowerShell profile" />
+                    <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">. $PROFILE</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Done */}

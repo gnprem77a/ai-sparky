@@ -493,7 +493,6 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
             value={value}
             onChange={e => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
             placeholder={isDragOver ? "Drop to attach…" : ROTATING_HINTS[hintIndex]}
             disabled={disabled}
             rows={1}
