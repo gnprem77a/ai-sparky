@@ -2208,7 +2208,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/api/v1", (req: Request, res: Response, next: () => void) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta");
     if (req.method === "OPTIONS") { res.sendStatus(200); return; }
     next();
   });
@@ -2253,11 +2253,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Set ANTHROPIC_BASE_URL=https://aisparky.dev/api and ANTHROPIC_API_KEY=sk-sparky-... to use.
   app.post("/api/v1/messages", async (req: Request, res: Response) => {
     // ── Auth ────────────────────────────────────────────────────────────────
+    // Claude CLI sends x-api-key; SDKs may send Authorization: Bearer
+    const xApiKey = req.headers["x-api-key"] as string | undefined;
     const authHeader = req.headers["authorization"] as string | undefined;
-    if (!authHeader?.startsWith("Bearer ")) {
+    const apiKey = xApiKey?.trim() || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined);
+    if (!apiKey) {
       return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
     }
-    const apiKey = authHeader.slice(7).trim();
     const apiKeyId = apiKey.slice(-8);
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
