@@ -117,6 +117,7 @@ export default function ApiAccessPage() {
   const { toast } = useToast();
   const [revealed, setRevealed] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
+  const [cliOs, setCliOs] = useState<"mac" | "linux" | "windows">("mac");
   const [activeTab, setActiveTab] = useState<"overview" | "history" | "pricing" | "webhooks" | "docs" | "claude-cli">("overview");
   const [docsLang, setDocsLang] = useState<"curl" | "python" | "js" | "nodejs" | "php" | "ruby" | "go">("curl");
   const [webhookUrl, setWebhookUrl] = useState("");
