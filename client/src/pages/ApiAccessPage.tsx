@@ -1049,87 +1049,81 @@ func main() {
 
         {/* Claude CLI Tab */}
         {activeTab === "claude-cli" && (
-          <div className="space-y-6" data-testid="section-claude-cli">
+          <div className="space-y-4" data-testid="section-claude-cli">
 
-            {/* Intro banner */}
-            <div className="rounded-2xl border border-violet-500/25 bg-violet-500/5 px-5 py-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center flex-shrink-0">
-                <Terminal className="w-5 h-5 text-violet-500" />
+            {/* What is it */}
+            <div className="rounded-2xl border border-violet-500/25 bg-violet-500/5 px-5 py-4">
+              <p className="text-sm font-semibold text-foreground">What is Claude CLI?</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Claude CLI is an AI coding assistant that works inside your terminal. You point it at your codebase, ask it questions or give it tasks, and it reads/writes files for you. By setting your AI Sparky API key, every request goes through your account and is billed from your balance.
+              </p>
+            </div>
+
+            {/* Step 1 */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Install Claude CLI</p>
+                  <p className="text-xs text-muted-foreground">You need Node.js installed first. Then run this once in your terminal:</p>
+                </div>
               </div>
+              <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="Terminal" />
+            </div>
+
+            {/* Step 2 */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Save your API key permanently</p>
+                  <p className="text-xs text-muted-foreground">Open <code className="font-mono">~/.zshrc</code> (Mac/Linux) or <code className="font-mono">~/.bashrc</code> and add these two lines at the bottom:</p>
+                </div>
+              </div>
+              <CodeBlock
+                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}`}
+                language="~/.zshrc  or  ~/.bashrc"
+              />
+              <p className="text-xs text-muted-foreground pl-1">After saving the file, run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code> (or open a new terminal) to apply it.</p>
+            </div>
+
+            {/* Step 3 */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Open a project folder and run Claude</p>
+                  <p className="text-xs text-muted-foreground">Navigate to any folder on your computer, then start Claude CLI:</p>
+                </div>
+              </div>
+              <CodeBlock
+                code={`cd /your/project/folder\nclaude`}
+                language="Terminal"
+              />
+              <p className="text-xs text-muted-foreground pl-1">Claude will start and show a prompt. You can now ask it things like <em>"explain this codebase"</em>, <em>"fix the bug in auth.ts"</em>, or <em>"add a login page"</em>.</p>
+            </div>
+
+            {/* Step 4 — done */}
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-5 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-foreground">Claude CLI via AI Sparky</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Run Claude's agentic coding tool in your terminal using your AI Sparky API key — billed through your balance.</p>
-              </div>
-            </div>
-
-            {/* Steps */}
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-6">
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" /> Setup Steps
-              </h2>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 1 — Install Claude CLI</p>
-                <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="bash" />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 2 — Run once with your key</p>
-                <CodeBlock
-                  code={`ANTHROPIC_BASE_URL=${baseUrl}/api \\\nANTHROPIC_API_KEY=${displayKey} \\\nclaude`}
-                  language="bash"
-                />
-                <p className="text-xs text-muted-foreground">That's it — Claude CLI will open in your current folder ready to use.</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Step 3 — Permanent setup (recommended)</p>
-                <p className="text-xs text-muted-foreground">Add these two lines to your shell profile so you never need to type them again:</p>
-                <CodeBlock
-                  code={`# ~/.zshrc  or  ~/.bashrc\nexport ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}\n\n# Reload your shell, then just run:\nclaude`}
-                  language="~/.zshrc / ~/.bashrc"
-                />
-              </div>
-            </div>
-
-            {/* Tips */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-1.5 text-xs">
-                <p className="font-semibold text-foreground">Model names map automatically</p>
-                <p className="text-muted-foreground leading-relaxed">
-                  Any Claude model name works — <code className="font-mono text-violet-400">claude-opus-4-5</code>, <code className="font-mono text-violet-400">claude-sonnet-4-5</code>, <code className="font-mono text-violet-400">claude-haiku-3-5</code>, etc. They're routed to the right tier automatically.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-1.5 text-xs">
-                <p className="font-semibold text-foreground">Works with any Anthropic SDK</p>
-                <p className="text-muted-foreground leading-relaxed">
-                  Set <code className="font-mono text-blue-400">ANTHROPIC_BASE_URL</code> in any Python or Node project using <code className="font-mono text-blue-400">@anthropic-ai/sdk</code> and all calls route through your AI Sparky account.
+                <p className="font-semibold text-foreground text-sm">You're all set!</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Claude CLI is now connected to AI Sparky. Every conversation is billed from your balance at the same rates shown in the Pricing tab. No separate Anthropic subscription needed.
                 </p>
               </div>
             </div>
 
-            {/* SDK examples */}
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Globe className="w-4 h-4 text-primary" /> Anthropic SDK Examples
-              </h2>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Python</p>
-                <CodeBlock
-                  code={`import anthropic\nimport os\n\nos.environ["ANTHROPIC_BASE_URL"] = "${baseUrl}/api"\nos.environ["ANTHROPIC_API_KEY"]  = "${displayKey}"\n\nclient = anthropic.Anthropic()\n\nmsg = client.messages.create(\n    model="claude-opus-4-5",   # or sonnet, haiku, balanced, fast\n    max_tokens=1024,\n    messages=[{"role": "user", "content": "Hello!"}]\n)\nprint(msg.content[0].text)`}
-                  language="Python — pip install anthropic"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Node.js / TypeScript</p>
-                <CodeBlock
-                  code={`import Anthropic from "@anthropic-ai/sdk";\n// npm install @anthropic-ai/sdk\n\nconst client = new Anthropic({\n  baseURL: "${baseUrl}/api",\n  apiKey:  "${displayKey}",\n});\n\nconst msg = await client.messages.create({\n  model:      "claude-opus-4-5",  // or sonnet, haiku, balanced, fast\n  max_tokens: 1024,\n  messages:   [{ role: "user", content: "Hello!" }],\n});\n\nconsole.log(msg.content[0].text);`}
-                  language="Node.js / TypeScript — npm install @anthropic-ai/sdk"
-                />
-              </div>
+            {/* Quick tip */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Zap className="w-4 h-4 text-primary" /> Quick tip — test without saving env vars first</p>
+              <p className="text-xs text-muted-foreground">If you just want to try it before doing the permanent setup, paste this entire block into your terminal:</p>
+              <CodeBlock
+                code={`ANTHROPIC_BASE_URL=${baseUrl}/api \\\nANTHROPIC_API_KEY=${displayKey} \\\nclaude`}
+                language="Terminal — one-off test"
+              />
             </div>
+
           </div>
         )}
       </div>
