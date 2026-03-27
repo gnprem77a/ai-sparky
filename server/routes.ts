@@ -2247,6 +2247,265 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // Anthropic-compatible /v1/messages endpoint — used by Claude CLI and Anthropic SDK clients.
+  // Set ANTHROPIC_BASE_URL=https://aisparky.dev/api and ANTHROPIC_API_KEY=sk-sparky-... to use.
+  app.post("/api/v1/messages", async (req: Request, res: Response) => {
+    // ── Auth ────────────────────────────────────────────────────────────────
+    const authHeader = req.headers["authorization"] as string | undefined;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
+    }
+    const apiKey = authHeader.slice(7).trim();
+    const apiKeyId = apiKey.slice(-8);
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user) return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
+    if (!user.apiEnabled) return res.status(403).json({ type: "error", error: { type: "permission_error", message: "API access not enabled for this key" } });
+
+    const currentBalance = user.apiBalance ?? 0;
+    if (currentBalance < 0.01) {
+      return res.status(402).json({ type: "error", error: { type: "billing_error", message: "Insufficient balance. Please contact admin to top up." } });
+    }
+    if (user.apiRateLimitPerMin && !checkRateLimit(apiKey, user.apiRateLimitPerMin)) {
+      return res.status(429).json({ type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } });
+    }
+
+    const startTime = Date.now();
+    const requestId = "msg_" + randomBytes(12).toString("hex");
+
+    // ── Parse Anthropic-format request ──────────────────────────────────────
+    const { model: modelParam, messages: rawMessages = [], system: systemRaw, max_tokens: reqMaxTokens, stream: wantStream, tools: reqTools } = req.body;
+
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
+      return res.status(400).json({ type: "error", error: { type: "invalid_request_error", message: "messages array is required and must not be empty" } });
+    }
+
+    // ── Model → slug ─────────────────────────────────────────────────────────
+    const mLower = (modelParam ?? "").toLowerCase();
+    const modelSlug =
+      ["powerful","sonnet","fast","balanced","creative"].includes(mLower) ? mLower :
+      mLower.includes("opus")    ? "powerful" :
+      mLower.includes("sonnet")  ? "sonnet" :
+      mLower.includes("haiku")   ? "fast" :
+      mLower.includes("gpt-4") || mLower.includes("gpt4") ? "powerful" :
+      mLower.includes("gpt")    ? "creative" :
+      mLower.includes("mistral") ? "balanced" : "balanced";
+
+    // ── System prompt ────────────────────────────────────────────────────────
+    let systemMsg = typeof systemRaw === "string" ? systemRaw
+      : Array.isArray(systemRaw) ? systemRaw.filter((b: any) => b.type === "text").map((b: any) => b.text ?? "").join("\n")
+      : "";
+    if (systemMsg.length > 240_000) systemMsg = systemMsg.slice(0, 240_000);
+
+    // ── Convert Anthropic messages → internal OAI-like format ───────────────
+    // Anthropic: content can be string or array of {type,text}/{type,tool_use}/{type,tool_result}
+    // OAI-like:  role:"tool" for tool results, tool_calls array on assistant
+    function anthropicToOai(msgs: any[]): any[] {
+      const out: any[] = [];
+      for (const msg of msgs) {
+        const c = msg.content;
+        if (msg.role === "user") {
+          if (typeof c === "string") { out.push({ role: "user", content: c }); continue; }
+          if (Array.isArray(c)) {
+            const toolResults = c.filter((b: any) => b.type === "tool_result");
+            if (toolResults.length > 0) {
+              for (const b of c) {
+                if (b.type === "tool_result") {
+                  const tc = typeof b.content === "string" ? b.content
+                    : Array.isArray(b.content) ? b.content.filter((x: any) => x.type === "text").map((x: any) => x.text ?? "").join("") : JSON.stringify(b.content ?? "");
+                  out.push({ role: "tool", tool_call_id: b.tool_use_id, content: tc });
+                }
+              }
+              continue;
+            }
+            const blocks = c.map((b: any) => {
+              if (b.type === "image") return { type: "image_url", image_url: { url: b.source?.type === "base64" ? `data:${b.source.media_type};base64,${b.source.data}` : b.source?.url ?? "" } };
+              return { type: "text", text: b.text ?? JSON.stringify(b) };
+            });
+            out.push({ role: "user", content: blocks.length === 1 && blocks[0].type === "text" ? blocks[0].text : blocks });
+            continue;
+          }
+        } else if (msg.role === "assistant") {
+          if (typeof c === "string") { out.push({ role: "assistant", content: c }); continue; }
+          if (Array.isArray(c)) {
+            const toolUses = c.filter((b: any) => b.type === "tool_use");
+            const text = c.filter((b: any) => b.type === "text").map((b: any) => b.text ?? "").join("");
+            if (toolUses.length > 0) {
+              out.push({ role: "assistant", content: text, tool_calls: toolUses.map((b: any) => ({ id: b.id, type: "function", function: { name: b.name, arguments: typeof b.input === "string" ? b.input : JSON.stringify(b.input ?? {}) } })) });
+            } else {
+              out.push({ role: "assistant", content: text });
+            }
+            continue;
+          }
+        }
+        out.push(msg);
+      }
+      return out;
+    }
+
+    const oaiMessages = anthropicToOai(rawMessages);
+
+    // ── Context trim ─────────────────────────────────────────────────────────
+    const MODEL_CTX: Record<string, number> = { sonnet: 185_000, powerful: 185_000, fast: 185_000, balanced: 100_000, creative: 100_000 };
+    const maxContextChars = (MODEL_CTX[modelSlug] ?? 100_000) * 4;
+    const msgChars = (msg: any): number => typeof msg.content === "string" ? msg.content.length : Array.isArray(msg.content) ? msg.content.reduce((s: number, b: any) => s + (b.text?.length ?? b.content?.length ?? 0), 0) : 0;
+    const trimmed = [...oaiMessages];
+    while (systemMsg.length + trimmed.reduce((s, msg) => s + msgChars(msg), 0) > maxContextChars && trimmed.length > 2) trimmed.shift();
+
+    const internalMessages = trimmed
+      .filter((msg: any) => msg.role !== "system")
+      .map((msg: any) => ({ role: msg.role, content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }));
+
+    // ── Convert Anthropic tools → OAI format ─────────────────────────────────
+    const oaiTools = Array.isArray(reqTools) && reqTools.length > 0
+      ? reqTools.map((t: any) => ({ type: "function", function: { name: t.name, description: t.description ?? "", parameters: t.input_schema ?? {} } }))
+      : undefined;
+
+    // ── Provider selection ───────────────────────────────────────────────────
+    const dbProviders = await storage.getActiveProviders();
+    const patterns = getProviderPatterns(modelSlug as any);
+    let selectedProviders = dbProviders.filter((p) => p.isEnabled && patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat)));
+    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled);
+    if (selectedProviders.length === 0) return res.status(503).json({ type: "error", error: { type: "server_error", message: "No active AI providers configured" } });
+
+    const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
+      id: p.id, name: p.name, providerType: p.providerType,
+      apiUrl: p.apiUrl ?? null, apiKey: p.apiKey ?? null, modelName: p.modelName,
+      headers: p.headers ?? null, httpMethod: p.httpMethod ?? "POST",
+      authStyle: (p.authStyle ?? "bearer") as ProviderConfig["authStyle"],
+      authHeaderName: p.authHeaderName ?? null,
+      streamMode: (p.streamMode ?? "none") as ProviderConfig["streamMode"],
+      bodyTemplate: p.bodyTemplate ?? null, responsePath: p.responsePath ?? null,
+      isActive: p.isActive, isEnabled: p.isEnabled, priority: p.priority,
+    }));
+
+    const primaryProvider = selectedProviders[0];
+    const ANT_MAX: Record<string, number> = { powerful: 32768, sonnet: 32768, fast: 8192, balanced: 32768, creative: 32768 };
+    const maxTokens = Math.min(reqMaxTokens ?? ANT_MAX[modelSlug] ?? 8192, ANT_MAX[modelSlug] ?? 8192);
+    const messagesJson = JSON.stringify(internalMessages);
+
+    const usageCheck = await storage.incrementApiUsage(user.id);
+    if (!usageCheck.allowed) return res.status(429).json({ type: "error", error: { type: "rate_limit_error", message: "Request limit reached" } });
+
+    // ── Cost helper (mirrors chat completions) ───────────────────────────────
+    const COST_INPUT: Record<string, number>  = { powerful: 15, sonnet: 3, fast: 0.25, balanced: 2, creative: 10 };
+    const COST_OUTPUT: Record<string, number> = { powerful: 75, sonnet: 15, fast: 1.25, balanced: 6, creative: 40 };
+    function calcCost(slug: string, inp: number, out: number, inPrice: number | null, outPrice: number | null): number {
+      const iP = inPrice  ?? COST_INPUT[slug]  ?? 5;
+      const oP = outPrice ?? COST_OUTPUT[slug] ?? 20;
+      return (inp / 1_000_000) * iP + (out / 1_000_000) * oP;
+    }
+
+    // ── Anthropic SSE helper ─────────────────────────────────────────────────
+    function sseAnt(event: string, data: unknown): string {
+      return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    }
+
+    if (wantStream !== false) {
+      // ── Streaming path ──────────────────────────────────────────────────────
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("anthropic-version", "2023-06-01");
+      res.flushHeaders();
+
+      res.write(sseAnt("message_start", { type: "message_start", message: { id: requestId, type: "message", role: "assistant", content: [], model: modelParam ?? modelSlug, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } }));
+      res.write(sseAnt("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+      res.write(sseAnt("ping", { type: "ping" }));
+
+      const originalWrite = res.write.bind(res);
+      let fullContent = "";
+      let contentBlockCount = 1;
+      const pendingToolBlocks: Record<number, { oaiIdx: number; blockIdx: number }> = {};
+
+      (res as any).write = (chunk: any) => {
+        const raw = typeof chunk === "string" ? chunk : chunk.toString();
+        for (const line of raw.split("\n")) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine.startsWith("data:")) continue;
+          const payload = trimmedLine.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.done === true || parsed.error) continue;
+
+            if (parsed.oai_tool_call_start) {
+              const { index, id, name } = parsed.oai_tool_call_start;
+              const blockIdx = contentBlockCount++;
+              pendingToolBlocks[index] = { oaiIdx: index, blockIdx };
+              originalWrite(sseAnt("content_block_start", { type: "content_block_start", index: blockIdx, content_block: { type: "tool_use", id, name, input: {} } }));
+              continue;
+            }
+            if (parsed.oai_tool_call_delta) {
+              const { index, arguments: args } = parsed.oai_tool_call_delta;
+              const block = pendingToolBlocks[index];
+              if (block) originalWrite(sseAnt("content_block_delta", { type: "content_block_delta", index: block.blockIdx, delta: { type: "input_json_delta", partial_json: args } }));
+              continue;
+            }
+            if (parsed.oai_finish_reason) continue;
+
+            const text = typeof parsed === "string" ? parsed : (parsed.content ?? parsed.text ?? parsed.delta ?? "");
+            if (!text) continue;
+            fullContent += text;
+            originalWrite(sseAnt("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }));
+          } catch {
+            if (payload && payload !== "[DONE]") {
+              fullContent += payload;
+              originalWrite(sseAnt("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: payload } }));
+            }
+          }
+        }
+        return true;
+      };
+
+      try {
+        const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+          messages: internalMessages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
+          ...(oaiTools ? { externalTools: oaiTools, oaiMessages: trimmed } : {}),
+        });
+
+        (res as any).write = originalWrite;
+        // Close tool blocks
+        for (const tb of Object.values(pendingToolBlocks)) {
+          res.write(sseAnt("content_block_stop", { type: "content_block_stop", index: tb.blockIdx }));
+        }
+        res.write(sseAnt("content_block_stop", { type: "content_block_stop", index: 0 }));
+        res.write(sseAnt("message_delta", { type: "message_delta", delta: { stop_reason: oaiTools ? "tool_use" : "end_turn", stop_sequence: null }, usage: { output_tokens: outputTokens } }));
+        res.write(sseAnt("message_stop", { type: "message_stop" }));
+
+        const totalCost = calcCost(modelSlug, inputTokens, outputTokens, primaryProvider?.inputPricePerMillion ?? null, primaryProvider?.outputPricePerMillion ?? null);
+        const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
+        const deduction = await storage.deductApiBalance(user.id, roundedTotal);
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: fullContent.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint: "/api/v1/messages", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        res.end();
+      } catch (err: any) {
+        (res as any).write = originalWrite;
+        res.write(sseAnt("error", { type: "error", error: { type: "server_error", message: err?.message ?? "Stream failed" } }));
+        res.end();
+      }
+    } else {
+      // ── Non-streaming path ──────────────────────────────────────────────────
+      try {
+        const userPrompt = internalMessages.map((msg) => `${msg.role === "assistant" ? "Assistant" : "User"}: ${msg.content}`).join("\n");
+        const text = await generateText(providerConfigs, systemMsg, userPrompt, maxTokens);
+        const inputTokens  = Math.ceil(messagesJson.length / 4);
+        const outputTokens = Math.ceil(text.length / 4);
+        const totalCost = calcCost(modelSlug, inputTokens, outputTokens, primaryProvider?.inputPricePerMillion ?? null, primaryProvider?.outputPricePerMillion ?? null);
+        const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
+        const deduction = await storage.deductApiBalance(user.id, roundedTotal);
+        storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint: "/api/v1/messages", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        return res.json({
+          id: requestId, type: "message", role: "assistant",
+          content: [{ type: "text", text }],
+          model: modelParam ?? modelSlug,
+          stop_reason: "end_turn", stop_sequence: null,
+          usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+        });
+      } catch (err: any) {
+        return res.status(500).json({ type: "error", error: { type: "server_error", message: err?.message ?? "Generation failed" } });
+      }
+    }
+  });
+
   // OpenAI-compatible legacy completions — used by Continue.dev tab autocomplete (FIM)
   app.post("/api/v1/completions", async (req: Request, res: Response) => {
     const authHeader = req.headers["authorization"] as string | undefined;
