@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { sendEmail, emailConfigured, apiAccessGrantedEmail, apiAccessRevokedEmail, planChangedEmail, apiLimitReachedEmail, forgotPasswordEmail, welcomeEmail, verificationEmail, passwordChangedEmail, testEmail, encryptSmtpPassword, decryptSmtpPassword } from "./lib/email";
+import { decryptApiKey, encryptApiKey } from "./storage";
 import { isDisposableEmail } from "./lib/disposable-domains";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -1189,8 +1190,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const dailyUsed = (!user.apiDailyResetAt || user.apiDailyResetAt < today) ? 0 : (user.apiDailyCount ?? 0);
     const monthlyUsed = (!user.apiMonthlyResetAt || user.apiMonthlyResetAt < monthStart) ? 0 : (user.apiMonthlyCount ?? 0);
     const stats = await storage.getApiStats(userId);
+    // Decrypt stored key so user can always copy it without regenerating
+    const fullKey = user.apiKey ? (decryptApiKey(user.apiKey) || user.apiKey) : null;
     return res.json({
-      apiKey: user.apiKey,
+      apiKey: fullKey,
       apiEnabled: user.apiEnabled,
       dailyUsed,
       dailyLimit: user.apiDailyLimit ?? null,
@@ -1231,8 +1234,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
     const newKey = "sk-sparky-" + randomBytes(20).toString("hex");
     await storage.setApiKey(userId, newKey);
-    // Return raw key one-time only — it won't be retrievable again after this response
-    return res.json({ apiKey: newKey, apiEnabled: true, oneTimeReveal: true });
+    return res.json({ apiKey: newKey, apiEnabled: true });
   });
 
   /* ── user: API call history ── */

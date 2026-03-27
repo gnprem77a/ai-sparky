@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 
 function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey).digest("hex");
@@ -7,6 +7,31 @@ function hashApiKey(rawKey: string): string {
 function maskApiKey(rawKey: string): string {
   if (rawKey.length <= 16) return rawKey;
   return rawKey.slice(0, 14) + "•".repeat(8) + rawKey.slice(-4);
+}
+
+export function encryptApiKey(rawKey: string): string {
+  const secret = process.env.SESSION_SECRET || "default-dev-secret";
+  const key = scryptSync(secret, "api-key-enc-salt", 32);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(rawKey, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+}
+
+export function decryptApiKey(enc: string): string {
+  try {
+    const parts = enc.split(":");
+    if (parts.length !== 3) return "";
+    const [ivHex, tagHex, dataHex] = parts;
+    const secret = process.env.SESSION_SECRET || "default-dev-secret";
+    const key = scryptSync(secret, "api-key-enc-salt", 32);
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return decipher.update(Buffer.from(dataHex, "hex")).toString("utf8") + decipher.final("utf8");
+  } catch {
+    return "";
+  }
 }
 
 import {
@@ -199,17 +224,20 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByApiKey(rawKey: string): Promise<User | undefined> {
     const hash = hashApiKey(rawKey);
-    // Primary: lookup by hash (secure, new system)
+    // Primary: lookup by hash (secure)
     const [byHash] = await db.select().from(users).where(eq(users.apiKeyHash, hash));
-    if (byHash) return byHash;
-    // Fallback: plaintext lookup for keys that predate hashing, then migrate on the fly
+    if (byHash) {
+      // If apiKey column still holds old masked value (not encrypted), migrate it
+      const dec = decryptApiKey(byHash.apiKey ?? "");
+      if (!dec && byHash.apiKey) {
+        await db.update(users).set({ apiKey: encryptApiKey(rawKey) }).where(eq(users.id, byHash.id));
+      }
+      return byHash;
+    }
+    // Fallback: plaintext lookup for keys that predate hashing
     const [byPlain] = await db.select().from(users).where(eq(users.apiKey, rawKey));
     if (byPlain) {
-      // Migrate: store hash + masked display, clear raw key
-      await db.update(users).set({
-        apiKeyHash: hash,
-        apiKey: maskApiKey(rawKey),
-      }).where(eq(users.id, byPlain.id));
+      await db.update(users).set({ apiKeyHash: hash, apiKey: encryptApiKey(rawKey) }).where(eq(users.id, byPlain.id));
     }
     return byPlain;
   }
@@ -247,9 +275,9 @@ export class DatabaseStorage implements IStorage {
       return user ? { user, maskedKey: "" } : undefined;
     }
     const hash = hashApiKey(rawKey);
-    const masked = maskApiKey(rawKey);
-    const [user] = await db.update(users).set({ apiKey: masked, apiKeyHash: hash }).where(eq(users.id, id)).returning();
-    return user ? { user, maskedKey: masked } : undefined;
+    const encrypted = encryptApiKey(rawKey);
+    const [user] = await db.update(users).set({ apiKey: encrypted, apiKeyHash: hash }).where(eq(users.id, id)).returning();
+    return user ? { user, maskedKey: maskApiKey(rawKey) } : undefined;
   }
 
   async setApiEnabled(id: string, enabled: boolean): Promise<User | undefined> {

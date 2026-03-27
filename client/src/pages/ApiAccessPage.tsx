@@ -117,8 +117,6 @@ export default function ApiAccessPage() {
   const { toast } = useToast();
   const [revealed, setRevealed] = useState(false);
   const [keyCopied, setKeyCopied] = useState(false);
-  const [newKeyReveal, setNewKeyReveal] = useState<string | null>(null);
-  const [newKeyCopied, setNewKeyCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "history" | "pricing" | "webhooks" | "docs" | "claude-cli">("overview");
   const [docsLang, setDocsLang] = useState<"curl" | "python" | "js" | "nodejs" | "php" | "ruby" | "go">("curl");
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -144,13 +142,9 @@ export default function ApiAccessPage() {
 
   const regenerateMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/me/api-key/regenerate").then((r) => r.json()),
-    onSuccess: (responseData: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/me/api-key"] });
-      if (responseData?.apiKey && responseData?.oneTimeReveal) {
-        setNewKeyReveal(responseData.apiKey);
-        setNewKeyCopied(false);
-      }
-      setRevealed(false);
+      setRevealed(true);
     },
   });
 
@@ -282,12 +276,11 @@ export default function ApiAccessPage() {
   /* ── Pro user with API access ── */
   const baseUrl = window.location.origin;
   const apiKey = data?.apiKey ?? "";
-  // API key is stored masked for security (full key shown one-time on generation only)
-  const maskedKey = apiKey || "Loading...";
+  const maskedKey = apiKey ? apiKey.slice(0, 14) + "•".repeat(8) + apiKey.slice(-4) : "Loading...";
   const balance = data?.balance ?? 0;
   const balanceLow = balance > 0 && balance < 10;
 
-  const displayKey = newKeyReveal || "<your-api-key>";
+  const displayKey = apiKey || "<your-api-key>";
   const curlExample = `curl -X POST ${baseUrl}/api/v1/chat \\
   -H "Authorization: Bearer ${displayKey}" \\
   -H "Content-Type: application/json" \\
@@ -499,13 +492,23 @@ func main() {
           ) : (
             <div className="flex items-center gap-2">
               <div className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border font-mono text-sm text-foreground overflow-hidden">
-                <span className="flex-1 truncate" data-testid="text-api-key">{maskedKey}</span>
+                <span className="flex-1 truncate" data-testid="text-api-key">
+                  {revealed ? apiKey : maskedKey}
+                </span>
               </div>
               <button
-                onClick={() => { navigator.clipboard.writeText(newKeyReveal ?? ""); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
-                disabled={!newKeyReveal}
-                title={newKeyReveal ? "Copy full key" : "Regenerate your key to copy it"}
-                className={cn("p-3 rounded-xl border transition-all flex-shrink-0", !newKeyReveal ? "border-border/40 text-muted-foreground/30 cursor-not-allowed" : keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
+                onClick={() => setRevealed((v) => !v)}
+                title={revealed ? "Hide key" : "Show full key"}
+                className="p-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0"
+                data-testid="button-toggle-reveal-key"
+              >
+                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => { navigator.clipboard.writeText(apiKey); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
+                disabled={!apiKey}
+                title="Copy API key"
+                className={cn("p-3 rounded-xl border transition-all flex-shrink-0", keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
                 data-testid="button-copy-key"
               >
                 {keyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -513,33 +516,10 @@ func main() {
             </div>
           )}
 
-          {/* One-time reveal banner shown immediately after key generation/regeneration */}
-          {newKeyReveal && (
-            <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-green-500/10 border border-green-500/30 text-xs">
-              <div className="flex items-start gap-2">
-                <span className="text-green-500 font-bold flex-shrink-0 mt-0.5">✓</span>
-                <span className="text-green-700 dark:text-green-400 font-semibold">New key generated — copy it now. It will not be shown again.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 px-3 py-2 rounded-lg bg-background border border-green-500/30 font-mono text-green-700 dark:text-green-300 overflow-x-auto whitespace-nowrap text-[11px]" data-testid="text-new-api-key">
-                  {newKeyReveal}
-                </div>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(newKeyReveal); setNewKeyCopied(true); setTimeout(() => setNewKeyCopied(false), 3000); }}
-                  className={cn("p-2 rounded-lg border transition-all flex-shrink-0", newKeyCopied ? "border-green-500/40 bg-green-500/15 text-green-600" : "border-green-500/30 text-green-600 hover:bg-green-500/15")}
-                  data-testid="button-copy-new-key"
-                >
-                  {newKeyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => setNewKeyReveal(null)}
-                  className="p-2 rounded-lg border border-green-500/20 text-green-600/60 hover:text-green-600 hover:bg-green-500/10 transition-all flex-shrink-0"
-                  data-testid="button-dismiss-new-key"
-                  title="Dismiss"
-                >
-                  ✕
-                </button>
-              </div>
+          {apiKey && apiKey.includes("•") && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>Your key was generated before our recent update. Click <strong>Regenerate Key</strong> once to get a fully copyable key.</span>
             </div>
           )}
 
@@ -1065,25 +1045,33 @@ func main() {
                 <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
                 <div>
                   <p className="font-semibold text-foreground text-sm">Copy your AI Sparky API key</p>
-                  <p className="text-xs text-muted-foreground">Scroll up on this page to the <strong>Your API Key</strong> section. Click <strong>Regenerate Key</strong> — your full key will appear. Copy it.</p>
+                  <p className="text-xs text-muted-foreground">Your key is shown below. Click <strong>Copy</strong> — you'll paste it in Step 3.</p>
                 </div>
               </div>
-              {newKeyReveal ? (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-green-500/10 border border-green-500/25 font-mono text-xs text-green-400 overflow-x-auto">
-                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="flex-1 truncate">{newKeyReveal}</span>
+              {isLoading ? (
+                <div className="h-10 rounded-xl bg-muted/40 animate-pulse" />
+              ) : apiKey ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-muted/40 border border-border font-mono text-xs text-foreground overflow-hidden">
+                  <span className="flex-1 truncate" data-testid="text-api-key-cli">{revealed ? apiKey : maskedKey}</span>
                   <button
-                    onClick={() => { navigator.clipboard.writeText(newKeyReveal); }}
-                    className="flex-shrink-0 px-2 py-1 rounded-lg bg-green-500/15 text-green-400 hover:bg-green-500/25 transition-colors text-[11px] font-semibold"
+                    onClick={() => setRevealed((v) => !v)}
+                    className="flex-shrink-0 p-1 text-muted-foreground hover:text-foreground transition-colors"
+                    title={revealed ? "Hide" : "Show"}
+                  >
+                    {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(apiKey); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
+                    className={cn("flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors", keyCopied ? "bg-green-500/15 text-green-500" : "bg-primary/10 text-primary hover:bg-primary/20")}
                     data-testid="button-copy-key-cli"
                   >
-                    Copy
+                    {keyCopied ? <><CheckCircle2 className="w-3 h-3" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy</>}
                   </button>
                 </div>
               ) : (
                 <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-xs text-amber-500">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span>Your full API key is only shown once right after you generate it. If you have not copied it yet, click <strong>Regenerate Key</strong> above — then come back here.</span>
+                  <span>No API key found. Scroll up and click <strong>Regenerate Key</strong> to create one, then come back here.</span>
                 </div>
               )}
             </div>
