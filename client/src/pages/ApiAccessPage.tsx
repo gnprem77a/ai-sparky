@@ -1051,77 +1051,103 @@ func main() {
         {activeTab === "claude-cli" && (
           <div className="space-y-4" data-testid="section-claude-cli">
 
-            {/* What is it */}
+            {/* Intro */}
             <div className="rounded-2xl border border-violet-500/25 bg-violet-500/5 px-5 py-4">
-              <p className="text-sm font-semibold text-foreground">What is Claude CLI?</p>
+              <p className="text-sm font-semibold text-foreground">Use AI Sparky in your terminal with Claude CLI</p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Claude CLI is an AI coding assistant that works inside your terminal. You point it at your codebase, ask it questions or give it tasks, and it reads/writes files for you. By setting your AI Sparky API key, every request goes through your account and is billed from your balance.
+                Claude CLI is an AI coding tool that runs inside your terminal — it reads your files, writes code, and fixes bugs on command. Follow the steps below to connect it to your AI Sparky account so it uses your balance instead of a separate Anthropic subscription.
               </p>
             </div>
 
-            {/* Step 1 */}
+            {/* Step 1 — Copy API key */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
               <div className="flex items-center gap-3">
                 <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
                 <div>
+                  <p className="font-semibold text-foreground text-sm">Copy your AI Sparky API key</p>
+                  <p className="text-xs text-muted-foreground">Scroll up on this page to the <strong>Your API Key</strong> section. Click <strong>Regenerate Key</strong> — your full key will appear. Copy it.</p>
+                </div>
+              </div>
+              {newKeyReveal ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-green-500/10 border border-green-500/25 font-mono text-xs text-green-400 overflow-x-auto">
+                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="flex-1 truncate">{newKeyReveal}</span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(newKeyReveal); }}
+                    className="flex-shrink-0 px-2 py-1 rounded-lg bg-green-500/15 text-green-400 hover:bg-green-500/25 transition-colors text-[11px] font-semibold"
+                    data-testid="button-copy-key-cli"
+                  >
+                    Copy
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20 text-xs text-amber-500">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Your full API key is only shown once right after you generate it. If you have not copied it yet, click <strong>Regenerate Key</strong> above — then come back here.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 — Install */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
+                <div>
                   <p className="font-semibold text-foreground text-sm">Install Claude CLI</p>
-                  <p className="text-xs text-muted-foreground">You need Node.js installed first. Then run this once in your terminal:</p>
+                  <p className="text-xs text-muted-foreground">Make sure Node.js is installed, then run this command once in your terminal:</p>
                 </div>
               </div>
               <CodeBlock code={`npm install -g @anthropic-ai/claude-code`} language="Terminal" />
             </div>
 
-            {/* Step 2 */}
-            <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
-                <div>
-                  <p className="font-semibold text-foreground text-sm">Save your API key permanently</p>
-                  <p className="text-xs text-muted-foreground">Open <code className="font-mono">~/.zshrc</code> (Mac/Linux) or <code className="font-mono">~/.bashrc</code> and add these two lines at the bottom:</p>
-                </div>
-              </div>
-              <CodeBlock
-                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}`}
-                language="~/.zshrc  or  ~/.bashrc"
-              />
-              <p className="text-xs text-muted-foreground pl-1">After saving the file, run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code> (or open a new terminal) to apply it.</p>
-            </div>
-
-            {/* Step 3 */}
+            {/* Step 3 — Connect */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
               <div className="flex items-center gap-3">
                 <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
                 <div>
-                  <p className="font-semibold text-foreground text-sm">Open a project folder and run Claude</p>
-                  <p className="text-xs text-muted-foreground">Navigate to any folder on your computer, then start Claude CLI:</p>
+                  <p className="font-semibold text-foreground text-sm">Connect Claude CLI to your AI Sparky account</p>
+                  <p className="text-xs text-muted-foreground">
+                    Open your shell profile file — <code className="font-mono">~/.zshrc</code> on Mac, <code className="font-mono">~/.bashrc</code> on Linux — and paste these two lines at the very bottom.{" "}
+                    <span className="text-amber-500 font-medium">Replace <code className="font-mono">YOUR_API_KEY</code> with the key you copied in Step 1.</span>
+                  </p>
                 </div>
               </div>
               <CodeBlock
-                code={`cd /your/project/folder\nclaude`}
-                language="Terminal"
+                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${newKeyReveal ?? "YOUR_API_KEY"}`}
+                language="Paste at the bottom of ~/.zshrc  or  ~/.bashrc"
               />
-              <p className="text-xs text-muted-foreground pl-1">Claude will start and show a prompt. You can now ask it things like <em>"explain this codebase"</em>, <em>"fix the bug in auth.ts"</em>, or <em>"add a login page"</em>.</p>
-            </div>
-
-            {/* Step 4 — done */}
-            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-5 flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-foreground text-sm">You're all set!</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Claude CLI is now connected to AI Sparky. Every conversation is billed from your balance at the same rates shown in the Pricing tab. No separate Anthropic subscription needed.
-                </p>
+              <div className="space-y-1.5 pl-1 text-xs text-muted-foreground">
+                <p>These two lines tell Claude CLI:</p>
+                <ul className="space-y-1 list-none">
+                  <li className="flex gap-2"><span className="text-primary font-mono flex-shrink-0">ANTHROPIC_BASE_URL</span><span>→ send requests to AI Sparky instead of Anthropic</span></li>
+                  <li className="flex gap-2"><span className="text-primary font-mono flex-shrink-0">ANTHROPIC_API_KEY</span><span>→ your AI Sparky key (authenticates you)</span></li>
+                </ul>
+                <p className="pt-1">After saving, reload your shell: <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code></p>
               </div>
             </div>
 
-            {/* Quick tip */}
+            {/* Step 4 — Run */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
-              <p className="text-sm font-semibold text-foreground flex items-center gap-2"><Zap className="w-4 h-4 text-primary" /> Quick tip — test without saving env vars first</p>
-              <p className="text-xs text-muted-foreground">If you just want to try it before doing the permanent setup, paste this entire block into your terminal:</p>
-              <CodeBlock
-                code={`ANTHROPIC_BASE_URL=${baseUrl}/api \\\nANTHROPIC_API_KEY=${displayKey} \\\nclaude`}
-                language="Terminal — one-off test"
-              />
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">4</span>
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Open any project folder and start Claude</p>
+                  <p className="text-xs text-muted-foreground">Navigate to a project on your computer and run:</p>
+                </div>
+              </div>
+              <CodeBlock code={`cd /path/to/your/project\nclaude`} language="Terminal" />
+              <p className="text-xs text-muted-foreground pl-1">Claude opens in that folder. Try asking: <em>"what does this project do?"</em>, <em>"fix the bug in login.ts"</em>, or <em>"add a dark mode toggle"</em>.</p>
+            </div>
+
+            {/* Done */}
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-5 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-foreground text-sm">Connected! You're ready to go.</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Claude CLI now runs through your AI Sparky account. Every message is billed from your balance — no Anthropic subscription needed. Check the <button onClick={() => setActiveTab("pricing")} className="text-primary underline underline-offset-2">Pricing tab</button> to see per-model rates.
+                </p>
+              </div>
             </div>
 
           </div>
