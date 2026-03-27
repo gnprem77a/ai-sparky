@@ -1101,7 +1101,7 @@ func main() {
                 </div>
               </div>
               <CodeBlock
-                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${newKeyReveal ?? "YOUR_API_KEY"}`}
+                code={`export ANTHROPIC_BASE_URL=${baseUrl}/api\nexport ANTHROPIC_API_KEY=${displayKey}`}
                 language="Paste at the bottom of ~/.zshrc  or  ~/.bashrc"
               />
               <div className="space-y-1.5 pl-1 text-xs text-muted-foreground">
