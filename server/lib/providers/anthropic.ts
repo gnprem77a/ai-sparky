@@ -22,6 +22,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31",
     };
     const key = this.config.apiKey ?? "";
     const style = this.config.authStyle ?? "x-api-key";
@@ -190,6 +191,23 @@ export class AnthropicAdapter implements ProviderAdapter {
           .filter((m) => m.role === "user" || m.role === "assistant")
           .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
+    // Wrap system prompt as structured content so Anthropic can cache it
+    const systemContent = systemPrompt
+      ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
+      : undefined;
+
+    // Mark last tool definition with cache_control so tool list is cached
+    let cachedTools: any[] | undefined;
+    if (isExternal) {
+      const rawTools = AnthropicAdapter.oaiToolsToAnthropic(externalTools!);
+      if (rawTools.length > 0) rawTools[rawTools.length - 1] = { ...rawTools[rawTools.length - 1], cache_control: { type: "ephemeral" } };
+      cachedTools = rawTools;
+    } else if (useTools) {
+      const rawTools = this.buildAnthropicTools();
+      rawTools[rawTools.length - 1] = { ...rawTools[rawTools.length - 1], cache_control: { type: "ephemeral" } };
+      cachedTools = rawTools;
+    }
+
     for (let round = 0; round < 6; round++) {
       const body: Record<string, unknown> = {
         model: this.config.modelName,
@@ -197,12 +215,8 @@ export class AnthropicAdapter implements ProviderAdapter {
         messages: anthropicMessages,
         stream: true,
       };
-      if (systemPrompt) body.system = systemPrompt;
-      if (isExternal) {
-        body.tools = AnthropicAdapter.oaiToolsToAnthropic(externalTools!);
-      } else if (useTools) {
-        body.tools = this.buildAnthropicTools();
-      }
+      if (systemContent) body.system = systemContent;
+      if (cachedTools) body.tools = cachedTools;
 
       const response = await fetch(`${this.baseUrl}/v1/messages`, {
         method: "POST",
