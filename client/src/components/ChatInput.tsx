@@ -519,7 +519,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   data-testid="button-attach-menu"
                   title="Attach"
                   className={cn(
-                    "flex items-center justify-center w-8 h-8 rounded-xl border transition-all",
+                    "flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-xl border transition-all",
                     menuOpen
                       ? "bg-primary/10 border-primary/40 text-primary"
                       : "border-border/40 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40 hover:border-border/60",
@@ -756,7 +756,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   data-testid="button-voice-input"
                   title={isRecording ? "Stop recording" : "Voice input"}
                   className={cn(
-                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
+                    "h-9 w-9 sm:h-8 sm:w-8 rounded-xl flex items-center justify-center transition-all",
                     isRecording
                       ? "bg-red-500/20 text-red-500 animate-pulse ring-1 ring-red-500/40"
                       : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
@@ -772,7 +772,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   data-testid="button-web-search"
                   title={isWebSearch ? "Web search on — click to disable" : "Enable web search grounding"}
                   className={cn(
-                    "h-8 w-8 rounded-xl flex items-center justify-center transition-all",
+                    "h-9 w-9 sm:h-8 sm:w-8 rounded-xl flex items-center justify-center transition-all",
                     isWebSearch
                       ? "bg-sky-500/20 text-sky-400 ring-1 ring-sky-500/40"
                       : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50"
@@ -787,7 +787,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   variant="secondary"
                   onClick={onStop}
                   data-testid="button-stop"
-                  className="h-8 w-8 rounded-xl shadow-sm"
+                  className="h-9 w-9 sm:h-8 sm:w-8 rounded-xl shadow-sm"
                 >
                   <Square className="w-3.5 h-3.5 fill-current" />
                 </Button>
@@ -797,7 +797,7 @@ export function ChatInput({ value, onChange, onSubmit, onStop, isStreaming, disa
                   onClick={handleSend}
                   disabled={!canSubmit}
                   data-testid="button-send"
-                  className={cn("h-8 w-8 rounded-xl shadow-sm transition-all", !canSubmit && "opacity-25")}
+                  className={cn("h-9 w-9 sm:h-8 sm:w-8 rounded-xl shadow-sm transition-all", !canSubmit && "opacity-25")}
                 >
                   <ArrowUp className="w-4 h-4" />
                 </Button>

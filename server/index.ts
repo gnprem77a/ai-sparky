@@ -86,18 +86,62 @@ app.use(
   })
 );
 
-// ── Rate limiting on auth endpoints ──────────────────────────────────────────
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const isProd = process.env.NODE_ENV === "production";
+
+// Broad /api rate limit — blunt protection against scrapers / abuse
+const globalApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many attempts, please try again later." },
-  skip: () => process.env.NODE_ENV !== "production",
+  message: { error: "Too many requests, please slow down." },
+  skip: () => !isProd,
+});
+app.use("/api", globalApiLimiter);
+
+// Tight limits on high-sensitivity auth actions
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,                    // 10 attempts per 15 min (down from 20)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts, please try again in 15 minutes." },
+  skip: () => !isProd,
 });
 
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,  // 1 hour window for registration
+  max: 5,                     // 5 accounts per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many accounts created from this IP, please try again later." },
+  skip: () => !isProd,
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,  // 1 hour
+  max: 5,                     // 5 reset emails per hour per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many password reset requests, please try again in an hour." },
+  skip: () => !isProd,
+});
+
+const resendVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 3,                     // 3 resends per 15 min
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many verification emails sent, please wait before trying again." },
+  skip: () => !isProd,
+});
+
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/auth/register", registerLimiter);
+app.use("/api/auth/forgot-password", forgotPasswordLimiter);
+app.use("/api/auth/resend-verification", resendVerificationLimiter);
+app.use("/api/auth/resend-verification-public", resendVerificationLimiter);
 
 // ── Request logger ────────────────────────────────────────────────────────────
 const SENSITIVE_PATHS = new Set([

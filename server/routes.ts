@@ -36,6 +36,29 @@ async function fireWebhook(url: string, event: string, data: Record<string, unkn
     // non-blocking, ignore failures
   }
 }
+
+/** Fire a balance.low webhook when balance crosses below a known threshold.
+ *  Only fires once per threshold crossing (balanceBefore >= threshold, newBalance < threshold). */
+function maybeFireLowBalanceWebhook(
+  webhookUrl: string | null | undefined,
+  username: string,
+  balanceBefore: number,
+  newBalance: number,
+): void {
+  if (!webhookUrl) return;
+  const THRESHOLDS = [1.00, 0.50, 0.10, 0.05];
+  for (const threshold of THRESHOLDS) {
+    if (balanceBefore >= threshold && newBalance < threshold) {
+      fireWebhook(webhookUrl, "api.balance.low", {
+        username,
+        balance_usd:      parseFloat(newBalance.toFixed(6)),
+        threshold_crossed: threshold,
+        message: `API balance dropped below $${threshold.toFixed(2)}. Current balance: $${newBalance.toFixed(4)}.`,
+      });
+      break; // only fire for the highest threshold crossed
+    }
+  }
+}
 import { insertUserSchema, insertBroadcastSchema, insertAiProviderSchema } from "../shared/schema";
 import { TOOL_DEFINITIONS, executeTool, executeWebSearchStructured } from "./tools";
 import multer from "multer";
@@ -2267,31 +2290,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     let tokensTodayIn = 0, tokensTodayOut = 0;
     let tokensMonthIn = 0, tokensMonthOut = 0;
     let requestsToday = 0, requestsMonth = 0;
+    let costToday = 0, costMonth = 0;
+
+    // Per-model breakdown maps
+    type ModelStats = { requests: number; input_tokens: number; output_tokens: number; cost_usd: number };
+    const modelToday  = new Map<string, ModelStats>();
+    const modelMonth  = new Map<string, ModelStats>();
 
     for (const log of logs) {
-      const t = new Date(log.createdAt ?? now).getTime();
+      const t      = new Date(log.createdAt ?? now).getTime();
+      const model  = log.modelUsed ?? "unknown";
+      const inTok  = log.inputTokens  ?? 0;
+      const outTok = log.outputTokens ?? 0;
+      const cost   = log.costDeducted ?? 0;
+
       if (t >= monthStart.getTime()) {
-        tokensMonthIn  += log.inputTokens  ?? 0;
-        tokensMonthOut += log.outputTokens ?? 0;
+        tokensMonthIn  += inTok;
+        tokensMonthOut += outTok;
+        costMonth      += cost;
         requestsMonth++;
+        const ms = modelMonth.get(model) ?? { requests: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+        modelMonth.set(model, { requests: ms.requests + 1, input_tokens: ms.input_tokens + inTok, output_tokens: ms.output_tokens + outTok, cost_usd: ms.cost_usd + cost });
       }
       if (t >= todayStart.getTime()) {
-        tokensTodayIn  += log.inputTokens  ?? 0;
-        tokensTodayOut += log.outputTokens ?? 0;
+        tokensTodayIn  += inTok;
+        tokensTodayOut += outTok;
+        costToday      += cost;
         requestsToday++;
+        const ms = modelToday.get(model) ?? { requests: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
+        modelToday.set(model, { requests: ms.requests + 1, input_tokens: ms.input_tokens + inTok, output_tokens: ms.output_tokens + outTok, cost_usd: ms.cost_usd + cost });
       }
     }
 
+    const toModelArray = (map: Map<string, ModelStats>) =>
+      [...map.entries()].sort((a, b) => b[1].cost_usd - a[1].cost_usd).map(([model, s]) => ({
+        model,
+        requests:      s.requests,
+        input_tokens:  s.input_tokens,
+        output_tokens: s.output_tokens,
+        total_tokens:  s.input_tokens + s.output_tokens,
+        cost_usd:      parseFloat(s.cost_usd.toFixed(6)),
+      }));
+
     return res.json({
-      balance_usd:             parseFloat((user.apiBalance ?? 0).toFixed(6)),
-      requests_today:          requestsToday,
-      requests_this_month:     requestsMonth,
-      input_tokens_today:      tokensTodayIn,
-      output_tokens_today:     tokensTodayOut,
-      total_tokens_today:      tokensTodayIn  + tokensTodayOut,
-      input_tokens_this_month: tokensMonthIn,
-      output_tokens_this_month:tokensMonthOut,
-      total_tokens_this_month: tokensMonthIn  + tokensMonthOut,
+      balance_usd:              parseFloat((user.apiBalance ?? 0).toFixed(6)),
+      requests_today:           requestsToday,
+      requests_this_month:      requestsMonth,
+      input_tokens_today:       tokensTodayIn,
+      output_tokens_today:      tokensTodayOut,
+      total_tokens_today:       tokensTodayIn  + tokensTodayOut,
+      cost_usd_today:           parseFloat(costToday.toFixed(6)),
+      input_tokens_this_month:  tokensMonthIn,
+      output_tokens_this_month: tokensMonthOut,
+      total_tokens_this_month:  tokensMonthIn  + tokensMonthOut,
+      cost_usd_this_month:      parseFloat(costMonth.toFixed(6)),
+      models_today:             toModelArray(modelToday),
+      models_this_month:        toModelArray(modelMonth),
     });
   });
 
@@ -2530,6 +2584,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: fullContent.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint: "/api/v1/messages", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         res.end();
       } catch (err: any) {
         (res as any).write = originalWrite;
@@ -2547,6 +2602,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint: "/api/v1/messages", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         return res.json({
           id: requestId, type: "message", role: "assistant",
           content: [{ type: "text", text }],
@@ -2630,6 +2686,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
       const deduction = await storage.deductApiBalance(user.id, roundedTotal);
       storage.createApiLog({ userId: user.id, messages: JSON.stringify([{ role: "user", content: prompt }]), response: text, inputTokens, outputTokens, modelUsed: slug, endpoint: "/api/v1/completions", costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+      maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
       return res.json({
         id: requestId, object: "text_completion", created, model: modelParam ?? slug,
         choices: [{ text, index: 0, logprobs: null, finish_reason: "stop" }],
@@ -2894,6 +2951,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const roundedTotal = Math.round(totalCost * 1_000_000) / 1_000_000;
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: fullContent.slice(0, 2000), inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         res.end();
       } catch (err: any) {
         (res as any).write = originalWrite;
@@ -2912,6 +2970,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const deduction = await storage.deductApiBalance(user.id, roundedTotal);
         res.setHeader("X-Request-ID", requestId);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, balanceBefore: currentBalance, balanceAfter: deduction.newBalance, durationMs: Date.now() - startTime });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         return res.json({
           id: requestId, object: "chat.completion", created, model: modelSlug,
           choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
@@ -3126,6 +3185,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, roundedTotal);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: null, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, failReason: deduction.success ? undefined : "insufficient_balance", balanceBefore: deduction.balanceBefore, balanceAfter, durationMs });
         if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, inputTokens, outputTokens, cost: roundedTotal, model: modelSlug, stream: true });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         res.write(`data: ${JSON.stringify({ done: true, inputTokens, outputTokens, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, request_id: requestId })}\n\n`);
         res.end();
       } catch (err: any) {
@@ -3153,6 +3213,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         setBalanceHeaders(inputTokens, outputTokens, balanceAfter, roundedTotal);
         storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: messagesJson, response: text, inputTokens, outputTokens, modelUsed: modelSlug, endpoint, costDeducted: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, success: deduction.success, status: deduction.success ? "success" : "failed", requestId, failReason: deduction.success ? undefined : "insufficient_balance", balanceBefore: deduction.balanceBefore, balanceAfter, durationMs });
         if (user.apiWebhookUrl) fireWebhook(user.apiWebhookUrl, "api.message.sent", { username: user.username, cost: roundedTotal, model: modelSlug, stream: false });
+        maybeFireLowBalanceWebhook(user.apiWebhookUrl, user.username, deduction.balanceBefore, deduction.newBalance);
         return res.json({ content: text, model: modelSlug, balanceRemaining: balanceAfter, cost: roundedTotal, inputCost: roundedInputCost, outputCost: roundedOutputCost, inputTokens, outputTokens, request_id: requestId });
       } catch (err: any) {
         const failReason = (err?.message || "Generation failed").slice(0, 500);
