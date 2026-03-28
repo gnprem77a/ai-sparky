@@ -2249,6 +2249,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  // Account usage — balance, tokens today/this month
+  app.get("/api/v1/usage", async (req: Request, res: Response) => {
+    const xApiKey  = req.headers["x-api-key"]      as string | undefined;
+    const authHeader = req.headers["authorization"] as string | undefined;
+    const apiKey = xApiKey?.trim() || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : undefined);
+    if (!apiKey) return res.status(401).json({ error: { message: "Invalid API key", type: "authentication_error" } });
+    const user = await storage.getUserByApiKey(apiKey);
+    if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "authentication_error" } });
+    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "permission_error" } });
+
+    const logs = await storage.getApiLogs(user.id, 1000);
+    const now  = Date.now();
+    const todayStart   = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const monthStart   = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+    let tokensTodayIn = 0, tokensTodayOut = 0;
+    let tokensMonthIn = 0, tokensMonthOut = 0;
+    let requestsToday = 0, requestsMonth = 0;
+
+    for (const log of logs) {
+      const t = new Date(log.createdAt ?? now).getTime();
+      if (t >= monthStart.getTime()) {
+        tokensMonthIn  += log.inputTokens  ?? 0;
+        tokensMonthOut += log.outputTokens ?? 0;
+        requestsMonth++;
+      }
+      if (t >= todayStart.getTime()) {
+        tokensTodayIn  += log.inputTokens  ?? 0;
+        tokensTodayOut += log.outputTokens ?? 0;
+        requestsToday++;
+      }
+    }
+
+    return res.json({
+      balance_usd:             parseFloat((user.apiBalance ?? 0).toFixed(6)),
+      requests_today:          requestsToday,
+      requests_this_month:     requestsMonth,
+      input_tokens_today:      tokensTodayIn,
+      output_tokens_today:     tokensTodayOut,
+      total_tokens_today:      tokensTodayIn  + tokensTodayOut,
+      input_tokens_this_month: tokensMonthIn,
+      output_tokens_this_month:tokensMonthOut,
+      total_tokens_this_month: tokensMonthIn  + tokensMonthOut,
+    });
+  });
+
   // Anthropic-compatible /v1/messages endpoint — used by Claude CLI and Anthropic SDK clients.
   // Set ANTHROPIC_BASE_URL=https://aisparky.dev/api and ANTHROPIC_API_KEY=sk-sparky-... to use.
   app.post("/api/v1/messages", async (req: Request, res: Response) => {
@@ -2261,20 +2307,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
     }
     const apiKeyId = apiKey.slice(-8);
+    const requestId = "msg_" + randomBytes(12).toString("hex");
+    const startTime = Date.now();
+    res.setHeader("X-Request-ID", requestId);
+
     const user = await storage.getUserByApiKey(apiKey);
-    if (!user) return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" } });
-    if (!user.apiEnabled) return res.status(403).json({ type: "error", error: { type: "permission_error", message: "API access not enabled for this key" } });
+    if (!user) return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" }, request_id: requestId });
+    if (!user.apiEnabled) return res.status(403).json({ type: "error", error: { type: "permission_error", message: "API access not enabled for this key" }, request_id: requestId });
 
     const currentBalance = user.apiBalance ?? 0;
     if (currentBalance < 0.01) {
-      return res.status(402).json({ type: "error", error: { type: "billing_error", message: "Insufficient balance. Please contact admin to top up." } });
+      return res.status(402).json({ type: "error", error: { type: "billing_error", message: `Insufficient balance ($${currentBalance.toFixed(4)} remaining). Please contact admin to top up.` }, request_id: requestId });
     }
     if (user.apiRateLimitPerMin && !checkRateLimit(apiKey, user.apiRateLimitPerMin)) {
-      return res.status(429).json({ type: "error", error: { type: "rate_limit_error", message: "Rate limit exceeded" } });
+      return res.status(429).json({ type: "error", error: { type: "rate_limit_error", message: `Rate limit exceeded. You are allowed ${user.apiRateLimitPerMin} requests/min.` }, request_id: requestId });
     }
-
-    const startTime = Date.now();
-    const requestId = "msg_" + randomBytes(12).toString("hex");
 
     // ── Parse Anthropic-format request ──────────────────────────────────────
     const { model: modelParam, messages: rawMessages = [], system: systemRaw, max_tokens: reqMaxTokens, stream: wantStream, tools: reqTools } = req.body;
@@ -2369,7 +2416,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const patterns = getProviderPatterns(modelSlug as any);
     let selectedProviders = dbProviders.filter((p) => p.isEnabled && patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat)));
     if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled);
-    if (selectedProviders.length === 0) return res.status(503).json({ type: "error", error: { type: "server_error", message: "No active AI providers configured" } });
+    if (selectedProviders.length === 0) return res.status(503).json({ type: "error", error: { type: "server_error", message: `No active AI providers configured for model "${modelParam ?? modelSlug}". Contact admin.` }, request_id: requestId });
 
     const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
       id: p.id, name: p.name, providerType: p.providerType,
@@ -2462,7 +2509,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       };
 
       try {
-        const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+        const { inputTokens, outputTokens, cacheReadTokens = 0, cacheCreationTokens = 0 } = await streamWithFallback(providerConfigs, {
           messages: internalMessages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
           ...(oaiTools ? { externalTools: oaiTools, oaiMessages: trimmed } : {}),
         });
@@ -2473,7 +2520,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           res.write(sseAnt("content_block_stop", { type: "content_block_stop", index: tb.blockIdx }));
         }
         res.write(sseAnt("content_block_stop", { type: "content_block_stop", index: 0 }));
-        res.write(sseAnt("message_delta", { type: "message_delta", delta: { stop_reason: oaiTools ? "tool_use" : "end_turn", stop_sequence: null }, usage: { output_tokens: outputTokens } }));
+        const deltaUsage: Record<string, number> = { output_tokens: outputTokens };
+        if (cacheReadTokens > 0)     deltaUsage.cache_read_input_tokens     = cacheReadTokens;
+        if (cacheCreationTokens > 0) deltaUsage.cache_creation_input_tokens = cacheCreationTokens;
+        res.write(sseAnt("message_delta", { type: "message_delta", delta: { stop_reason: oaiTools ? "tool_use" : "end_turn", stop_sequence: null }, usage: deltaUsage }));
         res.write(sseAnt("message_stop", { type: "message_stop" }));
 
         const totalCost = calcCost(modelSlug, inputTokens, outputTokens, primaryProvider?.inputPricePerMillion ?? null, primaryProvider?.outputPricePerMillion ?? null);
@@ -2505,7 +2555,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           usage: { input_tokens: inputTokens, output_tokens: outputTokens },
         });
       } catch (err: any) {
-        return res.status(500).json({ type: "error", error: { type: "server_error", message: err?.message ?? "Generation failed" } });
+        return res.status(500).json({ type: "error", error: { type: "server_error", message: err?.message ?? "Generation failed" }, request_id: requestId });
       }
     }
   });
@@ -2604,16 +2654,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const requestId = "chatcmpl-" + randomBytes(12).toString("hex");
     const startTime = Date.now();
     const apiKeyId = user.apiKey ?? null;
+    res.setHeader("X-Request-ID", requestId);
 
     const userRateLimit = user.apiRateLimitPerMin ?? API_RATE_LIMIT_DEFAULT;
     const rl = checkApiV1RateLimit(apiKey, userRateLimit);
     if (!rl.allowed) {
-      return res.status(429).json({ error: { message: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", type: "rate_limit_error" } });
+      const retryAfterSecs = Math.ceil((rl.resetAt - Date.now()) / 1000);
+      res.setHeader("Retry-After", String(retryAfterSecs));
+      return res.status(429).json({ error: { message: `Rate limit exceeded. Max ${userRateLimit} requests/min. Retry after ${retryAfterSecs}s.`, type: "rate_limit_error" }, request_id: requestId });
     }
 
     const currentBalance = user.apiBalance ?? 0;
     if (currentBalance < 0.01) {
-      return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
+      return res.status(402).json({ error: { message: `Insufficient balance ($${currentBalance.toFixed(4)} remaining). Please contact admin to top up.`, type: "billing_error" }, request_id: requestId });
     }
 
     const { messages: rawMessages, model: modelParam, stream: wantStream, max_tokens: reqMaxTokens, system, tools: reqTools, stream_options: streamOptions } = req.body;
@@ -2813,7 +2866,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const hasExternalTools = Array.isArray(reqTools) && reqTools.length > 0;
       try {
-        const { inputTokens, outputTokens } = await streamWithFallback(providerConfigs, {
+        const { inputTokens, outputTokens, cacheReadTokens = 0, cacheCreationTokens = 0 } = await streamWithFallback(providerConfigs, {
           messages, systemPrompt: systemMsg, maxTokens, useTools: false, res,
           ...(hasExternalTools ? { externalTools: reqTools, oaiMessages: trimmedMessages } : {}),
         });
@@ -2825,11 +2878,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         };
         // Always include usage so Cline / Continue.dev / Cursor can display token counts
         if (includeUsage) {
-          doneChunk.usage = {
+          const usageObj: Record<string, number> = {
             prompt_tokens: inputTokens,
             completion_tokens: outputTokens,
             total_tokens: inputTokens + outputTokens,
           };
+          if (cacheReadTokens > 0)     usageObj.cache_read_input_tokens     = cacheReadTokens;
+          if (cacheCreationTokens > 0) usageObj.cache_creation_input_tokens = cacheCreationTokens;
+          doneChunk.usage = usageObj;
         }
         res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
         res.write("data: [DONE]\n\n");

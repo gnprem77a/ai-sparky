@@ -21,6 +21,8 @@ export interface StreamOptions {
 export interface UsageResult {
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   modelName?: string;
   providerResponseId?: string;
 }

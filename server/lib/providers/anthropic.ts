@@ -179,6 +179,8 @@ export class AnthropicAdapter implements ProviderAdapter {
   async stream({ messages, systemPrompt, maxTokens, useTools, res, externalTools, oaiMessages }: StreamOptions): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
 
     const isExternal = Array.isArray(externalTools) && externalTools.length > 0;
 
@@ -261,7 +263,9 @@ export class AnthropicAdapter implements ProviderAdapter {
               };
 
               if (ev.type === "message_start" && ev.message?.usage) {
-                inputTokens = ev.message.usage.input_tokens ?? 0;
+                inputTokens        = ev.message.usage.input_tokens ?? 0;
+                cacheReadTokens     = (ev.message.usage as any).cache_read_input_tokens ?? 0;
+                cacheCreationTokens = (ev.message.usage as any).cache_creation_input_tokens ?? 0;
               }
               if (ev.type === "message_delta" && ev.usage) {
                 outputTokens = ev.usage.output_tokens ?? 0;
@@ -323,6 +327,6 @@ export class AnthropicAdapter implements ProviderAdapter {
       }
     }
 
-    return { inputTokens, outputTokens };
+    return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
   }
 }
