@@ -920,8 +920,8 @@ ${messagesHtml}
       if (flushTimeout) clearTimeout(flushTimeout);
       flush();
 
-      /* ── Save completed assistant message to DB ── */
-      if (convId === activeIdRef.current || activeIdRef.current === null) {
+      /* ── Save completed assistant message to DB (always, even if user navigated away) ── */
+      if (accumulated) {
         await apiRequest("POST", `/api/conversations/${convId}/messages`, {
           role: "assistant",
           content: accumulated,
@@ -934,6 +934,10 @@ ${messagesHtml}
         queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
         queryClient.invalidateQueries({ queryKey: ["/api/settings/usage"] });
         queryClient.invalidateQueries({ queryKey: ["/api/admin/stats/tokens"] });
+      }
+
+      /* ── In-page celebrations only if still viewing this conversation ── */
+      if (convId === activeIdRef.current) {
 
         /* ── Milestone celebrations ── */
         const MILESTONES = [10, 25, 50, 100, 250, 500, 1000];
