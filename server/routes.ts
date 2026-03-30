@@ -2246,11 +2246,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
     const now = Math.floor(Date.now() / 1000);
     const modelList = [
-      { id: "powerful", name: "Claude Opus 4.6",    context_length: 200_000, max_tokens: 32_000 },
-      { id: "sonnet",   name: "Claude Sonnet 4.5",  context_length: 200_000, max_tokens: 16_000 },
-      { id: "balanced", name: "Mistral Large 3",    context_length: 128_000, max_tokens:  8_192 },
-      { id: "fast",     name: "Claude Haiku",        context_length: 200_000, max_tokens:  4_096 },
-      { id: "creative", name: "GPT-5.3",             context_length: 128_000, max_tokens:  8_192 },
+      { id: "powerful",      name: "Claude Opus 4.6",    context_length: 200_000, max_tokens: 32_000 },
+      { id: "sonnet",        name: "Claude Sonnet 4.5",  context_length: 200_000, max_tokens: 16_000 },
+      { id: "balanced",      name: "Mistral Large 3",    context_length: 128_000, max_tokens:  8_192 },
+      { id: "fast",          name: "Claude Haiku",        context_length: 200_000, max_tokens:  4_096 },
+      { id: "creative",      name: "GPT-5.3",             context_length: 128_000, max_tokens:  8_192 },
+      { id: "minimax-m2.5",  name: "FW-MiniMax-M2.5",    context_length: 1_000_000, max_tokens: 16_384 },
+      { id: "kimi-2.5",      name: "Kimi 2.5",           context_length: 128_000, max_tokens:  8_192 },
     ];
     return res.json({
       object: "list",
@@ -2387,7 +2389,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // ── Model → slug ─────────────────────────────────────────────────────────
     const mLower = (modelParam ?? "").toLowerCase();
     const modelSlug =
-      ["powerful","sonnet","fast","balanced","creative"].includes(mLower) ? mLower :
+      ["powerful","sonnet","fast","balanced","creative","minimax","kimi"].includes(mLower) ? mLower :
+      mLower.includes("minimax") || mLower.includes("m2.5") || mLower.includes("fw-minimax") ? "minimax" :
+      mLower.includes("kimi") || mLower.includes("moonshot") ? "kimi" :
       mLower.includes("opus")    ? "powerful" :
       mLower.includes("sonnet")  ? "sonnet" :
       mLower.includes("haiku")   ? "fast" :
@@ -2450,7 +2454,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const oaiMessages = anthropicToOai(rawMessages);
 
     // ── Context trim ─────────────────────────────────────────────────────────
-    const MODEL_CTX: Record<string, number> = { sonnet: 185_000, powerful: 185_000, fast: 185_000, balanced: 100_000, creative: 100_000 };
+    const MODEL_CTX: Record<string, number> = { sonnet: 185_000, powerful: 185_000, fast: 185_000, balanced: 100_000, creative: 100_000, minimax: 900_000, kimi: 100_000 };
     const maxContextChars = (MODEL_CTX[modelSlug] ?? 100_000) * 4;
     const msgChars = (msg: any): number => typeof msg.content === "string" ? msg.content.length : Array.isArray(msg.content) ? msg.content.reduce((s: number, b: any) => s + (b.text?.length ?? b.content?.length ?? 0), 0) : 0;
     const trimmed = [...oaiMessages];
@@ -2737,6 +2741,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const modelMap: Record<string, string> = {
       // Our slugs
       "powerful": "powerful", "sonnet": "sonnet", "balanced": "balanced", "fast": "fast", "creative": "creative",
+      // API-only slugs
+      "minimax-m2.5": "minimax", "minimax": "minimax", "fw-minimax-m2.5": "minimax",
+      "kimi-2.5": "kimi", "kimi": "kimi", "moonshot-v1": "kimi",
       // GPT aliases
       "gpt-4": "powerful", "gpt-4o": "powerful", "gpt-4-turbo": "powerful",
       "gpt-3.5-turbo": "fast", "gpt-3.5-turbo-instruct": "fast",
@@ -2760,6 +2767,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const modelSlugExact = modelMap[modelParam?.toLowerCase?.() ?? ""];
     const modelSlug: string = modelSlugExact ?? (() => {
       const m = (modelParam ?? "").toLowerCase();
+      if (m.includes("minimax") || m.includes("m2.5")) return "minimax";
+      if (m.includes("kimi") || m.includes("moonshot")) return "kimi";
       if (m.includes("opus"))    return "powerful";
       if (m.includes("sonnet"))  return "sonnet";
       if (m.includes("haiku"))   return "fast";
@@ -2773,6 +2782,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const MODEL_CONTEXT_TOKENS: Record<string, number> = {
       sonnet: 185_000, powerful: 185_000, fast: 185_000, // Claude 200k context
       balanced: 100_000, creative: 100_000,               // Mistral/GPT ~128k context
+      minimax: 900_000, kimi: 100_000,                    // API-only models
     };
     const contextTokenLimit = MODEL_CONTEXT_TOKENS[modelSlug] ?? 100_000;
     const CHARS_PER_TOKEN = 4;
@@ -3083,7 +3093,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { messages: rawMessages, message, model: modelParam, systemPrompt, stream: wantStream, maxTokens: reqMaxTokens } = req.body;
 
     // Normalize model slug
-    const modelSlug: string = ["powerful", "sonnet", "fast", "creative", "balanced"].includes(modelParam) ? modelParam : "balanced";
+    const modelSlug: string = (() => {
+      const m = (modelParam ?? "").toLowerCase();
+      if (["powerful", "sonnet", "fast", "creative", "balanced", "minimax", "kimi"].includes(m)) return m;
+      if (m.includes("minimax") || m.includes("m2.5") || m.includes("fw-minimax")) return "minimax";
+      if (m.includes("kimi") || m.includes("moonshot")) return "kimi";
+      return "balanced";
+    })();
 
     let messages: { role: string; content: string }[] = [];
     if (Array.isArray(rawMessages) && rawMessages.length > 0) {

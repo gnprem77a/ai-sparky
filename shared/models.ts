@@ -95,6 +95,8 @@ export function getProviderPatterns(modelKey: string): string[] {
     creative: ["gpt"],
     fast:     ["haiku"],
     auto:     [],
+    minimax:  ["minimax", "m2.5", "fw-minimax"],
+    kimi:     ["kimi", "moonshot"],
   };
   return map[modelKey] ?? [];
 }
