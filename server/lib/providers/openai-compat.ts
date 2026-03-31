@@ -102,13 +102,15 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   /**
    * Returns the full endpoint URL.
    * If the user already provided a URL with a meaningful path, use it as-is.
-   * Otherwise append the standard /chat/completions path.
+   * Otherwise append the standard chat completions path.
+   * For openai-compatible providers with a bare domain, defaults to /v1/chat/completions
+   * since that is the OpenAI-standard convention followed by most third-party APIs.
    */
   private chatEndpoint(): string {
     const rawUrl = (this.config.apiUrl ?? "").replace(/\/$/, "");
 
     // If the URL has a meaningful path (not just "/"), use it as-is.
-    // This covers /chat/completions, /openai/responses, /models/chat/completions, etc.
+    // This covers /chat/completions, /v1/chat/completions, /openai/responses, etc.
     try {
       const parsed = new URL(rawUrl);
       if (parsed.pathname.length > 1) return rawUrl;
@@ -118,9 +120,15 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     // Legacy Azure OpenAI (.openai.azure.com) also needs api-version.
     const isLegacyAzure = this.config.providerType === "azure" &&
       rawUrl.includes(".openai.azure.com");
-    return isLegacyAzure
-      ? `${this.baseUrl}/chat/completions?api-version=2024-02-01`
-      : `${this.baseUrl}/chat/completions`;
+    if (isLegacyAzure) return `${this.baseUrl}/chat/completions?api-version=2024-02-01`;
+
+    // For openai-compatible providers with a bare domain, use /v1/chat/completions
+    // (the OpenAI-standard path used by virtually all third-party compatible APIs).
+    if (this.config.providerType === "openai-compatible") {
+      return `${this.baseUrl}/v1/chat/completions`;
+    }
+
+    return `${this.baseUrl}/chat/completions`;
   }
 
   // ---------------------------------------------------------------------------
@@ -214,51 +222,60 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         };
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
+      /* ── Helper: attempt one fetch with a 15s timeout ── */
+      const attemptFetch = async (url: string, body: Record<string, unknown>) => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15_000);
+        try {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: this.buildHeaders(),
+            body: JSON.stringify(body),
+            signal: ctrl.signal,
+          });
+          const text = await r.text();
+          let parsed: Record<string, unknown> = {};
+          try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+          return { r, rawText: text, data: parsed };
+        } finally {
+          clearTimeout(t);
+        }
+      };
 
-      let res: globalThis.Response;
-      try {
-        res = await fetch(endpoint, {
-          method: "POST",
-          headers: this.buildHeaders(),
-          body: JSON.stringify(testBody),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      let rawText = await res.text();
-      let data: Record<string, unknown> = {};
-      try { data = JSON.parse(rawText); } catch { /* not JSON */ }
+      let { r: res, rawText, data } = await attemptFetch(endpoint, testBody);
 
       // Some newer models (o-series, gpt-5) reject max_tokens — auto-retry with max_completion_tokens
       const errMsg0 = (data as { error?: { message?: string } }).error?.message ?? rawText;
       if (!res.ok && errMsg0.toLowerCase().includes("max_tokens")) {
         const retryBody = { ...testBody, max_completion_tokens: (testBody as Record<string, unknown>).max_tokens };
         delete (retryBody as Record<string, unknown>).max_tokens;
-        const controller2 = new AbortController();
-        const timeout2 = setTimeout(() => controller2.abort(), 15_000);
-        try {
-          res = await fetch(endpoint, {
-            method: "POST",
-            headers: this.buildHeaders(),
-            body: JSON.stringify(retryBody),
-            signal: controller2.signal,
-          });
-        } finally {
-          clearTimeout(timeout2);
+        ({ r: res, rawText, data } = await attemptFetch(endpoint, retryBody));
+      }
+
+      // If the endpoint has no /v1/ path and the request failed, auto-retry with /v1/chat/completions.
+      // Many OpenAI-compatible APIs use /v1/chat/completions but users often enter just the base domain.
+      if (!res.ok && !isRerankModel && !isEmbedModel && !this.isAnthropicApi && !this.isResponsesApi) {
+        const endpointHasPath = (() => {
+          try { return new URL(endpoint).pathname.length > 1; } catch { return false; }
+        })();
+        const alreadyHasV1 = endpoint.includes("/v1");
+        if (!alreadyHasV1 || !endpointHasPath) {
+          const base = (this.config.apiUrl ?? "").replace(/\/$/, "");
+          const v1Endpoint = `${base}/v1/chat/completions`;
+          const v1Result = await attemptFetch(v1Endpoint, testBody);
+          if (v1Result.r.ok) {
+            return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
+          }
+          // If v1 also fails, keep the original response for error reporting
         }
-        rawText = await res.text();
-        try { data = JSON.parse(rawText); } catch { /* not JSON */ }
       }
 
       if (!res.ok) {
         const isAuthError = res.status === 401 || res.status === 403;
-        const errMsg = isAuthError
-          ? "Invalid API key or unauthorized"
-          : ((data as { error?: { message?: string } }).error?.message ?? (rawText.slice(0, 120) || `HTTP ${res.status}`));
+        const apiErrMsg = (data as { error?: { message?: string } }).error?.message;
+        const errMsg = isAuthError && !apiErrMsg
+          ? `Invalid API key or unauthorized (HTTP ${res.status}). Check your API key and ensure the provider URL is correct (e.g. https://api.example.com/v1/chat/completions).`
+          : (apiErrMsg ?? (rawText.slice(0, 200) || `HTTP ${res.status}`));
         return { success: false, latencyMs: Date.now() - start, statusCode: res.status, message: errMsg };
       }
       return { success: true, latencyMs: Date.now() - start, message: "Connection successful" };
