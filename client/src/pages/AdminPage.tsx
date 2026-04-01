@@ -2150,7 +2150,7 @@ export default function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/global-api-settings"] });
       toast({ title: "Global API settings updated" });
     },
-    onError: () => toast({ title: "Error", description: "Failed to update global API settings", variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message || "Failed to update global API settings", variant: "destructive" }),
   });
 
   const { toast } = useToast();
