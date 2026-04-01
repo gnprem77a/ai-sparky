@@ -1130,6 +1130,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ apiEnabled: false });
   });
 
+  /* ── admin: toggle per-user API access (enable/disable without regenerating key) ── */
+  app.patch("/api/admin/users/:id/api-access", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const { enabled } = req.body;
+    const target = await storage.getUser(id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (enabled) {
+      let newRawKey: string | null = null;
+      if (!target.apiKey) {
+        newRawKey = "sk-sparky-" + randomBytes(20).toString("hex");
+        await storage.setApiKey(id, newRawKey);
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        if (target.email) sendEmail(target.email, "API Access Granted — AI Sparky", apiAccessGrantedEmail(target.username, baseUrl), "api_access_granted").catch(() => {});
+        if (target.apiWebhookUrl) fireWebhook(target.apiWebhookUrl, "api.access.granted", { username: target.username });
+      }
+      await storage.setApiEnabled(id, true);
+      return res.json({ apiEnabled: true, newKey: newRawKey });
+    } else {
+      await storage.setApiEnabled(id, false);
+      if (target.email) sendEmail(target.email, "API Access Revoked — AI Sparky", apiAccessRevokedEmail(target.username), "api_access_revoked").catch(() => {});
+      if (target.apiWebhookUrl) fireWebhook(target.apiWebhookUrl, "api.access.revoked", { username: target.username });
+      return res.json({ apiEnabled: false });
+    }
+  });
+
   /* ── admin: global API access settings ── */
   app.get("/api/admin/global-api-settings", requireAdmin as any, async (_req: Request, res: Response) => {
     try {

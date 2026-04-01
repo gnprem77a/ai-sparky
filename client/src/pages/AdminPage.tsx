@@ -2123,6 +2123,16 @@ export default function AdminPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] }),
   });
 
+  const toggleApiAccessMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/api-access`, { enabled }).then((r) => r.json()),
+    onSuccess: (data, { id, enabled }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      if (enabled && data.newKey) setGeneratedKey({ userId: id, key: data.newKey });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update API access", variant: "destructive" }),
+  });
+
   const updateApiSettingsMutation = useMutation({
     mutationFn: ({ id, settings }: { id: string; settings: Record<string, string> }) =>
       apiRequest("PATCH", `/api/admin/users/${id}/api-settings`, settings).then((r) => r.json()),
@@ -2960,52 +2970,120 @@ export default function AdminPage() {
                     {u.id !== user.id && (
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
+                          onClick={() => setAdminApiLogsOpenId(adminApiLogsOpenId === u.id ? null : u.id)}
+                          data-testid={`button-view-api-activity-${u.id}`}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                            adminApiLogsOpenId === u.id ? "border-primary/30 text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          )}
+                        >
+                          <Activity className="w-3.5 h-3.5" />
+                          Activity
+                        </button>
+                        <button
                           onClick={() => setApiSettingsOpenId(settingsOpen ? null : u.id)}
                           data-testid={`button-api-settings-${u.id}`}
                           className={cn(
                             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
                             settingsOpen ? "border-blue-500/30 text-blue-500 bg-blue-500/10" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
                           )}
-                          title="API Settings"
                         >
                           <Settings2 className="w-3.5 h-3.5" />
                           Settings
                         </button>
-                        <button
-                          onClick={() => {
-                            const msg = u.apiEnabled
-                              ? `Are you sure? Old API key will stop working immediately.`
-                              : `Generate API key for "${u.username}"?`;
-                            if (confirm(msg)) {
-                              generateApiKeyMutation.mutate(u.id);
-                            }
-                          }}
-                          disabled={generateApiKeyMutation.isPending}
-                          data-testid={`button-generate-key-${u.id}`}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 transition-all"
-                        >
-                          <Key className="w-3.5 h-3.5" />
-                          {u.apiEnabled ? "Regenerate" : "Generate Key"}
-                        </button>
-                        {u.apiEnabled && (
+                        {u.apiEnabled ? (
                           <button
                             onClick={() => {
-                              if (confirm(`Are you sure? This will disable API access for this user.`)) {
-                                revokeApiKeyMutation.mutate(u.id);
+                              if (confirm(`Disable API access for "${u.username}"? Their key is preserved but will be inactive.`)) {
+                                toggleApiAccessMutation.mutate({ id: u.id, enabled: false });
                                 if (generatedKey?.userId === u.id) setGeneratedKey(null);
                               }
                             }}
-                            disabled={revokeApiKeyMutation.isPending}
-                            data-testid={`button-revoke-key-${u.id}`}
+                            disabled={toggleApiAccessMutation.isPending}
+                            data-testid={`button-disable-api-${u.id}`}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all"
                           >
-                            <X className="w-3.5 h-3.5" />
-                            Revoke
+                            <PowerOff className="w-3.5 h-3.5" />
+                            Disable
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Enable API access for "${u.username}"?`)) {
+                                toggleApiAccessMutation.mutate({ id: u.id, enabled: true });
+                              }
+                            }}
+                            disabled={toggleApiAccessMutation.isPending}
+                            data-testid={`button-enable-api-${u.id}`}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10 transition-all"
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                            Enable
                           </button>
                         )}
                       </div>
                     )}
                   </div>
+
+                  {/* Activity Panel */}
+                  {adminApiLogsOpenId === u.id && (
+                    <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-3.5 h-3.5 text-primary" />
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">API Activity — {u.username}</p>
+                        <a
+                          href={`/api/admin/users/${u.id}/api-logs/export.csv`}
+                          download
+                          data-testid={`button-export-csv-${u.id}`}
+                          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-1"
+                        >
+                          ↓ Export CSV
+                        </a>
+                      </div>
+                      <div className="rounded-xl border border-border bg-muted/20 overflow-hidden max-h-72 overflow-y-auto">
+                        {adminApiLogsLoading ? (
+                          <div className="p-4 space-y-2">
+                            {[...Array(3)].map((_, i) => <div key={i} className="h-10 rounded-lg bg-muted/40 animate-pulse" />)}
+                          </div>
+                        ) : !adminApiLogs?.logs?.length ? (
+                          <div className="p-6 text-xs text-muted-foreground text-center">No API calls yet for this user.</div>
+                        ) : (
+                          <>
+                            {adminApiLogs.stats && (
+                              <div className="px-4 py-2.5 border-b border-border/50 grid grid-cols-4 gap-2 text-[10px] bg-muted/30">
+                                <span className="text-muted-foreground">Today: <strong className="text-foreground">${(adminApiLogs.stats.todaySpent ?? 0).toFixed(2)}</strong></span>
+                                <span className="text-muted-foreground">Month: <strong className="text-foreground">${(adminApiLogs.stats.monthSpent ?? 0).toFixed(2)}</strong></span>
+                                <span className="text-muted-foreground">All Time: <strong className="text-foreground">${(adminApiLogs.stats.totalSpent ?? 0).toFixed(2)}</strong></span>
+                                <span className="text-muted-foreground">Calls: <strong className="text-foreground">{adminApiLogs.logs.length}</strong></span>
+                              </div>
+                            )}
+                            {adminApiLogs.logs.slice(0, 30).map((log: any) => (
+                              <div key={log.id} className="px-4 py-2 border-b border-border/30 text-[10px]" data-testid={`row-admin-api-log-${log.id}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", log.success !== false ? "bg-emerald-500" : "bg-red-500")} title={log.success !== false ? "Success" : "Failed"} />
+                                    {log.modelUsed && <span className="text-primary font-semibold">{log.modelUsed}</span>}
+                                    {log.endpoint && <span className="font-mono text-muted-foreground">{log.endpoint}</span>}
+                                  </div>
+                                  <div className="text-right flex items-center gap-3">
+                                    <span className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</span>
+                                    {log.costDeducted != null && <span className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(4)}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-3 mt-0.5 text-muted-foreground font-mono">
+                                  <span>In: {log.inputTokens ?? 0} tok {log.inputCost != null && <span className="text-foreground/70">(${log.inputCost.toFixed(4)})</span>}</span>
+                                  <span>Out: {log.outputTokens ?? 0} tok {log.outputCost != null && <span className="text-foreground/70">(${log.outputCost.toFixed(4)})</span>}</span>
+                                </div>
+                                {log.success === false && log.failReason && (
+                                  <p className="mt-0.5 text-red-400 font-mono truncate" title={log.failReason}>⚠ {log.failReason}</p>
+                                )}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Settings Panel */}
                   {settingsOpen && (
@@ -3094,67 +3172,6 @@ export default function AdminPage() {
                             </button>
                           ))}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setAdminApiLogsOpenId(adminApiLogsOpenId === u.id ? null : u.id)}
-                            data-testid={`button-view-api-logs-${u.id}`}
-                            className="text-[11px] text-primary hover:underline flex items-center gap-1"
-                          >
-                            <Activity className="w-3 h-3" />
-                            {adminApiLogsOpenId === u.id ? "Hide API logs" : "View API logs"}
-                          </button>
-                          <a
-                            href={`/api/admin/users/${u.id}/api-logs/export.csv`}
-                            download
-                            data-testid={`button-export-csv-${u.id}`}
-                            className="text-[11px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-1 ml-2"
-                          >
-                            ↓ Export CSV
-                          </a>
-                        </div>
-                        {adminApiLogsOpenId === u.id && (
-                          <div className="rounded-xl border border-border bg-muted/20 overflow-hidden max-h-64 overflow-y-auto">
-                            {adminApiLogsLoading ? (
-                              <div className="p-4 text-xs text-muted-foreground text-center">Loading...</div>
-                            ) : !adminApiLogs?.logs?.length ? (
-                              <div className="p-4 text-xs text-muted-foreground text-center">No API calls yet.</div>
-                            ) : (
-                              <>
-                                {adminApiLogs.stats && (
-                                  <div className="px-4 py-2 border-b border-border/50 grid grid-cols-3 gap-2 text-[10px]">
-                                    <span className="text-muted-foreground">Today: <strong className="text-foreground">${(adminApiLogs.stats.todaySpent ?? 0).toFixed(2)}</strong></span>
-                                    <span className="text-muted-foreground">Month: <strong className="text-foreground">${(adminApiLogs.stats.monthSpent ?? 0).toFixed(2)}</strong></span>
-                                    <span className="text-muted-foreground">Total: <strong className="text-foreground">${(adminApiLogs.stats.totalSpent ?? 0).toFixed(2)}</strong></span>
-                                  </div>
-                                )}
-                                {adminApiLogs.logs.slice(0, 20).map((log: any) => (
-                                  <div key={log.id} className="px-4 py-2 border-b border-border/30 text-[10px]" data-testid={`row-admin-api-log-${log.id}`}>
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", log.success !== false ? "bg-emerald-500" : "bg-red-500")} title={log.success !== false ? "Success" : "Failed"} />
-                                        {log.modelUsed && <span className="text-primary font-semibold">{log.modelUsed}</span>}
-                                        {log.endpoint && <span className="font-mono text-muted-foreground">{log.endpoint}</span>}
-                                      </div>
-                                      <div className="text-right space-y-0.5">
-                                        <p className="text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</p>
-                                        {log.costDeducted != null && (
-                                          <p className="font-mono font-bold text-foreground">${log.costDeducted.toFixed(4)}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="flex gap-3 mt-0.5 text-muted-foreground font-mono">
-                                      <span>In: {log.inputTokens} tok {log.inputCost != null && <span className="text-foreground/70">(${log.inputCost.toFixed(4)})</span>}</span>
-                                      <span>Out: {log.outputTokens} tok {log.outputCost != null && <span className="text-foreground/70">(${log.outputCost.toFixed(4)})</span>}</span>
-                                    </div>
-                                    {log.success === false && log.failReason && (
-                                      <p className="mt-0.5 text-red-400 font-mono truncate" title={log.failReason}>⚠ {log.failReason}</p>
-                                    )}
-                                  </div>
-                                ))}
-                              </>
-                            )}
-                          </div>
-                        )}
                       </div>
 
                       <div className="flex items-center justify-end gap-2 pt-1">
