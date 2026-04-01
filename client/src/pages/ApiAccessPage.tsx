@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import {
   Key, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft,
   Terminal, Globe, BarChart2, Clock, ChevronRight, Webhook, Save,
-  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Send,
+  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Send, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -214,64 +214,6 @@ export default function ApiAccessPage() {
 
   if (!user) { navigate("/auth"); return null; }
 
-  /* ── No access → unified "contact admin" view for ALL users ── */
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mx-auto">
-            <Key className="w-8 h-8 text-violet-500" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">API Access</h1>
-            <p className="text-muted-foreground text-sm leading-relaxed mt-2">
-              API access is enabled by the admin. You can request access below and you'll be set up once approved.
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-card p-4 text-left space-y-2.5 text-sm">
-            {[
-              "Chat completions with all models",
-              "Web search & file/vision input",
-              "Knowledge base access",
-              "Streaming (SSE) support",
-              "Webhook notifications",
-              "Dollar balance — pay only for what you use",
-            ].map((f) => (
-              <div key={f} className="flex items-center gap-2.5 text-muted-foreground">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => requestAccessMutation.mutate()}
-              disabled={requestAccessMutation.isPending || requestAccessMutation.isSuccess}
-              className={cn(
-                "inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all",
-                requestAccessMutation.isSuccess
-                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-                  : "bg-primary text-primary-foreground hover:opacity-90"
-              )}
-              data-testid="button-request-access"
-            >
-              {requestAccessMutation.isPending ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : requestAccessMutation.isSuccess ? (
-                <><CheckCircle2 className="w-4 h-4" /> Request Sent!</>
-              ) : (
-                <><Send className="w-4 h-4" /> Request API Access</>
-              )}
-            </button>
-            <button onClick={() => navigate("/")} className="text-xs text-muted-foreground hover:text-foreground transition-colors" data-testid="button-go-home">
-              Back to Chat
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   /* ── User with API access (personal or global) ── */
   const baseUrl = window.location.origin;
   const apiKey = data?.apiKey ?? "";
@@ -474,6 +416,18 @@ func main() {
         {/* Balance card */}
         {isLoading ? (
           <div className="h-24 rounded-2xl bg-muted/40 animate-pulse" />
+        ) : !hasAccess ? (
+          <div className="rounded-2xl border border-border/60 bg-card p-5 flex items-center gap-4" data-testid="card-balance-locked">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-muted/60">
+              <DollarSign className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground font-medium mb-0.5">Available Credits</p>
+              <p className="text-2xl font-bold text-muted-foreground">—</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Contact your admin to get credits added to your account.</p>
+            </div>
+            <Lock className="w-5 h-5 text-muted-foreground/50 flex-shrink-0" />
+          </div>
         ) : (
           <BalanceBar balance={data?.balance ?? null} isUnlimited={isUnlimited} globalExpiresAt={data?.globalApiExpiresAt} />
         )}
@@ -484,61 +438,93 @@ func main() {
             <h2 className="font-semibold text-foreground flex items-center gap-2">
               <Key className="w-4 h-4 text-primary" /> Your API Key
             </h2>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 font-semibold ring-1 ring-green-500/20">Active</span>
+            {hasAccess ? (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 font-semibold ring-1 ring-green-500/20">Active</span>
+            ) : (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-semibold">Not Enabled</span>
+            )}
           </div>
 
-          {isLoading ? (
-            <div className="h-12 rounded-lg bg-muted/40 animate-pulse" />
-          ) : (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border font-mono text-sm text-foreground overflow-hidden">
-                <span className="flex-1 truncate" data-testid="text-api-key">
-                  {revealed ? apiKey : maskedKey}
-                </span>
+          {!hasAccess ? (
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/40 border border-border" data-testid="card-key-locked">
+              <Lock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <div>
+                <p className="text-sm text-muted-foreground">API access is not enabled for your account.</p>
+                <p className="text-xs text-muted-foreground/70 mt-0.5">Contact your admin to get access and credits added.</p>
               </div>
-              <button
-                onClick={() => setRevealed((v) => !v)}
-                title={revealed ? "Hide key" : "Show full key"}
-                className="p-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0"
-                data-testid="button-toggle-reveal-key"
-              >
-                {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={() => { navigator.clipboard.writeText(apiKey); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
-                disabled={!apiKey}
-                title="Copy API key"
-                className={cn("p-3 rounded-xl border transition-all flex-shrink-0", keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
-                data-testid="button-copy-key"
-              >
-                {keyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
             </div>
-          )}
-
-          {apiKey && apiKey.includes("•") && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
-              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>Your key was generated before our recent update. Click <strong>Regenerate Key</strong> once to get a fully copyable key.</span>
+          ) : isLoading ? (
+            <div className="h-12 rounded-lg bg-muted/40 animate-pulse" />
+          ) : !data?.apiKey ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/40 border border-border">
+                <Key className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <p className="text-sm text-muted-foreground">You don't have an API key yet. Generate one to get started.</p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => regenerateMutation.mutate()}
+                  disabled={regenerateMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-all"
+                  data-testid="button-generate-key"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", regenerateMutation.isPending && "animate-spin")} />
+                  {regenerateMutation.isPending ? "Generating..." : "Generate API Key"}
+                </button>
+              </div>
             </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-3 px-4 py-3 rounded-xl bg-muted/40 border border-border font-mono text-sm text-foreground overflow-hidden">
+                  <span className="flex-1 truncate" data-testid="text-api-key">
+                    {revealed ? apiKey : maskedKey}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setRevealed((v) => !v)}
+                  title={revealed ? "Hide key" : "Show full key"}
+                  className="p-3 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0"
+                  data-testid="button-toggle-reveal-key"
+                >
+                  {revealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(apiKey); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }}
+                  disabled={!apiKey}
+                  title="Copy API key"
+                  className={cn("p-3 rounded-xl border transition-all flex-shrink-0", keyCopied ? "border-green-500/30 bg-green-500/10 text-green-500" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50")}
+                  data-testid="button-copy-key"
+                >
+                  {keyCopied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {apiKey && apiKey.includes("•") && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>Your key was generated before our recent update. Click <strong>Regenerate Key</strong> once to get a fully copyable key.</span>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/15 text-amber-600 dark:text-amber-400 text-xs">
+                <span className="font-semibold flex-shrink-0">⚠</span>
+                <span>Keep your API key secret. Never share it or commit it to source control.</span>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => { if (confirm("Regenerate your API key? The old key will stop working immediately.")) regenerateMutation.mutate(); }}
+                  disabled={regenerateMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                  data-testid="button-regenerate-key"
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", regenerateMutation.isPending && "animate-spin")} />
+                  {regenerateMutation.isPending ? "Regenerating..." : "Regenerate Key"}
+                </button>
+              </div>
+            </>
           )}
-
-          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/8 border border-amber-500/15 text-amber-600 dark:text-amber-400 text-xs">
-            <span className="font-semibold flex-shrink-0">⚠</span>
-            <span>Keep your API key secret. Never share it or commit it to source control.</span>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              onClick={() => { if (confirm("Regenerate your API key? The old key will stop working immediately.")) regenerateMutation.mutate(); }}
-              disabled={regenerateMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
-              data-testid="button-regenerate-key"
-            >
-              <RefreshCw className={cn("w-3.5 h-3.5", regenerateMutation.isPending && "animate-spin")} />
-              {regenerateMutation.isPending ? "Regenerating..." : "Regenerate Key"}
-            </button>
-          </div>
         </div>
 
         {/* Tabs */}
@@ -563,7 +549,12 @@ func main() {
         {activeTab === "overview" && (
           <div className="space-y-6">
             {/* Spending summary */}
-            {!isLoading && (
+            {!hasAccess ? (
+              <div className="rounded-2xl border border-border/60 bg-card p-6 text-center space-y-3">
+                <Lock className="w-8 h-8 text-muted-foreground/40 mx-auto" />
+                <p className="text-sm font-medium text-muted-foreground">Usage stats will appear here once your admin enables API access for your account.</p>
+              </div>
+            ) : !isLoading && (
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: "Today", value: data?.todaySpent ?? 0 },
