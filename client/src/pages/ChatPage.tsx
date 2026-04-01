@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -985,12 +985,12 @@ ${messagesHtml}
         setMessages((prev) =>
           prev.map((m) => m.id === assistantMsgId ? { ...m, stopped: true } : m)
         );
-        /* save partial response to DB */
-        if (accumulated && convId) {
+        /* always save to DB on abort so user sees context when returning to the conversation */
+        if (convId) {
           try {
             await apiRequest("POST", `/api/conversations/${convId}/messages`, {
               role: "assistant",
-              content: accumulated,
+              content: accumulated,   /* may be empty string — that's intentional */
               modelUsed: finalModelUsed,
             });
             queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
@@ -1113,6 +1113,11 @@ ${messagesHtml}
     isSubmittingRef.current = true;
     setError(null);
     setMessages(updatedMsgs);
+
+    /* Remove old assistant message from DB so it doesn't reappear on reload */
+    try {
+      await apiRequest("DELETE", `/api/conversations/${activeId}/messages/from/${lastAssistant.id}`);
+    } catch { /* non-fatal */ }
 
     await streamAssistantReply(activeId, updatedMsgs, assistantMsgId);
   }, [activeId, messages, isStreaming]);
@@ -1547,6 +1552,34 @@ ${messagesHtml}
                       )}
                     </div>
                   )}
+                  {/* Fallback when response was lost mid-navigation */}
+                  {!isStreaming && messages.length > 0 && messages[messages.length - 1]?.role === "user" && (
+                    <div className="flex justify-center py-3" data-testid="status-no-response">
+                      <button
+                        onClick={() => {
+                          const assistantMsgId = crypto.randomUUID();
+                          const placeholder: import("@/lib/chat-storage").Message = {
+                            id: assistantMsgId,
+                            role: "assistant",
+                            content: "",
+                            timestamp: Date.now(),
+                            isPinned: false,
+                          };
+                          const updated = [...messages, placeholder];
+                          isSubmittingRef.current = true;
+                          setError(null);
+                          setMessages(updated);
+                          if (activeId) streamAssistantReply(activeId, updated, assistantMsgId);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+                        data-testid="button-generate-response"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Generate response
+                      </button>
+                    </div>
+                  )}
+
                   <div ref={bottomRef} className="h-4" />
                 </div>
               )}

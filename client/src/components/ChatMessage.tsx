@@ -768,7 +768,12 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
               <span>Searching the web for <em className="font-medium not-italic">{message.searching}</em>…</span>
             </div>
           )}
-          {message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
+          {message.content === "" && !isStreaming && !message.toolCalls?.length && !message.searching ? (
+            <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-muted/40 border border-border/40 w-fit text-sm text-muted-foreground" data-testid="status-interrupted">
+              <span className="w-2 h-2 rounded-full bg-amber-400/70 flex-shrink-0" />
+              Response interrupted — click Regenerate to try again.
+            </div>
+          ) : message.content === "" && isStreaming && (!message.toolCalls || message.toolCalls.length === 0) && !message.searching ? (
             <div className="flex flex-col gap-1.5 animate-fade-up">
               <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-card border border-border/40 w-fit shadow-sm">
                 <div className="flex items-end gap-[5px] h-4">
