@@ -1132,18 +1132,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   /* ── admin: global API access settings ── */
   app.get("/api/admin/global-api-settings", requireAdmin as any, async (_req: Request, res: Response) => {
-    const record = await storage.getGlobalApiAccess();
-    return res.json(record ?? { isEnabled: false, plan: "unlimited", expiresAt: null });
+    try {
+      const record = await storage.getGlobalApiAccess();
+      return res.json(record ?? { isEnabled: false, plan: "unlimited", expiresAt: null });
+    } catch (err: any) {
+      console.error("[admin/global-api-settings GET] error:", err);
+      return res.status(500).json({ error: err?.message ?? "Failed to fetch global API settings" });
+    }
   });
 
   app.post("/api/admin/global-api-settings", requireAdmin as any, async (req: Request, res: Response) => {
-    const { isEnabled, plan, expiresAt } = req.body;
-    const record = await storage.setGlobalApiAccess({
-      isEnabled: !!isEnabled,
-      plan: plan === "credit" ? "credit" : "unlimited",
-      expiresAt: expiresAt ? new Date(expiresAt) : null,
-    });
-    return res.json(record);
+    try {
+      const { isEnabled, plan, expiresAt } = req.body;
+      const record = await storage.setGlobalApiAccess({
+        isEnabled: !!isEnabled,
+        plan: plan === "credit" ? "credit" : "unlimited",
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      });
+      return res.json(record);
+    } catch (err: any) {
+      console.error("[admin/global-api-settings POST] error:", err);
+      return res.status(500).json({ error: err?.message ?? "Failed to update global API settings" });
+    }
   });
 
   /* ── admin: update API settings for a user ── */
