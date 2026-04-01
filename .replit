@@ -70,3 +70,6 @@ SMTP_PORT = "465"
 SMTP_USER = "noreply@aisparky.dev"
 SMTP_FROM = "AI Sparky <noreply@aisparky.dev>"
 APP_URL = "https://aisparky.dev"
+
+[agent]
+integrations = ["github:1.0.0"]
