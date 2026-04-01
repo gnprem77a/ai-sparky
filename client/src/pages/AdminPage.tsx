@@ -2132,9 +2132,11 @@ export default function AdminPage() {
     },
   });
 
-  const { data: globalApiSettings, isLoading: globalApiLoading } = useQuery<{ isEnabled: boolean; plan: string; expiresAt: string | null }>({
+  const { data: globalApiSettings, isLoading: globalApiLoading, refetch: refetchGlobalApi } = useQuery<{ isEnabled: boolean; plan: string; expiresAt: string | null }>({
     queryKey: ["/api/admin/global-api-settings"],
     enabled: !!user?.isAdmin,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const [globalApiForm, setGlobalApiForm] = useState<{ plan: string; durationType: string; customDays: string }>({
@@ -2752,7 +2754,12 @@ export default function AdminPage() {
             </div>
             <div className="p-6 space-y-4">
               {/* Current status */}
-              {globalApiSettings?.isEnabled ? (
+              {globalApiLoading ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
+                  <RefreshCw className="w-4 h-4 text-muted-foreground animate-spin flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground">Loading status...</p>
+                </div>
+              ) : globalApiSettings?.isEnabled ? (
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
                   <Zap className="w-4 h-4 text-violet-500 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -2762,6 +2769,14 @@ export default function AdminPage() {
                       {globalApiSettings.expiresAt ? ` · Expires: ${new Date(globalApiSettings.expiresAt).toLocaleString()}` : " · No expiry"}
                     </p>
                   </div>
+                  <button
+                    onClick={() => refetchGlobalApi()}
+                    data-testid="button-refresh-global-api"
+                    className="p-1.5 rounded-lg text-violet-400 hover:text-violet-500 hover:bg-violet-500/10 transition-all"
+                    title="Refresh status"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={() => setGlobalApiMutation.mutate({ isEnabled: false, plan: globalApiSettings.plan, expiresAt: null })}
                     disabled={setGlobalApiMutation.isPending}
@@ -2775,7 +2790,15 @@ export default function AdminPage() {
               ) : (
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
                   <Globe className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  <p className="text-sm text-muted-foreground">Global access is currently <span className="font-semibold">inactive</span>. Individual user keys still work.</p>
+                  <p className="text-sm text-muted-foreground flex-1">Global access is currently <span className="font-semibold">inactive</span>. Individual user keys still work.</p>
+                  <button
+                    onClick={() => refetchGlobalApi()}
+                    data-testid="button-refresh-global-api-inactive"
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all flex-shrink-0"
+                    title="Refresh status"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
 
