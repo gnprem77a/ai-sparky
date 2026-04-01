@@ -1149,7 +1149,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         plan: plan === "credit" ? "credit" : "unlimited",
         expiresAt: expiresAt ? new Date(expiresAt) : null,
       });
-      // When enabling global access, auto-generate keys for all users who don't have one
+      // When enabling global access, auto-generate keys for users who don't have one yet.
+      // We do NOT set apiEnabled=true so that when global access expires, only users
+      // with individually-granted access retain it. Others are blocked again automatically.
       if (isEnabled) {
         const allUsers = await storage.getAllUsers();
         const noKeyUsers = allUsers.filter((u) => !u.apiKey && !u.apiKeyHash);
@@ -1157,7 +1159,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           noKeyUsers.map(async (u) => {
             const newKey = "sk-sparky-" + randomBytes(20).toString("hex");
             await storage.setApiKey(u.id, newKey);
-            if (!u.apiEnabled) await storage.setApiEnabled(u.id, true);
           })
         );
         console.log(`[global-api] enabled — auto-generated keys for ${noKeyUsers.length} user(s)`);
