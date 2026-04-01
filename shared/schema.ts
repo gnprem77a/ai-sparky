@@ -371,3 +371,13 @@ export const codeRedemptions = pgTable("code_redemptions", {
 });
 
 export type CodeRedemption = typeof codeRedemptions.$inferSelect;
+
+export const globalApiAccess = pgTable("global_api_access", {
+  id: integer("id").primaryKey().default(1),
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  plan: text("plan").notNull().default("unlimited"),
+  expiresAt: timestamp("expires_at"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export type GlobalApiAccess = typeof globalApiAccess.$inferSelect;

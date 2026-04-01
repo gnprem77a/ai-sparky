@@ -58,6 +58,7 @@ import {
   type RedeemCode, redeemCodes,
   type CodeRedemption, codeRedemptions,
   type PlanLimits, planLimits,
+  type GlobalApiAccess, globalApiAccess,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, or, isNull, sql as drizzleSql } from "drizzle-orm";
@@ -204,6 +205,9 @@ export interface IStorage {
   hasUserRedeemedCode(codeId: string, userId: string): Promise<boolean>;
   incrementCodeUsage(codeId: string): Promise<void>;
   getCodeRedemptions(codeId: string): Promise<CodeRedemption[]>;
+
+  getGlobalApiAccess(): Promise<GlobalApiAccess | undefined>;
+  setGlobalApiAccess(data: { isEnabled: boolean; plan: string; expiresAt: Date | null }): Promise<GlobalApiAccess>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1178,6 +1182,20 @@ export class DatabaseStorage implements IStorage {
 
   async getCodeRedemptions(codeId: string): Promise<CodeRedemption[]> {
     return db.select().from(codeRedemptions).where(eq(codeRedemptions.codeId, codeId));
+  }
+
+  async getGlobalApiAccess(): Promise<GlobalApiAccess | undefined> {
+    const [record] = await db.select().from(globalApiAccess).where(eq(globalApiAccess.id, 1));
+    return record;
+  }
+
+  async setGlobalApiAccess(data: { isEnabled: boolean; plan: string; expiresAt: Date | null }): Promise<GlobalApiAccess> {
+    const [record] = await db
+      .insert(globalApiAccess)
+      .values({ id: 1, ...data, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: globalApiAccess.id, set: { ...data, updatedAt: new Date() } })
+      .returning();
+    return record;
   }
 }
 

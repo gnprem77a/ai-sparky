@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import {
   Key, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft,
   Terminal, Globe, BarChart2, Clock, ChevronRight, Webhook, Save,
-  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Lock, Send,
+  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -14,13 +14,17 @@ import { useToast } from "@/hooks/use-toast";
 interface ApiKeyData {
   apiKey: string;
   apiEnabled: boolean;
+  globalApiActive: boolean;
+  globalApiPlan: string;
+  globalApiExpiresAt: string | null;
+  isUnlimited: boolean;
   dailyUsed: number;
   dailyLimit: number | null;
   monthlyUsed: number;
   monthlyLimit: number | null;
   rateLimitPerMin: number | null;
   webhookUrl: string | null;
-  balance: number;
+  balance: number | null;
   totalSpent: number;
   todaySpent: number;
   monthSpent: number;
@@ -77,11 +81,29 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   );
 }
 
-function BalanceBar({ balance }: { balance: number }) {
-  const isEmpty   = balance <= 0;
-  const isRed     = balance < 5;
-  const isYellow  = balance >= 5 && balance < 10;
-  const isGreen   = balance >= 10;
+function BalanceBar({ balance, isUnlimited, globalExpiresAt }: { balance: number | null; isUnlimited?: boolean; globalExpiresAt?: string | null }) {
+  if (isUnlimited) {
+    const expiresLabel = globalExpiresAt
+      ? `until ${new Date(globalExpiresAt).toLocaleString()}`
+      : "with no expiry";
+    return (
+      <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5 flex items-center gap-4" data-testid="card-balance">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-500/15">
+          <Zap className="w-6 h-6 text-violet-500" />
+        </div>
+        <div className="flex-1">
+          <p className="text-xs text-muted-foreground font-medium mb-0.5">Access Plan</p>
+          <p className="text-2xl font-bold text-violet-500" data-testid="text-balance">Unlimited</p>
+          <p className="text-xs text-violet-400 mt-0.5">Global unlimited access is active {expiresLabel}.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const bal = balance ?? 0;
+  const isEmpty   = bal <= 0;
+  const isRed     = bal < 5;
+  const isYellow  = bal >= 5 && bal < 10;
 
   const borderCls = isEmpty || isRed ? "border-red-500/30 bg-red-500/5"
     : isYellow ? "border-amber-500/30 bg-amber-500/5"
@@ -101,7 +123,7 @@ function BalanceBar({ balance }: { balance: number }) {
       <div className="flex-1">
         <p className="text-xs text-muted-foreground font-medium mb-0.5">Available Balance</p>
         <p className={cn("text-2xl font-bold tabular-nums", textCls)} data-testid="text-balance">
-          ${balance.toFixed(2)}
+          ${bal.toFixed(2)}
         </p>
         {isEmpty && <p className="text-xs text-red-400 mt-0.5">API calls are blocked. Contact admin to add balance.</p>}
         {!isEmpty && isRed && <p className="text-xs text-red-400 mt-0.5">Critical: Balance below $5.00 — API access will stop soon.</p>}
@@ -123,17 +145,23 @@ export default function ApiAccessPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSaved, setWebhookSaved] = useState(false);
 
-  const isPro = user?.plan === "pro";
+  const { data: globalStatus } = useQuery<{ active: boolean; plan: string; expiresAt: string | null }>({
+    queryKey: ["/api/me/global-api-status"],
+    enabled: !!user,
+    retry: false,
+  });
+
+  const hasAccess = !!user?.apiEnabled || !!globalStatus?.active;
 
   const { data, isLoading } = useQuery<ApiKeyData>({
     queryKey: ["/api/me/api-key"],
-    enabled: !!user && !!user.apiEnabled,
+    enabled: !!user && hasAccess,
     retry: false,
   });
 
   const { data: history, isLoading: historyLoading } = useQuery<ApiLog[]>({
     queryKey: ["/api/me/api-history"],
-    enabled: !!user && !!user.apiEnabled && activeTab === "history",
+    enabled: !!user && hasAccess && activeTab === "history",
     retry: false,
   });
 
@@ -186,19 +214,18 @@ export default function ApiAccessPage() {
 
   if (!user) { navigate("/auth"); return null; }
 
-  /* ── User has API access enabled by admin → go straight to dashboard ── */
-  /* ── Free user without API access: locked view ── */
-  if (!user.apiEnabled && !isPro) {
+  /* ── No access → unified "contact admin" view for ALL users ── */
+  if (!hasAccess) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mx-auto">
-            <Lock className="w-8 h-8 text-muted-foreground" />
+          <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mx-auto">
+            <Key className="w-8 h-8 text-violet-500" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">API Access</h1>
             <p className="text-muted-foreground text-sm leading-relaxed mt-2">
-              API access is a Pro feature. Upgrade to Pro to request access and start building with AI Sparky.
+              API access is enabled by the admin. You can request access below and you'll be set up once approved.
             </p>
           </div>
           <div className="rounded-xl border border-border bg-card p-4 text-left space-y-2.5 text-sm">
@@ -218,11 +245,23 @@ export default function ApiAccessPage() {
           </div>
           <div className="flex flex-col gap-2">
             <button
-              onClick={() => navigate("/")}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-all"
-              data-testid="button-upgrade-pro"
+              onClick={() => requestAccessMutation.mutate()}
+              disabled={requestAccessMutation.isPending || requestAccessMutation.isSuccess}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all",
+                requestAccessMutation.isSuccess
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                  : "bg-primary text-primary-foreground hover:opacity-90"
+              )}
+              data-testid="button-request-access"
             >
-              Upgrade to Pro
+              {requestAccessMutation.isPending ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : requestAccessMutation.isSuccess ? (
+                <><CheckCircle2 className="w-4 h-4" /> Request Sent!</>
+              ) : (
+                <><Send className="w-4 h-4" /> Request API Access</>
+              )}
             </button>
             <button onClick={() => navigate("/")} className="text-xs text-muted-foreground hover:text-foreground transition-colors" data-testid="button-go-home">
               Back to Chat
@@ -233,53 +272,13 @@ export default function ApiAccessPage() {
     );
   }
 
-  /* ── Pro user, API not yet enabled by admin ── */
-  if (!user.apiEnabled) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-violet-500/10 flex items-center justify-center mx-auto">
-            <Key className="w-8 h-8 text-violet-500" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Request API Access</h1>
-            <p className="text-muted-foreground text-sm leading-relaxed mt-2">
-              You're on Pro! API access is manually enabled by the admin. Request it below and you'll be notified once approved.
-            </p>
-          </div>
-          <button
-            onClick={() => requestAccessMutation.mutate()}
-            disabled={requestAccessMutation.isPending || requestAccessMutation.isSuccess}
-            className={cn(
-              "inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all",
-              requestAccessMutation.isSuccess
-                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-                : "bg-primary text-primary-foreground hover:opacity-90"
-            )}
-            data-testid="button-request-access"
-          >
-            {requestAccessMutation.isPending ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : requestAccessMutation.isSuccess ? (
-              <><CheckCircle2 className="w-4 h-4" /> Request Sent!</>
-            ) : (
-              <><Send className="w-4 h-4" /> Request API Access</>
-            )}
-          </button>
-          <button onClick={() => navigate("/")} className="text-xs text-muted-foreground hover:text-foreground transition-colors" data-testid="button-go-home">
-            Back to Chat
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Pro user with API access ── */
+  /* ── User with API access (personal or global) ── */
   const baseUrl = window.location.origin;
   const apiKey = data?.apiKey ?? "";
   const maskedKey = apiKey ? apiKey.slice(0, 14) + "•".repeat(8) + apiKey.slice(-4) : "Loading...";
+  const isUnlimited = data?.isUnlimited ?? false;
   const balance = data?.balance ?? 0;
-  const balanceLow = balance > 0 && balance < 10;
+  const balanceLow = !isUnlimited && balance > 0 && balance < 10;
 
   const displayKey = apiKey || "<your-api-key>";
   const curlExample = `curl -X POST ${baseUrl}/api/v1/chat \\
@@ -476,7 +475,7 @@ func main() {
         {isLoading ? (
           <div className="h-24 rounded-2xl bg-muted/40 animate-pulse" />
         ) : (
-          <BalanceBar balance={balance} />
+          <BalanceBar balance={data?.balance ?? null} isUnlimited={isUnlimited} globalExpiresAt={data?.globalApiExpiresAt} />
         )}
 
         {/* API Key Card */}

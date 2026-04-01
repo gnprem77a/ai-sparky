@@ -320,6 +320,18 @@ async function callAPI(_modelId: string, systemPrompt: string, userPrompt: strin
   return generateText(providers as unknown as ProviderConfig[], systemPrompt, userPrompt, maxTokens);
 }
 
+/* ─── global API access helper ────────────────────────────────── */
+async function getGlobalApiStatus(): Promise<{ active: boolean; plan: string; expiresAt: Date | null }> {
+  try {
+    const record = await storage.getGlobalApiAccess();
+    if (!record || !record.isEnabled) return { active: false, plan: "unlimited", expiresAt: null };
+    if (record.expiresAt && record.expiresAt < new Date()) return { active: false, plan: record.plan, expiresAt: record.expiresAt };
+    return { active: true, plan: record.plan, expiresAt: record.expiresAt ?? null };
+  } catch {
+    return { active: false, plan: "unlimited", expiresAt: null };
+  }
+}
+
 /* ─── route registration ─────────────────────────────────────── */
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
@@ -1118,6 +1130,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ apiEnabled: false });
   });
 
+  /* ── admin: global API access settings ── */
+  app.get("/api/admin/global-api-settings", requireAdmin as any, async (_req: Request, res: Response) => {
+    const record = await storage.getGlobalApiAccess();
+    return res.json(record ?? { isEnabled: false, plan: "unlimited", expiresAt: null });
+  });
+
+  app.post("/api/admin/global-api-settings", requireAdmin as any, async (req: Request, res: Response) => {
+    const { isEnabled, plan, expiresAt } = req.body;
+    const record = await storage.setGlobalApiAccess({
+      isEnabled: !!isEnabled,
+      plan: plan === "credit" ? "credit" : "unlimited",
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+    });
+    return res.json(record);
+  });
+
   /* ── admin: update API settings for a user ── */
   app.patch("/api/admin/users/:id/api-settings", requireAdmin as any, async (req: Request, res: Response) => {
     const id = req.params.id as string;
@@ -1201,12 +1229,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.json({ ok: true });
   });
 
+  /* ── user: global API status ── */
+  app.get("/api/me/global-api-status", requireAuth as any, async (_req: Request, res: Response) => {
+    const status = await getGlobalApiStatus();
+    return res.json(status);
+  });
+
   /* ── user: get own API key info ── */
   app.get("/api/me/api-key", requireAuth as any, async (req: Request, res: Response) => {
     const userId = (req as any).session?.userId as string;
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const globalApi = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApi.active) return res.status(403).json({ error: "API access not enabled" });
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1215,16 +1250,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const stats = await storage.getApiStats(userId);
     // Decrypt stored key so user can always copy it without regenerating
     const fullKey = user.apiKey ? (decryptApiKey(user.apiKey) || user.apiKey) : null;
+    const isUnlimited = globalApi.active && globalApi.plan === "unlimited";
     return res.json({
       apiKey: fullKey,
-      apiEnabled: user.apiEnabled,
+      apiEnabled: user.apiEnabled || globalApi.active,
+      globalApiActive: globalApi.active,
+      globalApiPlan: globalApi.plan,
+      globalApiExpiresAt: globalApi.expiresAt?.toISOString() ?? null,
+      isUnlimited,
       dailyUsed,
       dailyLimit: user.apiDailyLimit ?? null,
       monthlyUsed,
       monthlyLimit: user.apiMonthlyLimit ?? null,
       rateLimitPerMin: user.apiRateLimitPerMin ?? null,
       webhookUrl: user.apiWebhookUrl ?? null,
-      balance: user.apiBalance ?? 0,
+      balance: isUnlimited ? null : (user.apiBalance ?? 0),
       totalSpent: stats.totalSpent,
       todaySpent: stats.todaySpent,
       monthSpent: stats.monthSpent,
@@ -1232,18 +1272,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  /* ── user: request API access (Pro only) ── */
+  /* ── user: request API access (any user) ── */
   app.post("/api/me/api-access/request", requireAuth as any, async (req: Request, res: Response) => {
     const userId = (req as any).session?.userId as string;
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.plan !== "pro") return res.status(403).json({ error: "Pro plan required to request API access" });
     if (user.apiEnabled) return res.json({ ok: true, already: true });
     const admins = (await storage.getAllUsers()).filter((u) => u.isAdmin && u.email);
     for (const admin of admins) {
       if (admin.email) {
         sendEmail(admin.email, `API Access Request from ${user.username}`,
-          `<p><strong>${user.username}</strong> (Pro) has requested API access.</p><p>Log in to the admin panel to enable it for them.</p>`);
+          `<p><strong>${user.username}</strong> has requested API access.</p><p>Log in to the admin panel to generate an API key for them.</p>`);
       }
     }
     return res.json({ ok: true });
@@ -1254,8 +1293,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const userId = (req as any).session?.userId as string;
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const globalApi = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApi.active) return res.status(403).json({ error: "API access not enabled" });
     const newKey = "sk-sparky-" + randomBytes(20).toString("hex");
+    if (globalApi.active && !user.apiEnabled) {
+      await storage.setApiEnabled(userId, true);
+    }
     await storage.setApiKey(userId, newKey);
     return res.json({ apiKey: newKey, apiEnabled: true });
   });
@@ -1264,7 +1307,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/me/api-history", requireAuth as any, async (req: Request, res: Response) => {
     const userId = (req as any).session?.userId as string;
     const user = await storage.getUser(userId);
-    if (!user || !user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const globalApi = await getGlobalApiStatus();
+    if (!user || (!user.apiEnabled && !globalApi.active)) return res.status(403).json({ error: "API access not enabled" });
     const limit = Math.min(parseInt(req.query.limit as string ?? "50"), 100);
     const logs = await storage.getApiLogs(userId, limit);
     return res.json(logs);
@@ -1274,7 +1318,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/me/api-history/export.csv", requireAuth as any, async (req: Request, res: Response) => {
     const userId = (req as any).session?.userId as string;
     const user = await storage.getUser(userId);
-    if (!user || !user.apiEnabled) return res.status(403).json({ error: "API access not enabled" });
+    const globalApi = await getGlobalApiStatus();
+    if (!user || (!user.apiEnabled && !globalApi.active)) return res.status(403).json({ error: "API access not enabled" });
     const logs = await storage.getApiLogs(userId, 100_000);
     const header = "date,model,input_tokens,output_tokens,input_cost_usd,output_cost_usd,total_cost_usd,success,fail_reason,request_id\r\n";
     const rows = logs.map((l) => [
@@ -2243,7 +2288,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const apiKey = authHeader.slice(7).trim();
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
-    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+    const globalApiForModels = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiForModels.active) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
     const now = Math.floor(Date.now() / 1000);
     const modelList = [
       { id: "powerful",      name: "Claude Opus 4.6",    context_length: 200_000, max_tokens: 32_000 },
@@ -2282,7 +2328,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!apiKey) return res.status(401).json({ error: { message: "Invalid API key", type: "authentication_error" } });
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "authentication_error" } });
-    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "permission_error" } });
+    const globalApiForUsage = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiForUsage.active) return res.status(403).json({ error: { message: "API access not enabled", type: "permission_error" } });
 
     const logs = await storage.getApiLogs(user.id, 1000);
     const now  = Date.now();
@@ -2369,10 +2416,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ type: "error", error: { type: "authentication_error", message: "Invalid API key" }, request_id: requestId });
-    if (!user.apiEnabled) return res.status(403).json({ type: "error", error: { type: "permission_error", message: "API access not enabled for this key" }, request_id: requestId });
+    const globalApiMsg = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiMsg.active) return res.status(403).json({ type: "error", error: { type: "permission_error", message: "API access not enabled for this key" }, request_id: requestId });
 
     const currentBalance = user.apiBalance ?? 0;
-    if (currentBalance < 0.01) {
+    const isUnlimitedMsg = globalApiMsg.active && globalApiMsg.plan === "unlimited";
+    if (!isUnlimitedMsg && currentBalance < 0.01) {
       return res.status(402).json({ type: "error", error: { type: "billing_error", message: `Insufficient balance ($${currentBalance.toFixed(4)} remaining). Please contact admin to top up.` }, request_id: requestId });
     }
     if (user.apiRateLimitPerMin && !checkRateLimit(apiKey, user.apiRateLimitPerMin)) {
@@ -2629,10 +2678,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const apiKey = authHeader.slice(7).trim();
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
-    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+    const globalApiCompl = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiCompl.active) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
 
     const currentBalance = user.apiBalance ?? 0;
-    if (currentBalance < 0.01) {
+    const isUnlimitedCompl = globalApiCompl.active && globalApiCompl.plan === "unlimited";
+    if (!isUnlimitedCompl && currentBalance < 0.01) {
       return res.status(402).json({ error: { message: "Insufficient balance. Please contact admin to top up.", type: "billing_error" } });
     }
 
@@ -2710,7 +2761,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const apiKey = authHeader.slice(7).trim();
     const user = await storage.getUserByApiKey(apiKey);
     if (!user) return res.status(401).json({ error: { message: "Invalid API key", type: "invalid_request_error" } });
-    if (!user.apiEnabled) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
+    const globalApiChat = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiChat.active) return res.status(403).json({ error: { message: "API access not enabled", type: "invalid_request_error" } });
 
     const requestId = "chatcmpl-" + randomBytes(12).toString("hex");
     const startTime = Date.now();
@@ -2726,7 +2778,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const currentBalance = user.apiBalance ?? 0;
-    if (currentBalance < 0.01) {
+    const isUnlimitedChatCompl = globalApiChat.active && globalApiChat.plan === "unlimited";
+    if (!isUnlimitedChatCompl && currentBalance < 0.01) {
       return res.status(402).json({ error: { message: `Insufficient balance ($${currentBalance.toFixed(4)} remaining). Please contact admin to top up.`, type: "billing_error" }, request_id: requestId });
     }
 
@@ -3056,7 +3109,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUserByApiKey(apiKey);
 
     if (!user) return res.status(401).json({ error: "Invalid API key" });
-    if (!user.apiEnabled) return res.status(403).json({ error: "API access not enabled. Contact admin to request access" });
+    const globalApiSimple = await getGlobalApiStatus();
+    if (!user.apiEnabled && !globalApiSimple.active) return res.status(403).json({ error: "API access not enabled. Contact admin to request access" });
 
     // Unique request ID for tracing — generated before any check so it can be returned in every response
     const requestId = "req_" + randomBytes(6).toString("hex");
@@ -3077,9 +3131,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(429).json({ error: "Rate limit exceeded. Max " + userRateLimit + " requests/min.", retry_after: 60, request_id: requestId });
     }
 
-    // Balance check — block at $0.01 or below
+    // Balance check — block at $0.01 or below (unless unlimited global plan is active)
     const currentBalance = user.apiBalance ?? 0;
-    if (currentBalance < 0.01) {
+    const isUnlimitedSimple = globalApiSimple.active && globalApiSimple.plan === "unlimited";
+    if (!isUnlimitedSimple && currentBalance < 0.01) {
       res.setHeader("X-Request-ID", requestId);
       storage.createApiLog({ userId: user.id, apiKeyId: apiKeyId ?? undefined, messages: "[]", response: null, inputTokens: 0, outputTokens: 0, endpoint: "/api/v1/chat", costDeducted: 0, balanceBefore: currentBalance, balanceAfter: currentBalance, success: false, status: "rejected", requestId, failReason: "insufficient_balance", durationMs: Date.now() - startTime });
       return res.status(402).json({

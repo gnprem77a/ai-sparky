@@ -2132,6 +2132,27 @@ export default function AdminPage() {
     },
   });
 
+  const { data: globalApiSettings, isLoading: globalApiLoading } = useQuery<{ isEnabled: boolean; plan: string; expiresAt: string | null }>({
+    queryKey: ["/api/admin/global-api-settings"],
+    enabled: !!user?.isAdmin,
+  });
+
+  const [globalApiForm, setGlobalApiForm] = useState<{ plan: string; durationType: string; customDays: string }>({
+    plan: "unlimited",
+    durationType: "1d",
+    customDays: "7",
+  });
+
+  const setGlobalApiMutation = useMutation({
+    mutationFn: (body: { isEnabled: boolean; plan: string; expiresAt: string | null }) =>
+      apiRequest("POST", "/api/admin/global-api-settings", body).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/global-api-settings"] });
+      toast({ title: "Global API settings updated" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update global API settings", variant: "destructive" }),
+  });
+
   const { toast } = useToast();
   const [balanceForms, setBalanceForms] = useState<Record<string, string>>({});
   const [adminApiLogsOpenId, setAdminApiLogsOpenId] = useState<string | null>(null);
@@ -2720,7 +2741,117 @@ export default function AdminPage() {
         </div>}
 
         {/* API Access — API tab */}
-        {activeTab === "api" && <div className="rounded-2xl border border-border bg-card overflow-hidden">
+        {activeTab === "api" && <div className="space-y-4">
+
+          {/* Global API Access Control */}
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
+              <Globe className="w-4 h-4 text-violet-500" />
+              <h2 className="font-semibold text-foreground">Global API Access</h2>
+              <span className="text-xs text-muted-foreground ml-auto">Enable API access for ALL users at once</span>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Current status */}
+              {globalApiSettings?.isEnabled ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                  <Zap className="w-4 h-4 text-violet-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-violet-500">Global access is ACTIVE</p>
+                    <p className="text-xs text-violet-400 mt-0.5">
+                      Plan: {globalApiSettings.plan === "unlimited" ? "Unlimited" : "Credit-based"}
+                      {globalApiSettings.expiresAt ? ` · Expires: ${new Date(globalApiSettings.expiresAt).toLocaleString()}` : " · No expiry"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setGlobalApiMutation.mutate({ isEnabled: false, plan: globalApiSettings.plan, expiresAt: null })}
+                    disabled={setGlobalApiMutation.isPending}
+                    data-testid="button-disable-global-api"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Disable Global Access
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border">
+                  <Globe className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground">Global access is currently <span className="font-semibold">inactive</span>. Individual user keys still work.</p>
+                </div>
+              )}
+
+              {/* Enable form */}
+              <div className="space-y-3 pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Enable for all users</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Plan</label>
+                    <select
+                      value={globalApiForm.plan}
+                      onChange={(e) => setGlobalApiForm((f) => ({ ...f, plan: e.target.value }))}
+                      className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      data-testid="select-global-api-plan"
+                    >
+                      <option value="unlimited">Unlimited</option>
+                      <option value="credit">Credit-based</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Duration</label>
+                    <select
+                      value={globalApiForm.durationType}
+                      onChange={(e) => setGlobalApiForm((f) => ({ ...f, durationType: e.target.value }))}
+                      className="w-full px-3 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      data-testid="select-global-api-duration"
+                    >
+                      <option value="1h">1 Hour</option>
+                      <option value="3h">3 Hours</option>
+                      <option value="5h">5 Hours</option>
+                      <option value="1d">1 Day</option>
+                      <option value="custom">Custom Days</option>
+                    </select>
+                  </div>
+                </div>
+                {globalApiForm.durationType === "custom" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Number of days</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={globalApiForm.customDays}
+                      onChange={(e) => setGlobalApiForm((f) => ({ ...f, customDays: e.target.value }))}
+                      className="w-32 px-3 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      data-testid="input-global-api-custom-days"
+                      placeholder="7"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    const now = new Date();
+                    let expiresAt: string | null = null;
+                    if (globalApiForm.durationType === "1h") expiresAt = new Date(now.getTime() + 3600000).toISOString();
+                    else if (globalApiForm.durationType === "3h") expiresAt = new Date(now.getTime() + 3 * 3600000).toISOString();
+                    else if (globalApiForm.durationType === "5h") expiresAt = new Date(now.getTime() + 5 * 3600000).toISOString();
+                    else if (globalApiForm.durationType === "1d") expiresAt = new Date(now.getTime() + 86400000).toISOString();
+                    else if (globalApiForm.durationType === "custom") {
+                      const days = parseInt(globalApiForm.customDays) || 1;
+                      expiresAt = new Date(now.getTime() + days * 86400000).toISOString();
+                    }
+                    setGlobalApiMutation.mutate({ isEnabled: true, plan: globalApiForm.plan, expiresAt });
+                  }}
+                  disabled={setGlobalApiMutation.isPending}
+                  data-testid="button-enable-global-api"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-violet-500/30 text-violet-500 hover:bg-violet-500/10 transition-all"
+                >
+                  {setGlobalApiMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  Enable Global API Access
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-user API access */}
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60 flex items-center gap-3">
             <Key className="w-4 h-4 text-emerald-500" />
             <h2 className="font-semibold text-foreground">API Access</h2>
@@ -3024,6 +3155,7 @@ export default function AdminPage() {
                 </div>
               );
             })}
+          </div>
           </div>
         </div>}
 
