@@ -878,16 +878,14 @@ export function AppSidebar({
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {user?.apiEnabled && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <a href="/api-access" data-testid="link-api-access" className="group">
-                      <Key className="w-4 h-4 text-amber-400 group-hover:text-amber-400" />
-                      <span>API Access</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="/api-access" data-testid="link-api-access" className="group">
+                    <Key className="w-4 h-4 text-amber-400 group-hover:text-amber-400" />
+                    <span>API Access</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </div>
         )}
