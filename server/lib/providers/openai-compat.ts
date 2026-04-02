@@ -492,6 +492,13 @@ export class OpenAICompatAdapter implements ProviderAdapter {
           }));
     let inputTokens = 0;
     let outputTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreationTokens = 0;
+
+    // Wrap system prompt with cache_control so the Azure Anthropic endpoint caches it
+    const systemContent = systemPrompt
+      ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
+      : undefined;
 
     const body: Record<string, unknown> = {
       model: this.config.modelName,
@@ -499,7 +506,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       messages: anthropicMessages,
       stream: true,
     };
-    if (systemPrompt) body.system = systemPrompt;
+    if (systemContent) body.system = systemContent;
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -532,12 +539,14 @@ export class OpenAICompatAdapter implements ProviderAdapter {
             type?: string;
             index?: number;
             delta?: { type?: string; text?: string };
-            message?: { usage?: { input_tokens?: number; output_tokens?: number } };
-            usage?: { input_tokens?: number; output_tokens?: number };
+            message?: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+            usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
           };
 
           if (ev.type === "message_start" && ev.message?.usage) {
-            inputTokens = ev.message.usage.input_tokens ?? 0;
+            inputTokens       = ev.message.usage.input_tokens ?? 0;
+            cacheReadTokens     = ev.message.usage.cache_read_input_tokens ?? 0;
+            cacheCreationTokens = ev.message.usage.cache_creation_input_tokens ?? 0;
           }
           if (ev.type === "message_delta" && ev.usage) {
             outputTokens = ev.usage.output_tokens ?? 0;
@@ -549,7 +558,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       }
     }
 
-    return { inputTokens, outputTokens };
+    return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
   }
 
   // ---------------------------------------------------------------------------
@@ -670,6 +679,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
   ): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
+    let cacheReadTokens = 0;
     // When oaiMessages are provided (external/Cline path), use them directly —
     // they're already in proper OAI format with role:"tool" tool results.
     // Standard OpenAI Chat Completions endpoints support role:"tool" natively.
@@ -687,6 +697,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
         messages: conversationMessages,
         [tokenParam]: maxTokens,
         stream: true,
+        stream_options: { include_usage: true },
       };
       if (useTools) {
         body.tools = TOOL_DEFINITIONS_OPENAI;
@@ -741,7 +752,12 @@ export class OpenAICompatAdapter implements ProviderAdapter {
           if (raw === "[DONE]") { finishReason = finishReason ?? "stop"; continue; }
           try {
             const chunk = JSON.parse(raw) as {
-              usage?: { prompt_tokens?: number; completion_tokens?: number };
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                prompt_tokens_details?: { cached_tokens?: number };
+                prompt_cache_hit_tokens?: number;
+              };
               choices?: Array<{
                 finish_reason?: string;
                 delta?: {
@@ -756,8 +772,13 @@ export class OpenAICompatAdapter implements ProviderAdapter {
             };
 
             if (chunk.usage) {
-              inputTokens = chunk.usage.prompt_tokens ?? 0;
-              outputTokens = chunk.usage.completion_tokens ?? 0;
+              inputTokens      = chunk.usage.prompt_tokens ?? 0;
+              outputTokens     = chunk.usage.completion_tokens ?? 0;
+              // OpenAI: prompt_tokens_details.cached_tokens
+              // Some Azure / other providers: prompt_cache_hit_tokens
+              cacheReadTokens  = chunk.usage.prompt_tokens_details?.cached_tokens
+                              ?? chunk.usage.prompt_cache_hit_tokens
+                              ?? cacheReadTokens;
             }
 
             const choice = chunk.choices?.[0];
@@ -810,6 +831,6 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       conversationMessages = [...conversationMessages, ...toolMessages as unknown as typeof conversationMessages];
     }
 
-    return { inputTokens, outputTokens };
+    return { inputTokens, outputTokens, cacheReadTokens };
   }
 }
