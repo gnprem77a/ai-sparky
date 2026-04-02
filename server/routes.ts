@@ -1768,16 +1768,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Smart routing: reorder providers based on query type
       const { sorted: smartProviders, category: routingCategory } = smartSortProviders(providerConfigs, recentMessages as RawMessage[]);
 
-      // Model-key boosting: when user explicitly selects a model (not "auto"), prefer matching providers
-      const finalProviders = effectiveModel !== "auto"
-        ? boostProvidersForModelKey(smartProviders, effectiveModel)
-        : smartProviders;
+      // Strip embed/rerank providers from the chat pool
+      const isChatProvider = (p: ProviderConfig) => {
+        const m = (p.modelName ?? "").toLowerCase();
+        const u = (p.apiUrl ?? "").toLowerCase();
+        return !m.includes("embed") && !u.includes("embed") && !m.includes("rerank") && !u.includes("rerank");
+      };
+
+      // When user explicitly picks a model, ONLY use providers that match that model.
+      // No cross-model fallback — if none match or all fail, tell the user clearly.
+      let finalProviders: ProviderConfig[];
+      if (effectiveModel !== "auto") {
+        const patterns = getProviderPatterns(effectiveModel);
+        if (patterns.length > 0) {
+          const matched = smartProviders.filter((p) => {
+            if (!isChatProvider(p)) return false;
+            const combined = ((p.name ?? "") + " " + (p.modelName ?? "")).toLowerCase();
+            return patterns.some((pat) => combined.includes(pat));
+          });
+          if (matched.length === 0) {
+            const label = effectiveModel.charAt(0).toUpperCase() + effectiveModel.slice(1);
+            res.write(`data: ${JSON.stringify({ error: `${label} model is not currently available. Please try a different model.`, modelUnavailable: true })}\n\n`);
+            res.end();
+            return;
+          }
+          finalProviders = matched;
+        } else {
+          // No patterns (shouldn't happen) — fall back to boosted sort
+          finalProviders = boostProvidersForModelKey(smartProviders, effectiveModel);
+        }
+      } else {
+        finalProviders = smartProviders;
+      }
 
       if (routingCategory !== "general") {
-        const topProvider = finalProviders.find((p) => {
-          const isChatP = !((p.modelName ?? "").toLowerCase().includes("embed") || (p.apiUrl ?? "").toLowerCase().includes("embed") || (p.modelName ?? "").toLowerCase().includes("rerank") || (p.apiUrl ?? "").toLowerCase().includes("rerank"));
-          return p.isEnabled && isChatP;
-        });
+        const topProvider = finalProviders.find((p) => isChatProvider(p) && p.isEnabled);
         if (topProvider) {
           res.write(`data: ${JSON.stringify({ routingInfo: { category: routingCategory, model: topProvider.modelName ?? topProvider.name } })}\n\n`);
         }
@@ -1814,7 +1839,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (primaryErr: unknown) {
       const err = primaryErr as Error;
       console.error(`[providers] stream failed:`, err.message);
-      res.write(`data: ${JSON.stringify({ error: err.message || "Stream failed" })}\n\n`);
+      const userMsg = effectiveModel && effectiveModel !== "auto"
+        ? `${effectiveModel.charAt(0).toUpperCase() + effectiveModel.slice(1)} model is not currently available. Please try a different model.`
+        : (err.message || "Stream failed");
+      res.write(`data: ${JSON.stringify({ error: userMsg, modelUnavailable: effectiveModel !== "auto" })}\n\n`);
       res.end();
     }
   });
