@@ -2346,7 +2346,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       { id: "balanced",      name: "Mistral Large 3",    context_length: 128_000, max_tokens:  8_192 },
       { id: "fast",          name: "Claude Haiku",        context_length: 200_000, max_tokens:  4_096 },
       { id: "creative",      name: "GPT-5.3",             context_length: 128_000, max_tokens:  8_192 },
-      { id: "minimax-m2.5",  name: "FW-MiniMax-M2.5",    context_length: 1_000_000, max_tokens: 16_384 },
+      { id: "minimax-m2.5",  name: "MiniMax-M2.5",    context_length: 1_000_000, max_tokens: 16_384 },
       { id: "kimi-2.5",      name: "Kimi 2.5",           context_length: 128_000, max_tokens:  8_192 },
     ];
     return res.json({

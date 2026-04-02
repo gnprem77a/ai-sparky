@@ -810,7 +810,7 @@ func main() {
                       );
                     })}
                     {[
-                      { slug: "minimax", label: "FW-MiniMax-M2.5", maxTok: "16,384" },
+                      { slug: "minimax", label: "MiniMax-M2.5", maxTok: "16,384" },
                       { slug: "kimi",    label: "Kimi-K2.5",       maxTok: "8,192" },
                     ].map(({ slug, label, maxTok }) => (
                       <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-pricing-${slug}`}>
@@ -946,7 +946,7 @@ func main() {
                       { slug: "balanced", label: "Mistral Large 3",  ctx: "100K",  maxOut: "8,192",   note: "Coding, math & structured data",      apiOnly: false },
                       { slug: "creative", label: "GPT-5.3",          ctx: "100K",  maxOut: "8,192",   note: "Creative writing & research",         apiOnly: false },
                       { slug: "fast",     label: "Claude Haiku",     ctx: "185K",  maxOut: "4,096",   note: "Quick answers, low latency",          apiOnly: false },
-                      { slug: "minimax",  label: "FW-MiniMax-M2.5", ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: true  },
+                      { slug: "minimax",  label: "MiniMax-M2.5",    ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: true  },
                       { slug: "kimi",     label: "Kimi-K2.5",        ctx: "128K",  maxOut: "8,192",   note: "Long-context reasoning",              apiOnly: true  },
                     ].map(({ slug, label, ctx, maxOut, note, apiOnly }) => (
                       <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-model-${slug}`}>

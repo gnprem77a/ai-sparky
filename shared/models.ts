@@ -79,7 +79,7 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
   minimax: {
     key: "minimax",
     friendlyName: "MiniMax",
-    exactName: "FW-MiniMax-M2.5",
+    exactName: "MiniMax-M2.5",
     apiModelId: "FW-MiniMax-M2.5",
     providerType: "azure",
     description: "1M context window, great for long documents",
