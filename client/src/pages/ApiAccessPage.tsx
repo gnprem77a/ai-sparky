@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import {
   Key, Copy, RefreshCw, Eye, EyeOff, CheckCircle2, ArrowLeft,
   Terminal, Globe, BarChart2, Clock, ChevronRight, Webhook, Save,
-  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Send, Lock,
+  Zap, AlertCircle, CheckCheck, DollarSign, TrendingDown, Send, Lock, Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -243,7 +243,7 @@ response = requests.post(
     headers={"Authorization": f"Bearer {API_KEY}"},
     json={
         "message": "Hello!",
-        "model": "balanced",        # powerful | fast | creative | balanced
+        "model": "balanced",        # powerful | fast | creative | balanced | minimax | kimi
         "systemPrompt": "You are a helpful assistant."
     }
 )
@@ -278,7 +278,7 @@ async function chat(message) {
     BASE_URL,
     {
       message,
-      model: "balanced",   // powerful | fast | creative | balanced
+      model: "balanced",   // powerful | fast | creative | balanced | minimax | kimi
       systemPrompt: "You are a helpful assistant."
     },
     {
@@ -301,7 +301,7 @@ $baseUrl = "${baseUrl}/api/v1/chat";
 
 $payload = json_encode([
     "message"      => "Hello!",
-    "model"        => "balanced",   // powerful | fast | creative | balanced
+    "model"        => "balanced",   // powerful | fast | creative | balanced | minimax | kimi
     "systemPrompt" => "You are a helpful assistant."
 ]);
 
@@ -339,7 +339,7 @@ request["Authorization"] = "Bearer #{API_KEY}"
 request["Content-Type"]  = "application/json"
 request.body = JSON.generate(
   message:      "Hello!",
-  model:        "balanced",   # powerful | fast | creative | balanced
+  model:        "balanced",   # powerful | fast | creative | balanced | minimax | kimi
   systemPrompt: "You are a helpful assistant."
 )
 
@@ -367,7 +367,7 @@ const (
 func main() {
   payload, _ := json.Marshal(map[string]interface{}{
     "message":      "Hello!",
-    "model":        "balanced", // powerful | fast | creative | balanced
+    "model":        "balanced", // powerful | fast | creative | balanced | minimax | kimi
     "systemPrompt": "You are a helpful assistant.",
   })
 
@@ -810,6 +810,20 @@ func main() {
                       );
                     })}
                     {[
+                      { slug: "minimax", label: "FW-MiniMax-M2.5", maxTok: "16,384" },
+                      { slug: "kimi",    label: "Kimi-K2.5",       maxTok: "8,192" },
+                    ].map(({ slug, label, maxTok }) => (
+                      <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-pricing-${slug}`}>
+                        <td className="py-3 font-medium text-foreground">
+                          <span>{label}</span>
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-500/15 text-violet-400 uppercase tracking-wide">API Only</span>
+                        </td>
+                        <td className="py-3 font-mono text-xs text-primary">{slug}</td>
+                        <td className="py-3 text-right text-muted-foreground text-xs italic" colSpan={2}>Pay-per-use (billed by admin)</td>
+                        <td className="py-3 text-right tabular-nums text-muted-foreground">{maxTok}</td>
+                      </tr>
+                    ))}
+                    {[
                       { label: "Embed v4.0", slug: "embed" },
                       { label: "Cohere Rerank", slug: "rerank" },
                     ].map(({ label, slug }) => (
@@ -905,6 +919,63 @@ func main() {
               </div>
             </div>
 
+            {/* Available Models reference */}
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-primary" /> Available Models
+              </h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Pass the <code className="font-mono text-primary">model</code> slug in your API request to select which model handles your message.
+                Models marked <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-500/15 text-violet-400 uppercase tracking-wide">API Only</span> are only available through the API — not in the chat interface.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Model Name</th>
+                      <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Slug (use in API)</th>
+                      <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Context</th>
+                      <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Max Output</th>
+                      <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Best For</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {[
+                      { slug: "powerful", label: "Claude Opus 4.6",  ctx: "185K",  maxOut: "32,000",  note: "Complex reasoning & analysis",       apiOnly: false },
+                      { slug: "sonnet",   label: "Claude Sonnet 4.5",ctx: "185K",  maxOut: "16,000",  note: "Smart & efficient, most tasks",       apiOnly: false },
+                      { slug: "balanced", label: "Mistral Large 3",  ctx: "100K",  maxOut: "8,192",   note: "Coding, math & structured data",      apiOnly: false },
+                      { slug: "creative", label: "GPT-5.3",          ctx: "100K",  maxOut: "8,192",   note: "Creative writing & research",         apiOnly: false },
+                      { slug: "fast",     label: "Claude Haiku",     ctx: "185K",  maxOut: "4,096",   note: "Quick answers, low latency",          apiOnly: false },
+                      { slug: "minimax",  label: "FW-MiniMax-M2.5", ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: true  },
+                      { slug: "kimi",     label: "Kimi-K2.5",        ctx: "128K",  maxOut: "8,192",   note: "Long-context reasoning",              apiOnly: true  },
+                    ].map(({ slug, label, ctx, maxOut, note, apiOnly }) => (
+                      <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-model-${slug}`}>
+                        <td className="py-3 font-medium text-foreground">
+                          {label}
+                          {apiOnly && (
+                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-500/15 text-violet-400 uppercase tracking-wide">API Only</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <code className="font-mono text-xs text-primary bg-primary/8 px-2 py-0.5 rounded">{slug}</code>
+                        </td>
+                        <td className="py-3 text-xs tabular-nums text-muted-foreground">{ctx}</td>
+                        <td className="py-3 text-xs tabular-nums text-muted-foreground">{maxOut}</td>
+                        <td className="py-3 text-xs text-muted-foreground">{note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/8 border border-violet-500/15 text-violet-300 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-violet-200">API-only models</strong> (MiniMax, Kimi) are accessible via API calls only.
+                  Set the provider in the admin panel before using them. Omit <code className="font-mono">model</code> to use <code className="font-mono">balanced</code> by default.
+                </span>
+              </div>
+            </div>
+
             {/* Language picker + code examples */}
             <div className="rounded-2xl border border-border bg-card overflow-hidden">
               <div className="flex items-center gap-1 px-4 pt-4 pb-0 border-b border-border flex-wrap">
@@ -953,7 +1024,7 @@ func main() {
                 {[
                   { field: "message", type: "string", req: true,  desc: "Single user message (alternative to messages array)" },
                   { field: "messages", type: "array",  req: false, desc: "Array of {role, content} objects for multi-turn conversations" },
-                  { field: "model",   type: "string", req: false, desc: "Model slug: powerful | fast | creative | balanced (default: balanced)" },
+                  { field: "model",   type: "string", req: false, desc: "Model slug: powerful | fast | creative | balanced | minimax | kimi (default: balanced)" },
                   { field: "systemPrompt", type: "string", req: false, desc: "Optional system instruction prepended to the conversation" },
                   { field: "stream",  type: "boolean", req: false, desc: "Set true to enable SSE streaming (default: false)" },
                   { field: "maxTokens", type: "number", req: false, desc: "Override max output tokens — capped per model" },

@@ -14,7 +14,7 @@
  *   Cohere-rerank-v4.0-pro → result reranking for Knowledge Base search
  */
 
-export type ModelKey = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet";
+export type ModelKey = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet" | "minimax" | "kimi";
 
 export interface ModelDefinition {
   key: ModelKey;
@@ -24,6 +24,10 @@ export interface ModelDefinition {
   providerType: string;
   description: string;
   badgeLabel: string;
+  /** If true, this model is only accessible via the external API — not in the chat UI */
+  apiOnly?: boolean;
+  contextWindow?: number;
+  maxOutputTokens?: number;
 }
 
 export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> = {
@@ -71,6 +75,30 @@ export const MODEL_REGISTRY: Record<Exclude<ModelKey, "auto">, ModelDefinition> 
     providerType: "anthropic",
     description: "Instant responses for quick tasks",
     badgeLabel: "Haiku",
+  },
+  minimax: {
+    key: "minimax",
+    friendlyName: "MiniMax",
+    exactName: "FW-MiniMax-M2.5",
+    apiModelId: "FW-MiniMax-M2.5",
+    providerType: "azure",
+    description: "1M context window, great for long documents",
+    badgeLabel: "MiniMax M2.5",
+    apiOnly: true,
+    contextWindow: 1_000_000,
+    maxOutputTokens: 16_384,
+  },
+  kimi: {
+    key: "kimi",
+    friendlyName: "Kimi",
+    exactName: "Kimi-K2.5",
+    apiModelId: "Kimi-K2.5",
+    providerType: "azure",
+    description: "Long context reasoning and analysis",
+    badgeLabel: "Kimi K2.5",
+    apiOnly: true,
+    contextWindow: 128_000,
+    maxOutputTokens: 8_192,
   },
 };
 
