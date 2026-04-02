@@ -811,13 +811,10 @@ func main() {
                     })}
                     {[
                       { slug: "minimax", label: "MiniMax-M2.5", maxTok: "16,384" },
-                      { slug: "kimi",    label: "Kimi-K2.5",       maxTok: "8,192" },
+                      { slug: "kimi",    label: "Kimi-K2.5",    maxTok: "8,192" },
                     ].map(({ slug, label, maxTok }) => (
                       <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-pricing-${slug}`}>
-                        <td className="py-3 font-medium text-foreground">
-                          <span>{label}</span>
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-500/15 text-violet-400 uppercase tracking-wide">API Only</span>
-                        </td>
+                        <td className="py-3 font-medium text-foreground">{label}</td>
                         <td className="py-3 font-mono text-xs text-primary">{slug}</td>
                         <td className="py-3 text-right text-muted-foreground text-xs italic" colSpan={2}>Pay-per-use (billed by admin)</td>
                         <td className="py-3 text-right tabular-nums text-muted-foreground">{maxTok}</td>
@@ -946,8 +943,8 @@ func main() {
                       { slug: "balanced", label: "Mistral Large 3",  ctx: "100K",  maxOut: "8,192",   note: "Coding, math & structured data",      apiOnly: false },
                       { slug: "creative", label: "GPT-5.3",          ctx: "100K",  maxOut: "8,192",   note: "Creative writing & research",         apiOnly: false },
                       { slug: "fast",     label: "Claude Haiku",     ctx: "185K",  maxOut: "4,096",   note: "Quick answers, low latency",          apiOnly: false },
-                      { slug: "minimax",  label: "MiniMax-M2.5",    ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: true  },
-                      { slug: "kimi",     label: "Kimi-K2.5",        ctx: "128K",  maxOut: "8,192",   note: "Long-context reasoning",              apiOnly: true  },
+                      { slug: "minimax",  label: "MiniMax-M2.5",    ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: false },
+                      { slug: "kimi",     label: "Kimi-K2.5",        ctx: "128K",  maxOut: "8,192",   note: "Long-context reasoning",              apiOnly: false },
                     ].map(({ slug, label, ctx, maxOut, note, apiOnly }) => (
                       <tr key={slug} className="hover:bg-muted/20 transition-colors" data-testid={`row-model-${slug}`}>
                         <td className="py-3 font-medium text-foreground">
@@ -967,11 +964,10 @@ func main() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-violet-500/8 border border-violet-500/15 text-violet-300 text-xs">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-violet-200">API-only models</strong> (MiniMax, Kimi) are accessible via API calls only.
-                  Set the provider in the admin panel before using them. Omit <code className="font-mono">model</code> to use <code className="font-mono">balanced</code> by default.
+                  All models are available both in the chat UI and via API. Omit <code className="font-mono">model</code> to use <code className="font-mono">balanced</code> by default. MiniMax and Kimi require their providers to be configured in the admin panel.
                 </span>
               </div>
             </div>

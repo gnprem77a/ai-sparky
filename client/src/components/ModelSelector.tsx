@@ -1,8 +1,8 @@
-import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown, Search } from "lucide-react";
+import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown, Search, Layers, FlaskConical } from "lucide-react";
 import { MODEL_REGISTRY } from "@shared/models";
 import { cn } from "@/lib/utils";
 
-export type ModelId = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet";
+export type ModelId = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet" | "minimax" | "kimi";
 
 export interface ModelOption {
   id: ModelId;
@@ -88,6 +88,28 @@ export const MODELS: ModelOption[] = [
     iconColor: "text-blue-400",
     proOnly: false,
   },
+  {
+    id: "minimax",
+    friendlyName: "MiniMax",
+    exactName: MODEL_REGISTRY.minimax.exactName,
+    description: MODEL_REGISTRY.minimax.description,
+    badgeLabel: MODEL_REGISTRY.minimax.badgeLabel,
+    icon: <Layers className="w-4 h-4" />,
+    iconBg: "bg-teal-500/10",
+    iconColor: "text-teal-400",
+    proOnly: false,
+  },
+  {
+    id: "kimi",
+    friendlyName: "Kimi",
+    exactName: MODEL_REGISTRY.kimi.exactName,
+    description: MODEL_REGISTRY.kimi.description,
+    badgeLabel: MODEL_REGISTRY.kimi.badgeLabel,
+    icon: <FlaskConical className="w-4 h-4" />,
+    iconBg: "bg-orange-500/10",
+    iconColor: "text-orange-400",
+    proOnly: false,
+  },
 ];
 
 /**
@@ -122,11 +144,24 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   "gpt-5.3-chat":              { color: "text-emerald-400", bg: "bg-emerald-500/10" },
   "gpt-5.3":                   { color: "text-emerald-400", bg: "bg-emerald-500/10" },
 
+  // ── MiniMax ───────────────────────────────────────────────────
+  "MiniMax M2.5":              { color: "text-teal-400",   bg: "bg-teal-500/10"   },
+  "MiniMax-M2.5":              { color: "text-teal-400",   bg: "bg-teal-500/10"   },
+  "FW-MiniMax-M2.5":           { color: "text-teal-400",   bg: "bg-teal-500/10"   },
+  "minimax-m2.5":              { color: "text-teal-400",   bg: "bg-teal-500/10"   },
+
+  // ── Kimi ─────────────────────────────────────────────────────
+  "Kimi K2.5":                 { color: "text-orange-400", bg: "bg-orange-500/10" },
+  "Kimi-K2.5":                 { color: "text-orange-400", bg: "bg-orange-500/10" },
+  "kimi-2.5":                  { color: "text-orange-400", bg: "bg-orange-500/10" },
+
   // ── Computed from MODEL_REGISTRY (stays in sync) ──────────────
   [MODEL_REGISTRY.powerful.badgeLabel]: { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   [MODEL_REGISTRY.balanced.badgeLabel]: { color: "text-violet-400",  bg: "bg-violet-500/10"  },
   [MODEL_REGISTRY.creative.badgeLabel]: { color: "text-emerald-400", bg: "bg-emerald-500/10" },
   [MODEL_REGISTRY.fast.badgeLabel]:     { color: "text-blue-400",    bg: "bg-blue-500/10"    },
+  [MODEL_REGISTRY.minimax.badgeLabel]:  { color: "text-teal-400",    bg: "bg-teal-500/10"    },
+  [MODEL_REGISTRY.kimi.badgeLabel]:     { color: "text-orange-400",  bg: "bg-orange-500/10"  },
 };
 
 /** @deprecated use BADGE_STYLE */
@@ -147,6 +182,11 @@ const RAW_TO_FRIENDLY: Record<string, string> = {
   "mistral-large-3":     "Mistral L3",
   "gpt-5.3-chat":        "GPT 5.3",
   "gpt-5.3":             "GPT 5.3",
+  "FW-MiniMax-M2.5":     "MiniMax M2.5",
+  "MiniMax-M2.5":        "MiniMax M2.5",
+  "minimax-m2.5":        "MiniMax M2.5",
+  "Kimi-K2.5":           "Kimi K2.5",
+  "kimi-2.5":            "Kimi K2.5",
 };
 
 export function getFriendlyModelLabel(raw: string): string {
