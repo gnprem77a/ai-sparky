@@ -1715,6 +1715,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       systemPrompt = systemPrompt ? `${systemPrompt}\n\n${langPrompt}` : langPrompt;
     }
 
+    // Identity correction for models known to incorrectly identify themselves (e.g. MiniMax, Kimi)
+    // These models are sometimes fine-tuned on Claude/GPT data and may claim to be those models.
+    if (["minimax", "kimi"].includes(effectiveModel)) {
+      const assistantName = settings.assistantName?.trim() || "AI Assistant";
+      const identityCorrection = `Your name is ${assistantName}. You are an AI assistant. You must never claim to be Claude, ChatGPT, GPT, Gemini, Llama, or any other specific AI product or company. If asked about your identity, say you are ${assistantName}, an AI assistant.`;
+      systemPrompt = systemPrompt ? `${identityCorrection}\n\n${systemPrompt}` : identityCorrection;
+    }
+
     const selected = resolveModel(effectiveModel, messages as RawMessage[]);
     /* ── Context window: Free=6, Pro=20 ── */
     const contextWindow = pro ? 20 : 6;
