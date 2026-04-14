@@ -3246,11 +3246,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const dbProviders = await storage.getActiveProviders();
     const patterns = getProviderPatterns(modelSlug as any);
     let selectedProviders = dbProviders.filter((p) =>
-      p.isEnabled && p.isActive &&
+      p.isEnabled &&
       patterns.some((pat) => p.name.toLowerCase().includes(pat) || p.modelName.toLowerCase().includes(pat))
     );
-    // Fallback: use any active provider
-    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled && p.isActive);
+    // Fallback: use any enabled provider
+    if (selectedProviders.length === 0) selectedProviders = dbProviders.filter((p) => p.isEnabled);
     if (selectedProviders.length === 0) return res.status(503).json({ error: "No active AI providers configured" });
 
     const providerConfigs: ProviderConfig[] = selectedProviders.map((p) => ({
