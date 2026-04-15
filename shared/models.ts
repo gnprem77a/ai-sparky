@@ -115,14 +115,39 @@ export function getModel(key: string): ModelDefinition {
  */
 export function getProviderPatterns(modelKey: string): string[] {
   const map: Record<string, string[]> = {
-    powerful: ["opus"],
-    sonnet:   ["sonnet"],
-    balanced: ["mistral"],
-    creative: ["gpt"],
-    fast:     ["haiku"],
-    auto:     [],
-    minimax:  ["minimax", "m2.5", "fw-minimax"],
-    kimi:     ["kimi", "moonshot"],
+    // "powerful" slot — Claude Opus, GPT-4o, top-tier models
+    powerful: [
+      "powerful", "opus", "claude-opus", "claude-3-opus",
+      "gpt-4o", "gpt4o", "gpt-4-turbo", "gpt-4-32k", "gpt-4",
+      "gemini-1.5-pro", "gemini-pro", "gemini-2.5-pro",
+      "llama-3.1-405", "llama-405",
+    ],
+    // "sonnet" slot — Claude Sonnet, mid-large models
+    sonnet: [
+      "sonnet", "claude-sonnet", "claude-3-5-sonnet", "claude-3-sonnet",
+      "gemini-1.5-flash-8b",
+    ],
+    // "balanced" slot — Mistral, mid-range models
+    balanced: [
+      "balanced", "mistral", "mixtral", "mistral-large", "mistral-medium",
+      "llama-3.1-70b", "llama-70b", "llama3-70b",
+      "qwen", "deepseek",
+    ],
+    // "creative" slot — GPT family, creative models
+    creative: [
+      "creative", "gpt-3.5", "gpt3.5", "gpt-3",
+      "o1", "o3", "o4",
+    ],
+    // "fast" slot — Claude Haiku, small/fast models
+    fast: [
+      "fast", "haiku", "claude-haiku", "claude-3-haiku",
+      "gemini-flash", "gemini-1.5-flash", "gemini-2.0-flash",
+      "llama-3.1-8b", "llama-8b", "llama3-8b",
+      "phi-3", "phi3",
+    ],
+    auto:    [],
+    minimax: ["minimax", "m2.5", "fw-minimax"],
+    kimi:    ["kimi", "moonshot"],
   };
   return map[modelKey] ?? [];
 }

@@ -476,12 +476,13 @@ function ProviderFormModal({
     }
   };
 
-  const Field = ({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) => (
+  const Field = ({ label, children, required, hint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string }) => (
     <div className="space-y-1">
       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
         {label}{required && <span className="text-destructive ml-1">*</span>}
       </label>
       {children}
+      {hint && <p className="text-[10px] text-muted-foreground/70 leading-tight">{hint}</p>}
     </div>
   );
 
@@ -505,7 +506,7 @@ function ProviderFormModal({
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           {/* Provider type selector */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Display Name" required>
+            <Field label="Display Name" required hint='Name determines which model slot this provider fills. e.g. "opus" → Powerful, "sonnet" → Sonnet, "haiku" → Fast, "mistral" → Balanced, "gpt-4o" → Powerful, "kimi" → Kimi'>
               <input
                 type="text"
                 value={form.name}
