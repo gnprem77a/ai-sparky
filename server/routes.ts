@@ -2700,6 +2700,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         (res as any).write = originalWrite;
         // Close tool blocks
+        const hasToolCalls = Object.keys(pendingToolBlocks).length > 0;
         for (const tb of Object.values(pendingToolBlocks)) {
           res.write(sseAnt("content_block_stop", { type: "content_block_stop", index: tb.blockIdx }));
         }
@@ -2707,7 +2708,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const deltaUsage: Record<string, number> = { output_tokens: outputTokens };
         if (cacheReadTokens > 0)     deltaUsage.cache_read_input_tokens     = cacheReadTokens;
         if (cacheCreationTokens > 0) deltaUsage.cache_creation_input_tokens = cacheCreationTokens;
-        res.write(sseAnt("message_delta", { type: "message_delta", delta: { stop_reason: oaiTools ? "tool_use" : "end_turn", stop_sequence: null }, usage: deltaUsage }));
+        res.write(sseAnt("message_delta", { type: "message_delta", delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn", stop_sequence: null }, usage: deltaUsage }));
         res.write(sseAnt("message_stop", { type: "message_stop" }));
 
         const totalCost = calcCost(modelSlug, inputTokens, outputTokens, primaryProvider?.inputPricePerMillion ?? null, primaryProvider?.outputPricePerMillion ?? null);

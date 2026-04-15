@@ -355,7 +355,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       return this.streamResponsesApi(endpoint, messages, systemPrompt, maxTokens, res);
     }
 
-    return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res, oaiMessages);
+    return this.streamChatCompletions(endpoint, messages, systemPrompt, maxTokens, useTools, res, oaiMessages, externalTools);
   }
 
   // ---------------------------------------------------------------------------
@@ -676,6 +676,7 @@ export class OpenAICompatAdapter implements ProviderAdapter {
     useTools: boolean,
     res: Response,
     oaiMessages?: any[],
+    externalTools?: any[],
   ): Promise<UsageResult> {
     let inputTokens = 0;
     let outputTokens = 0;
@@ -701,6 +702,9 @@ export class OpenAICompatAdapter implements ProviderAdapter {
       };
       if (useTools) {
         body.tools = TOOL_DEFINITIONS_OPENAI;
+        body.tool_choice = "auto";
+      } else if (externalTools && externalTools.length > 0) {
+        body.tools = externalTools;
         body.tool_choice = "auto";
       }
 
