@@ -800,9 +800,19 @@ export class OpenAICompatAdapter implements ProviderAdapter {
                 const idx = String(tc.index ?? 0);
                 if (!pendingTools[idx]) {
                   pendingTools[idx] = { id: tc.id ?? idx, name: tc.function?.name ?? "", args: "" };
+                  // For external tools (Claude CLI), emit tool call start event immediately
+                  if (externalTools && externalTools.length > 0) {
+                    res.write(`data: ${JSON.stringify({ oai_tool_call_start: { index: Number(idx), id: tc.id ?? idx, name: tc.function?.name ?? "" } })}\n\n`);
+                  }
                 }
                 if (tc.function?.name) pendingTools[idx].name = tc.function.name;
-                if (tc.function?.arguments) pendingTools[idx].args += tc.function.arguments;
+                if (tc.function?.arguments) {
+                  pendingTools[idx].args += tc.function.arguments;
+                  // For external tools, stream argument deltas back
+                  if (externalTools && externalTools.length > 0) {
+                    res.write(`data: ${JSON.stringify({ oai_tool_call_delta: { index: Number(idx), arguments: tc.function.arguments } })}\n\n`);
+                  }
+                }
               }
             }
           } catch {}
@@ -813,6 +823,10 @@ export class OpenAICompatAdapter implements ProviderAdapter {
 
       const toolEntries = Object.values(pendingTools);
       if (!toolEntries.length) break;
+
+      // External tools (e.g. Claude CLI): signals already emitted during streaming.
+      // Don't execute them server-side — Claude CLI runs them locally and sends back results.
+      if (externalTools && externalTools.length > 0) break;
 
       const toolMessages: Array<{ role: string; content: string; tool_call_id: string }> = [];
       const assistantToolCalls = toolEntries.map((tc) => ({
