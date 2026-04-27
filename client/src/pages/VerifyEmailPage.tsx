@@ -5,7 +5,7 @@ import { CheckCircle, XCircle, Loader2, Mail, Bot, Sparkles } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const AGENT_NAME_SUGGESTIONS = ["Sparky", "Nova", "Aria", "Echo", "Atlas", "Luna", "Kai", "Sage"];
+const AGENT_NAME_SUGGESTIONS = ["Nova", "Aria", "Echo", "Atlas", "Luna", "Kai", "Sage", "Orion"];
 
 export default function VerifyEmailPage() {
   const [, navigate] = useLocation();
