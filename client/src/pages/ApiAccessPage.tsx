@@ -47,7 +47,7 @@ interface ApiLog {
 }
 
 const MODEL_LABELS: Record<string, string> = {
-  powerful: "Claude Opus 4.6",
+  powerful: "Claude Opus 4.7",
   sonnet: "Claude Sonnet 4.5",
   fast: "Claude Haiku",
   creative: "GPT-5.3",
@@ -793,7 +793,7 @@ func main() {
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     {[
-                      { slug: "powerful", label: "Claude Opus 4.6", maxTok: "32,000" },
+                      { slug: "powerful", label: "Claude Opus 4.7", maxTok: "32,000" },
                       { slug: "fast", label: "Claude Haiku", maxTok: "4,096" },
                       { slug: "creative", label: "GPT-5.3", maxTok: "8,192" },
                       { slug: "balanced", label: "Mistral Large 3", maxTok: "8,192" },
@@ -938,7 +938,7 @@ func main() {
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     {[
-                      { slug: "powerful", label: "Claude Opus 4.6",  ctx: "185K",  maxOut: "32,000",  note: "Complex reasoning & analysis",       apiOnly: false },
+                      { slug: "powerful", label: "Claude Opus 4.7",  ctx: "185K",  maxOut: "32,000",  note: "Complex reasoning & analysis",       apiOnly: false },
                       { slug: "sonnet",   label: "Claude Sonnet 4.5",ctx: "185K",  maxOut: "16,000",  note: "Smart & efficient, most tasks",       apiOnly: false },
                       { slug: "balanced", label: "Mistral Large 3",  ctx: "100K",  maxOut: "8,192",   note: "Coding, math & structured data",      apiOnly: false },
                       { slug: "creative", label: "GPT-5.3",          ctx: "100K",  maxOut: "8,192",   note: "Creative writing & research",         apiOnly: false },
@@ -1187,7 +1187,7 @@ func main() {
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
                     <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
-                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="Terminal" />
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-7`} language="Terminal" />
                     <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your <code className="font-mono bg-muted px-1 py-0.5 rounded">~/.zshrc</code>:</p>
                     <CodeBlock code={`export ANTHROPIC_MODEL=claude-sonnet-4-5`} language="Add to ~/.zshrc" />
                     <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.zshrc</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>
@@ -1225,7 +1225,7 @@ func main() {
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
                     <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
-                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="Terminal" />
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-7`} language="Terminal" />
                     <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your <code className="font-mono bg-muted px-1 py-0.5 rounded">~/.bashrc</code>:</p>
                     <CodeBlock code={`export ANTHROPIC_MODEL=claude-sonnet-4-5`} language="Add to ~/.bashrc" />
                     <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">source ~/.bashrc</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>
@@ -1263,7 +1263,7 @@ func main() {
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-foreground">Optional — Choose a model</p>
                     <p className="text-xs text-muted-foreground">Use the <code className="font-mono bg-muted px-1 py-0.5 rounded">--model</code> flag when starting:</p>
-                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-6`} language="PowerShell" />
+                    <CodeBlock code={`claude --model claude-sonnet-4-5\nclaude --model claude-opus-4-7`} language="PowerShell" />
                     <p className="text-xs text-muted-foreground">Or type <code className="font-mono bg-muted px-1 py-0.5 rounded">/model</code> inside a running Claude session to switch interactively. To set a default model permanently, add this to your PowerShell profile alongside the other two lines:</p>
                     <CodeBlock code={`$env:ANTHROPIC_MODEL = "claude-sonnet-4-5"`} language="Add to PowerShell profile" />
                     <p className="text-xs text-muted-foreground">Then run <code className="font-mono bg-muted px-1 py-0.5 rounded">. $PROFILE</code> and just typing <code className="font-mono bg-muted px-1 py-0.5 rounded">claude</code> will always use Sonnet.</p>

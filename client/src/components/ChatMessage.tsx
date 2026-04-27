@@ -797,7 +797,7 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
               </div>
               {selectedModel === "powerful" && elapsedTime >= 6 && (
                 <p className="text-[11px] text-muted-foreground/40 px-1">
-                  Opus 4.6 is crafting a detailed response — complex tasks can take up to 40s
+                  Opus 4.7 is crafting a detailed response — complex tasks can take up to 40s
                 </p>
               )}
             </div>

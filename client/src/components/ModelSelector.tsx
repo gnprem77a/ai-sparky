@@ -118,7 +118,7 @@ export const MODELS: ModelOption[] = [
  */
 export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   // ── Friendly badge labels ──────────────────────────────────────
-  "Opus 4.6":    { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "Opus 4.7":    { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   "Sonnet 4.5":  { color: "text-rose-400",    bg: "bg-rose-500/10"    },
   "Mistral L3":  { color: "text-violet-400",  bg: "bg-violet-500/10"  },
   "GPT 5.3":     { color: "text-emerald-400", bg: "bg-emerald-500/10" },
@@ -127,8 +127,8 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
 
   // ── Raw Anthropic / Azure model names ─────────────────────────
   "claude-opus-1715":          { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "claude-opus-4-6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  "claude-opus-4.6":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-opus-4-7":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  "claude-opus-4.7":           { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   "claude-sonnet-4-5":         { color: "text-rose-400",    bg: "bg-rose-500/10"    },
   "claude-sonnet":             { color: "text-rose-400",    bg: "bg-rose-500/10"    },
   "claude-haiku-prod2":        { color: "text-blue-400",    bg: "bg-blue-500/10"    },
@@ -172,9 +172,9 @@ export const MODEL_USED_STYLES = BADGE_STYLE;
  * shown in chat message badges. Falls back to the raw string trimmed to 20 chars.
  */
 const RAW_TO_FRIENDLY: Record<string, string> = {
-  "claude-opus-1715":    "Opus 4.6",
-  "claude-opus-4-6":     "Opus 4.6",
-  "claude-opus-4.6":     "Opus 4.6",
+  "claude-opus-1715":    "Opus 4.7",
+  "claude-opus-4-7":     "Opus 4.7",
+  "claude-opus-4.7":     "Opus 4.7",
   "claude-sonnet-4-5":   "Sonnet 4.5",
   "claude-sonnet":       "Sonnet 4.5",
   "claude-haiku-prod2":  "Haiku",
@@ -266,7 +266,7 @@ export function ModelSelectorDropdown({ selectedId, onSelect, isPro, onClose }: 
       {!isPro && (
         <div className="mx-2 mt-1 mb-0.5 px-3 py-2 rounded-lg bg-amber-500/8 border border-amber-500/15">
           <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-            Upgrade to Pro to unlock all models including Opus 4.6
+            Upgrade to Pro to unlock all models including Opus 4.7
           </p>
         </div>
       )}
