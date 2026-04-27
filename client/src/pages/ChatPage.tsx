@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw, WifiOff } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -1590,7 +1590,7 @@ ${messagesHtml}
                   <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
                 </div>
               ) : messages.length === 0 ? (
-                <EmptyState onSuggest={(text) => { setInput(text); }} userName={user?.username} />
+                <EmptyState />
               ) : (
                 <div className="max-w-3xl mx-auto py-6">
                   <div ref={topRef} />
@@ -1811,27 +1811,8 @@ ${messagesHtml}
   );
 }
 
-const QUICK_SUGGESTIONS = [
-  { icon: Code2,       label: "Write code",       prompt: "Write a TypeScript function that debounces any async function and returns a promise.", color: "text-blue-600 dark:text-blue-400",     bg: "bg-blue-500/10 dark:bg-blue-500/8"    },
-  { icon: PenLine,     label: "Draft writing",     prompt: "Write a concise, compelling bio for a software engineer who is also an avid reader and hiker.", color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-500/10 dark:bg-violet-500/8" },
-  { icon: BarChart2,   label: "Analyze data",      prompt: "Explain how to interpret a confusion matrix and what precision, recall, and F1 score mean.", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10 dark:bg-emerald-500/8" },
-  { icon: Lightbulb,   label: "Brainstorm ideas",  prompt: "Give me 10 creative side project ideas for a developer who wants to learn about AI.", color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-500/10 dark:bg-amber-500/8"   },
-  { icon: Globe,       label: "Explain concepts",  prompt: "Explain how large language models work in plain English, step by step.", color: "text-cyan-600 dark:text-cyan-400",     bg: "bg-cyan-500/10 dark:bg-cyan-500/8"    },
-  { icon: FlaskConical,label: "Debug & review",    prompt: "What are the most common React performance pitfalls and how do I fix them?", color: "text-rose-600 dark:text-rose-400",     bg: "bg-rose-500/10 dark:bg-rose-500/8"    },
-];
-
-
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
-}
-
-function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void; userName?: string }) {
+function EmptyState() {
   const { t } = useLanguage();
-  const greeting = getGreeting();
-  const personalName = userName ? `, ${userName.charAt(0).toUpperCase() + userName.slice(1)}` : "";
   return (
     <div className="relative flex flex-col items-center justify-center min-h-full py-10 px-4 sm:px-6 overflow-hidden">
       {/* Ambient glow */}
@@ -1842,7 +1823,6 @@ function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void
         <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-3xl scale-[2] -z-10" />
       </div>
 
-      <p className="text-xs font-semibold text-primary/60 uppercase tracking-widest mb-1">{greeting}{personalName}</p>
       <h1 className="text-[1.8rem] sm:text-[2rem] font-black tracking-tight text-foreground mb-2 text-center">
         {t("chat.empty.title")}
       </h1>
@@ -1883,30 +1863,6 @@ function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void
               <span className="text-[10px] text-muted-foreground/70 leading-tight">{f.model}</span>
             </div>
           ))}
-        </div>
-      </div>
-
-
-      {/* Quick prompts */}
-      <div className="w-full max-w-2xl">
-        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-3">Quick Prompts</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-        {QUICK_SUGGESTIONS.map((s) => {
-          const Icon = s.icon;
-          return (
-            <button
-              key={s.label}
-              onClick={() => onSuggest(s.prompt)}
-              data-testid={`suggestion-${s.label.toLowerCase().replace(/\s+/g, "-")}`}
-              className="group relative flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border/50 bg-card hover:bg-card/80 hover:border-primary/30 hover:shadow-md text-left transition-all duration-200"
-            >
-              <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", s.bg)}>
-                <Icon className={cn("w-3.5 h-3.5", s.color)} />
-              </div>
-                      <span className="text-[12px] font-semibold text-foreground leading-tight">{s.label}</span>
-            </button>
-          );
-        })}
         </div>
       </div>
     </div>
