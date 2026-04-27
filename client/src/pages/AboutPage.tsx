@@ -30,7 +30,7 @@ export default function AboutPage() {
         <h2 className="text-xl font-bold text-foreground mb-6">What you can do</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[
-            { icon: Brain, title: "Multiple AI models", desc: "Switch between Fast, Balanced, Creative, and Powerful models depending on the task." },
+            { icon: Brain, title: "Multiple AI models", desc: "Switch between Fast, Sonnet, and Powerful models depending on the task." },
             { icon: Globe, title: "Live web search", desc: "Pro users can query the live internet for real-time answers." },
             { icon: Shield, title: "Privacy first", desc: "End-to-end focus on data protection. We never train on your chats." },
             { icon: Zap, title: "External API", desc: "Integrate AI Sparky into your own apps via a simple REST API." },

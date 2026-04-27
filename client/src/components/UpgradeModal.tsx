@@ -14,7 +14,7 @@ interface UpgradeModalProps {
 
 const PRO_HIGHLIGHTS = [
   { icon: Infinity, label: "Unlimited messages", sub: "No daily cap, ever", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-  { icon: Brain, label: "All AI models", sub: "Balanced, Powerful & Creative", color: "text-violet-400", bg: "bg-violet-500/10" },
+  { icon: Brain, label: "All AI models", sub: "Powerful, Sonnet & Fast", color: "text-violet-400", bg: "bg-violet-500/10" },
   { icon: Globe, label: "Web search", sub: "Real-time internet access", color: "text-blue-400", bg: "bg-blue-500/10" },
   { icon: Sparkles, label: "Priority processing", sub: "Faster responses under load", color: "text-amber-400", bg: "bg-amber-500/10" },
 ];
@@ -96,7 +96,7 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit", featureName
     ? "You've used all 20 free messages for today. Your limit resets at midnight — or upgrade to Pro for unlimited access."
     : isFeature
     ? (featureDescription ?? `Upgrade to Pro to unlock ${featureName ?? "this feature"} and get full access to everything AI Sparky has to offer.`)
-    : "Pro members get full access to every AI model — including the most powerful and creative options available.";
+    : "Pro members get full access to every AI model — including the most powerful options available.";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,9 +205,8 @@ export function UpgradeModal({ open, onOpenChange, reason = "limit", featureName
               </div>
               {[
                 { name: "Fast model", free: true, pro: true },
-                { name: "Balanced model", free: false, pro: true },
+                { name: "Sonnet model", free: false, pro: true },
                 { name: "Powerful model", free: false, pro: true },
-                { name: "Creative model", free: false, pro: true },
                 { name: "Auto-select best", free: false, pro: true },
                 { name: "Unlimited messages", free: false, pro: true },
               ].map((row) => (

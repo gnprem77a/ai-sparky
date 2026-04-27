@@ -31,7 +31,6 @@ interface SharedConversation {
 
 const MODEL_COLOR: Record<string, string> = {
   powerful: "text-violet-400 bg-violet-500/10 border-violet-500/20",
-  creative: "text-rose-400 bg-rose-500/10 border-rose-500/20",
   fast: "text-green-400 bg-green-500/10 border-green-500/20",
   auto: "text-primary bg-primary/10 border-primary/20",
 };

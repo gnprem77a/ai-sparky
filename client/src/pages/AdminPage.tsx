@@ -2490,7 +2490,7 @@ export default function AdminPage() {
               bg: "bg-amber-500/5",
               features: [
                 "Unlimited messages",
-                "Access to all models (Auto, Powerful, Creative)",
+                "Access to all models (Auto, Powerful, Sonnet)",
                 "Priority response speed",
                 "Advanced file & image attachments",
               ],

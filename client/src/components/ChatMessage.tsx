@@ -399,7 +399,6 @@ function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; i
 const RETRY_MODELS = [
   { key: "fast",     label: "Fast",     desc: "Quick & efficient",   color: "text-green-400",  proOnly: false },
   { key: "powerful", label: "Powerful", desc: "Most capable",        color: "text-violet-400", proOnly: true  },
-  { key: "creative", label: "Creative", desc: "Imaginative output",  color: "text-rose-400",   proOnly: true  },
 ];
 
 function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 0, selectedModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {

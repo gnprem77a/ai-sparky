@@ -1809,7 +1809,6 @@ function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { icon: "👑", label: "Powerful",  model: "Claude Opus 4.7",  color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-500/8  border-amber-500/20" },
-            { icon: "🎨", label: "Creative",  model: "GPT 5.3",          color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/20" },
             { icon: "⚡", label: "Fast",      model: "Claude Haiku",     color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-500/8   border-blue-500/20" },
           ].map((f) => (
             <div key={f.label} className={cn("flex flex-col gap-1 px-3 py-2.5 rounded-xl border", f.bg)}>
