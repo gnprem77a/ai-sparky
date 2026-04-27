@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe, Cloud, Link } from "lucide-react";
+import { Copy, Check, User, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown, Terminal, GitFork, Quote, Loader2, Table as TableIcon, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, ExternalLink, Download, Volume2, VolumeX, Pin, Eye, Code2, RotateCcw, Search, Hash, Globe, Cloud, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { Message, ToolCall } from "@/lib/chat-storage";
@@ -159,6 +159,8 @@ interface ChatMessageProps {
   isPro?: boolean;
   searchQuery?: string;
   showTokenUsage?: boolean;
+  branchData?: { activeBranch: number; branches: Array<{ userContent: string; msgs: Message[] }> };
+  onSwitchBranch?: (direction: -1 | 1) => void;
 }
 
 function highlightText(text: string, query: string): ReactNode {
@@ -401,7 +403,7 @@ const RETRY_MODELS = [
   { key: "powerful", label: "Powerful", desc: "Most capable",        color: "text-violet-400", proOnly: true  },
 ];
 
-function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 0, selectedModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false }: ChatMessageProps) {
+function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 0, selectedModel, onRegenerate, onRetryWith, onEdit, onFork, onQuoteReply, isLast, conversationId, assistantName = "Assistant", fontSize = "normal", searchQuery = "", showTokenUsage = false, isPro = false, branchData, onSwitchBranch }: ChatMessageProps) {
   const isUser = message.role === "user";
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -584,7 +586,7 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
     return (
       <div
         data-testid={`message-${message.id}`}
-        className="flex justify-end px-4 py-3 animate-fade-up group/user-msg"
+        className="flex flex-col items-end px-4 py-3 animate-fade-up group/user-msg"
         onMouseEnter={() => setActionsVisible(true)}
         onMouseLeave={() => setActionsVisible(false)}
       >
@@ -713,6 +715,43 @@ function ChatMessageInner({ message, isStreaming, streamingModel, elapsedTime = 
             </div>
           )}
         </div>
+
+        {/* Branch navigator */}
+        {!isEditing && branchData && branchData.branches.length > 1 && (
+          <div className="flex items-center justify-end gap-1 mt-1 mr-9" data-testid="branch-navigator">
+            <button
+              onClick={() => onSwitchBranch?.(-1)}
+              disabled={branchData.activeBranch === 0}
+              data-testid="button-branch-prev"
+              title="Previous version"
+              className={cn(
+                "p-1 rounded-md transition-colors",
+                branchData.activeBranch === 0
+                  ? "opacity-25 cursor-not-allowed text-muted-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[11px] tabular-nums text-muted-foreground/60 min-w-[28px] text-center">
+              {branchData.activeBranch + 1} / {branchData.branches.length}
+            </span>
+            <button
+              onClick={() => onSwitchBranch?.(1)}
+              disabled={branchData.activeBranch === branchData.branches.length - 1}
+              data-testid="button-branch-next"
+              title="Next version"
+              className={cn(
+                "p-1 rounded-md transition-colors",
+                branchData.activeBranch === branchData.branches.length - 1
+                  ? "opacity-25 cursor-not-allowed text-muted-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -1272,5 +1311,8 @@ export const ChatMessage = memo(ChatMessageInner, (prev, next) =>
   prev.onRetryWith === next.onRetryWith &&
   prev.onEdit === next.onEdit &&
   prev.onFork === next.onFork &&
-  prev.onQuoteReply === next.onQuoteReply
+  prev.onQuoteReply === next.onQuoteReply &&
+  prev.branchData?.activeBranch === next.branchData?.activeBranch &&
+  prev.branchData?.branches.length === next.branchData?.branches.length &&
+  prev.onSwitchBranch === next.onSwitchBranch
 );

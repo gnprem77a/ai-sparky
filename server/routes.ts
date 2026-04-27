@@ -2118,7 +2118,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Extra fields some clients (Cline, Continue.dev) look for
         context_window: context_length,
         max_output_tokens: max_tokens,
-        supports_vision: ["powerful", "sonnet", "balanced", "creative"].includes(id),
+        supports_vision: ["powerful", "sonnet", "fast", "auto"].includes(id),
         supports_computer_use: false,
       })),
     });

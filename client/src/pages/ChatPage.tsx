@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Code2, PenLine, BarChart2, Lightbulb, Globe, FlaskConical, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,6 +121,25 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const [quotedMessage, setQuotedMessage] = useState<{ id: string; snippet: string } | null>(null);
+
+  /* ── Conversation branching ── */
+  const [messageBranches, setMessageBranches] = useState<Record<string, {
+    activeBranch: number;
+    branches: Array<{ userContent: string; attachments?: Attachment[]; msgs: Message[] }>;
+  }>>({});
+
+  /* ── Offline detection ── */
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   /* ── Email verification banner ── */
   const [verifyBannerDismissed, setVerifyBannerDismissed] = useState(false);
@@ -544,11 +563,62 @@ export default function ChatPage() {
     }
   };
 
+  /* ── Branch switcher ── */
+  const handleSwitchBranch = useCallback((branchKey: string, idx: number, direction: -1 | 1) => {
+    setMessageBranches((prev) => {
+      const bd = prev[branchKey];
+      if (!bd) return prev;
+      const newIndex = bd.activeBranch + direction;
+      if (newIndex < 0 || newIndex >= bd.branches.length) return prev;
+
+      const currentSnapshot = messages.slice(idx);
+      const branches = [...bd.branches];
+      branches[bd.activeBranch] = { ...branches[bd.activeBranch], msgs: currentSnapshot };
+
+      const targetMsgs = branches[newIndex].msgs;
+      setMessages([...messages.slice(0, idx), ...targetMsgs]);
+
+      return { ...prev, [branchKey]: { activeBranch: newIndex, branches } };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     if (!activeId || isStreaming || isSubmittingRef.current) return;
 
     isSubmittingRef.current = true;
     setError(null);
+
+    /* Save branch snapshot before deleting */
+    const idx = messages.findIndex((m) => m.id === messageId);
+    const msgsFromHere = idx >= 0 ? messages.slice(idx) : [];
+    const editedMsg = idx >= 0 ? messages[idx] : null;
+    const branchKey = `${activeId}_${idx}`;
+
+    setMessageBranches((prev) => {
+      const existing = prev[branchKey];
+      if (!existing) {
+        return {
+          ...prev,
+          [branchKey]: {
+            activeBranch: 1,
+            branches: [
+              { userContent: editedMsg?.content ?? "", attachments: editedMsg?.attachments, msgs: msgsFromHere },
+              { userContent: newContent, msgs: [] },
+            ],
+          },
+        };
+      }
+      const branches = [...existing.branches];
+      branches[existing.activeBranch] = { ...branches[existing.activeBranch], msgs: msgsFromHere };
+      return {
+        ...prev,
+        [branchKey]: {
+          activeBranch: branches.length,
+          branches: [...branches, { userContent: newContent, msgs: [] }],
+        },
+      };
+    });
 
     /* Delete from that message onward in DB */
     try {
@@ -556,7 +626,6 @@ export default function ChatPage() {
     } catch { /* continue */ }
 
     /* Rebuild local messages: remove from the edited message onward */
-    const idx = messages.findIndex((m) => m.id === messageId);
     const priorMsgs = idx >= 0 ? messages.slice(0, idx) : messages;
 
     const newUserMsgId = crypto.randomUUID();
@@ -764,6 +833,7 @@ ${messagesHtml}
     msgs: Message[],
     assistantMsgId: string,
     modelOverride?: string,
+    _isRetry = false,
   ) => {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1001,6 +1071,13 @@ ${messagesHtml}
             queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
           } catch { /* ignore save error on abort */ }
         }
+      } else if (!_isRetry) {
+        /* Auto-retry once on network / transient errors */
+        setMessages((prev) =>
+          prev.map((m) => m.id === assistantMsgId ? { ...m, content: "" } : m)
+        );
+        await new Promise((r) => setTimeout(r, 1400));
+        await streamAssistantReply(convId, msgs, assistantMsgId, modelOverride, true);
       } else {
         setError(error.message || "Something went wrong. Please try again.");
         setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
@@ -1010,7 +1087,7 @@ ${messagesHtml}
       setStreamingModel(null);
       setStreamingMessageId(null);
       isSubmittingRef.current = false;
-      if (notificationSound && accumulated.length > 80) playChime();
+      if (!_isRetry && notificationSound && accumulated.length > 80) playChime();
     }
     /* ── Fetch follow-up suggestions (non-blocking) ── */
     setFollowUpSuggestions([]);
@@ -1174,6 +1251,14 @@ ${messagesHtml}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
+      {/* ── Offline banner ── */}
+      {isOffline && (
+        <div className="fixed top-0 inset-x-0 z-[70] flex items-center justify-center gap-2 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-400 text-sm backdrop-blur-sm">
+          <WifiOff className="w-3.5 h-3.5 shrink-0" />
+          <span>You're offline — messages will resume when you reconnect</span>
+        </div>
+      )}
+
       <AppSidebar
         conversations={conversations}
         activeId={activeId}
@@ -1509,7 +1594,10 @@ ${messagesHtml}
               ) : (
                 <div className="max-w-3xl mx-auto py-6">
                   <div ref={topRef} />
-                  {messages.map((msg) => (
+                  {messages.map((msg, msgIdx) => {
+                    const branchKey = `${activeId}_${msgIdx}`;
+                    const branchData = messageBranches[branchKey];
+                    return (
                     <ChatMessage
                       key={msg.id}
                       message={msg}
@@ -1537,8 +1625,11 @@ ${messagesHtml}
                       onEdit={msg.role === "user" && !isStreaming ? handleEditMessage : undefined}
                       onFork={msg.role === "user" && !isStreaming ? handleForkMessage : undefined}
                       onQuoteReply={msg.role === "assistant" && !isStreaming ? handleQuoteReply : undefined}
+                      branchData={branchData}
+                      onSwitchBranch={branchData ? (dir) => handleSwitchBranch(branchKey, msgIdx, dir) : undefined}
                     />
-                  ))}
+                    );
+                  })}
                   {error && (
                     <div data-testid="error-message" className="mx-4 mt-2 mb-4 px-4 py-3 rounded-xl bg-destructive/8 border border-destructive/20 text-destructive text-sm flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
