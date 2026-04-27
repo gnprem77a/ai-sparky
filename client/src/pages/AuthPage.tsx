@@ -1,19 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Loader2, ArrowLeft, Mail, CheckCircle2, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Loader2, ArrowLeft, Mail, CheckCircle2, RefreshCw, AtSign, Check, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 
-const schema = z.object({
+const loginSchema = z.object({
+  email: z.string().min(1, "Email or username is required"),
+  password: z.string().min(1, "Password is required"),
+});
+type LoginData = z.infer<typeof loginSchema>;
+
+const registerSchema = z.object({
+  username: z.string()
+    .min(3, "At least 3 characters")
+    .max(20, "20 characters max")
+    .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, underscores"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "At least 6 characters"),
 });
-type FormData = z.infer<typeof schema>;
+type RegisterData = z.infer<typeof registerSchema>;
 
 const forgotSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -31,6 +41,11 @@ export default function AuthPage() {
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  /* ── username availability check ── */
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [usernameMsg, setUsernameMsg] = useState<string>("");
+  const usernameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── post-register "check your email" state ── */
   const [pendingVerification, setPendingVerification] = useState(false);
@@ -77,9 +92,16 @@ export default function AuthPage() {
   const { login, register } = useAuth();
   const [, navigate] = useLocation();
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(schema),
+  const isLogin = tab === "login";
+
+  const loginForm = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
+  });
+
+  const registerForm = useForm<RegisterData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { username: "", email: "", password: "" },
   });
 
   const forgotForm = useForm<ForgotData>({
@@ -88,29 +110,68 @@ export default function AuthPage() {
   });
 
   const { t } = useLanguage();
-  const isLogin = tab === "login";
-  const mutation = isLogin ? login : register;
-  const serverError = (mutation.error as Error)?.message;
 
+  const loginServerError = (login.error as Error)?.message;
+  const registerServerError = (register.error as Error)?.message;
+  const serverError = isLogin ? loginServerError : registerServerError;
   const isUnverifiedError = !!serverError && serverError.toLowerCase().includes("verify your email");
 
-  const onSubmit = async (data: FormData) => {
+  /* ── username debounced availability check ── */
+  const checkUsername = (value: string) => {
+    if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current);
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length < 3) {
+      setUsernameStatus("idle");
+      setUsernameMsg("");
+      return;
+    }
+    setUsernameStatus("checking");
+    usernameTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/auth/check-username?username=${encodeURIComponent(trimmed)}`);
+        const data = await res.json();
+        if (data.available) {
+          setUsernameStatus("available");
+          setUsernameMsg("Username is available");
+        } else {
+          setUsernameStatus("taken");
+          setUsernameMsg(data.reason ?? "Username is already taken");
+        }
+      } catch {
+        setUsernameStatus("idle");
+      }
+    }, 400);
+  };
+
+  useEffect(() => {
+    return () => { if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current); };
+  }, []);
+
+  const onLoginSubmit = async (data: LoginData) => {
     setUnverifiedEmail(null);
     try {
-      const result = await mutation.mutateAsync(data);
-      if (!isLogin && result?.pendingVerification) {
+      await login.mutateAsync(data);
+      navigate("/");
+    } catch (err) {
+      const msg = (err as Error)?.message ?? "";
+      if (msg.toLowerCase().includes("verify your email")) {
+        setUnverifiedEmail(data.email);
+      }
+    }
+  };
+
+  const onRegisterSubmit = async (data: RegisterData) => {
+    if (usernameStatus === "taken") return;
+    try {
+      const result = await register.mutateAsync(data);
+      if (result?.pendingVerification) {
         setPendingEmail(data.email);
         setPendingVerification(true);
       } else {
         navigate("/");
       }
-    } catch (err) {
-      if (isLogin) {
-        const msg = (err as Error)?.message ?? "";
-        if (msg.toLowerCase().includes("verify your email")) {
-          setUnverifiedEmail(data.email);
-        }
-      }
+    } catch {
+      // error shown from serverError
     }
   };
 
@@ -153,8 +214,10 @@ export default function AuthPage() {
 
   const switchTab = (t: "login" | "register") => {
     setTab(t);
-    form.reset();
-    mutation.reset();
+    loginForm.reset();
+    registerForm.reset();
+    login.reset();
+    register.reset();
     setForgotMode(false);
     setForgotSent(false);
     setPendingVerification(false);
@@ -165,6 +228,8 @@ export default function AuthPage() {
     setResendModeSent(false);
     setResendModeError(null);
     setResendModeEmail("");
+    setUsernameStatus("idle");
+    setUsernameMsg("");
   };
 
   /* ── "Check your email" screen (shown after successful register) ── */
@@ -399,42 +464,42 @@ export default function AuthPage() {
                 ))}
               </div>
 
-              {/* Form */}
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="email">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                    <input
-                      id="email"
-                      type="email"
-                      autoComplete="email"
-                      data-testid="input-email"
-                      placeholder="you@example.com"
-                      {...form.register("email")}
-                      className={cn(
-                        "w-full pl-9 pr-3.5 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
-                        "placeholder:text-muted-foreground/50 text-foreground",
-                        "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
-                        form.formState.errors.email
-                          ? "border-destructive/60"
-                          : "border-border hover:border-border/80"
-                      )}
-                    />
-                  </div>
-                  {form.formState.errors.email && (
-                    <p className="text-xs text-destructive mt-1">{form.formState.errors.email.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm font-medium text-foreground" htmlFor="password">
-                      Password
+              {/* LOGIN FORM */}
+              {isLogin && (
+                <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="login-email">
+                      Email or username
                     </label>
-                    {isLogin && (
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                      <input
+                        id="login-email"
+                        type="text"
+                        autoComplete="username"
+                        data-testid="input-email"
+                        placeholder="you@example.com or username"
+                        {...loginForm.register("email")}
+                        className={cn(
+                          "w-full pl-9 pr-3.5 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
+                          "placeholder:text-muted-foreground/50 text-foreground",
+                          "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                          loginForm.formState.errors.email
+                            ? "border-destructive/60"
+                            : "border-border hover:border-border/80"
+                        )}
+                      />
+                    </div>
+                    {loginForm.formState.errors.email && (
+                      <p className="text-xs text-destructive mt-1">{loginForm.formState.errors.email.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-medium text-foreground" htmlFor="login-password">
+                        Password
+                      </label>
                       <button
                         type="button"
                         onClick={() => { setForgotMode(true); setForgotSent(false); setForgotError(null); forgotForm.reset(); }}
@@ -443,83 +508,214 @@ export default function AuthPage() {
                       >
                         Forgot password?
                       </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <input
-                      id="password"
-                      type={showPass ? "text" : "password"}
-                      autoComplete={isLogin ? "current-password" : "new-password"}
-                      data-testid="input-password"
-                      placeholder="••••••••"
-                      {...form.register("password")}
-                      className={cn(
-                        "w-full px-3.5 py-2.5 pr-10 rounded-xl text-sm bg-background border transition-colors outline-none",
-                        "placeholder:text-muted-foreground/50 text-foreground",
-                        "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
-                        form.formState.errors.password
-                          ? "border-destructive/60"
-                          : "border-border hover:border-border/80"
-                      )}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                    >
-                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {form.formState.errors.password && (
-                    <p className="text-xs text-destructive mt-1">{form.formState.errors.password.message}</p>
-                  )}
-                </div>
-
-                {serverError && (
-                  <div data-testid="error-auth" className="rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm overflow-hidden">
-                    <div className="px-3.5 py-2.5">{serverError}</div>
-                    {isUnverifiedError && unverifiedEmail && (
-                      <div className="px-3.5 pb-2.5 border-t border-destructive/10 pt-2">
-                        {resendSent ? (
-                          <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-xs">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Verification email resent — check your inbox.
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleResend(unverifiedEmail)}
-                            disabled={resendLoading}
-                            data-testid="button-resend-from-login"
-                            className="flex items-center gap-1.5 text-xs font-medium text-destructive/80 hover:text-destructive underline disabled:opacity-60"
-                          >
-                            {resendLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                            Resend verification email
-                          </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        id="login-password"
+                        type={showPass ? "text" : "password"}
+                        autoComplete="current-password"
+                        data-testid="input-password"
+                        placeholder="••••••••"
+                        {...loginForm.register("password")}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 pr-10 rounded-xl text-sm bg-background border transition-colors outline-none",
+                          "placeholder:text-muted-foreground/50 text-foreground",
+                          "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                          loginForm.formState.errors.password
+                            ? "border-destructive/60"
+                            : "border-border hover:border-border/80"
                         )}
-                        {resendError && <p className="text-xs mt-1 text-destructive/70">{resendError}</p>}
-                      </div>
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                      >
+                        {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {loginForm.formState.errors.password && (
+                      <p className="text-xs text-destructive mt-1">{loginForm.formState.errors.password.message}</p>
                     )}
                   </div>
-                )}
 
-                <button
-                  type="submit"
-                  data-testid="button-submit-auth"
-                  disabled={mutation.isPending}
-                  className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {isLogin ? t("auth.loginBtn") : t("auth.registerBtn")}
-                </button>
-              </form>
+                  {serverError && (
+                    <div data-testid="error-auth" className="rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm overflow-hidden">
+                      <div className="px-3.5 py-2.5">{serverError}</div>
+                      {isUnverifiedError && unverifiedEmail && (
+                        <div className="px-3.5 pb-2.5 border-t border-destructive/10 pt-2">
+                          {resendSent ? (
+                            <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 text-xs">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Verification email resent — check your inbox.
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleResend(unverifiedEmail)}
+                              disabled={resendLoading}
+                              data-testid="button-resend-from-login"
+                              className="flex items-center gap-1.5 text-xs font-medium text-destructive/80 hover:text-destructive underline disabled:opacity-60"
+                            >
+                              {resendLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                              Resend verification email
+                            </button>
+                          )}
+                          {resendError && <p className="text-xs mt-1 text-destructive/70">{resendError}</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    data-testid="button-submit-auth"
+                    disabled={login.isPending}
+                    className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {login.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {t("auth.loginBtn")}
+                  </button>
+                </form>
+              )}
+
+              {/* REGISTER FORM */}
+              {!isLogin && (
+                <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
+                  {/* Username */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="reg-username">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                      <input
+                        id="reg-username"
+                        type="text"
+                        autoComplete="username"
+                        data-testid="input-username"
+                        placeholder="yourname"
+                        {...registerForm.register("username", {
+                          onChange: (e) => checkUsername(e.target.value),
+                        })}
+                        className={cn(
+                          "w-full pl-9 pr-9 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
+                          "placeholder:text-muted-foreground/50 text-foreground",
+                          "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                          usernameStatus === "taken" || registerForm.formState.errors.username
+                            ? "border-destructive/60"
+                            : usernameStatus === "available"
+                            ? "border-green-500/60"
+                            : "border-border hover:border-border/80"
+                        )}
+                      />
+                      {/* Status icon */}
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {usernameStatus === "checking" && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/60" />}
+                        {usernameStatus === "available" && <Check className="w-4 h-4 text-green-500" />}
+                        {usernameStatus === "taken" && <X className="w-4 h-4 text-destructive" />}
+                      </div>
+                    </div>
+                    {registerForm.formState.errors.username && (
+                      <p className="text-xs text-destructive mt-1">{registerForm.formState.errors.username.message}</p>
+                    )}
+                    {!registerForm.formState.errors.username && usernameStatus === "available" && (
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">{usernameMsg}</p>
+                    )}
+                    {!registerForm.formState.errors.username && usernameStatus === "taken" && (
+                      <p className="text-xs text-destructive mt-1">{usernameMsg} — choose a different one</p>
+                    )}
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="reg-email">
+                      Email address
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                      <input
+                        id="reg-email"
+                        type="email"
+                        autoComplete="email"
+                        data-testid="input-email"
+                        placeholder="you@example.com"
+                        {...registerForm.register("email")}
+                        className={cn(
+                          "w-full pl-9 pr-3.5 py-2.5 rounded-xl text-sm bg-background border transition-colors outline-none",
+                          "placeholder:text-muted-foreground/50 text-foreground",
+                          "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                          registerForm.formState.errors.email
+                            ? "border-destructive/60"
+                            : "border-border hover:border-border/80"
+                        )}
+                      />
+                    </div>
+                    {registerForm.formState.errors.email && (
+                      <p className="text-xs text-destructive mt-1">{registerForm.formState.errors.email.message}</p>
+                    )}
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5" htmlFor="reg-password">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="reg-password"
+                        type={showPass ? "text" : "password"}
+                        autoComplete="new-password"
+                        data-testid="input-password"
+                        placeholder="••••••••"
+                        {...registerForm.register("password")}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 pr-10 rounded-xl text-sm bg-background border transition-colors outline-none",
+                          "placeholder:text-muted-foreground/50 text-foreground",
+                          "focus:ring-2 focus:ring-primary/30 focus:border-primary/60",
+                          registerForm.formState.errors.password
+                            ? "border-destructive/60"
+                            : "border-border hover:border-border/80"
+                        )}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                      >
+                        {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {registerForm.formState.errors.password && (
+                      <p className="text-xs text-destructive mt-1">{registerForm.formState.errors.password.message}</p>
+                    )}
+                  </div>
+
+                  {registerServerError && (
+                    <div data-testid="error-auth" className="rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm px-3.5 py-2.5">
+                      {registerServerError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    data-testid="button-submit-auth"
+                    disabled={register.isPending || usernameStatus === "taken" || usernameStatus === "checking"}
+                    className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {register.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {t("auth.registerBtn")}
+                  </button>
+                </form>
+              )}
 
               {/* Switch link */}
               <p className="text-center text-sm text-muted-foreground mt-5">
                 {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
                 <button
                   onClick={() => switchTab(isLogin ? "register" : "login")}
-                  className="text-primary hover:underline font-medium"
+                  data-testid="link-switch-tab"
+                  className="text-primary font-medium hover:underline"
                 >
                   {isLogin ? "Sign up" : "Sign in"}
                 </button>
@@ -541,22 +737,14 @@ export default function AuthPage() {
               )}
 
               {/* Legal links */}
-              <div className="flex items-center justify-center gap-4 mt-6 pt-4 border-t border-border/40">
-                {[
-                  { label: "About", href: "/about" },
-                  { label: "Privacy", href: "/privacy" },
-                  { label: "Terms", href: "/terms" },
-                  { label: "Contact", href: "/contact" },
-                ].map(({ label, href }) => (
-                  <a
-                    key={href}
-                    href={href}
-                    className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                  >
-                    {label}
-                  </a>
-                ))}
-              </div>
+              {!isLogin && (
+                <p className="text-center text-xs text-muted-foreground/60 mt-4 leading-relaxed">
+                  By creating an account you agree to our{" "}
+                  <a href="/terms" className="underline hover:text-muted-foreground">Terms of Service</a>
+                  {" "}and{" "}
+                  <a href="/privacy" className="underline hover:text-muted-foreground">Privacy Policy</a>.
+                </p>
+              )}
             </>
           )}
         </div>

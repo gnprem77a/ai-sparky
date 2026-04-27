@@ -33,7 +33,7 @@ export function useAuth() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: (data: { email: string; password: string }) =>
+    mutationFn: (data: { username: string; email: string; password: string }) =>
       apiRequest("POST", "/api/auth/register", data).then((r) => r.json()),
     onSuccess: (data: { pendingVerification?: boolean }) => {
       if (!data.pendingVerification) {

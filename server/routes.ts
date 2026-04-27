@@ -335,15 +335,27 @@ async function getGlobalApiStatus(): Promise<{ active: boolean; plan: string; ex
 /* ─── route registration ─────────────────────────────────────── */
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
+  /* ── auth: check username availability ── */
+  app.get("/api/auth/check-username", async (req: Request, res: Response) => {
+    const raw = (req.query.username as string | undefined)?.trim() ?? "";
+    if (!raw) return res.status(400).json({ error: "Username is required." });
+    const lower = raw.toLowerCase();
+    const reserved = ["admin", "administrator", "root", "api", "support", "help", "system", "aisparky", "sparky"];
+    if (reserved.includes(lower)) return res.json({ available: false, reason: "This username is reserved." });
+    const existing = await storage.getUserByUsername(lower);
+    return res.json({ available: !existing });
+  });
+
   /* ── auth: register ── */
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     const parsed = insertUserSchema.safeParse(req.body);
     if (!parsed.success) {
       const first = parsed.error.errors[0]?.message;
-      return res.status(400).json({ error: first || "Email and password are required." });
+      return res.status(400).json({ error: first || "Username, email and password are required." });
     }
-    const { email, password } = parsed.data;
+    const { username: rawUsername, email, password } = parsed.data;
     const normalizedEmail = email.toLowerCase().trim();
+    const username = rawUsername.toLowerCase().trim();
 
     if (isDisposableEmail(normalizedEmail)) {
       return res.status(400).json({ error: "Temporary or disposable email addresses are not allowed. Please use a real email address." });
@@ -352,13 +364,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existingEmail = await storage.getUserByEmail(normalizedEmail);
     if (existingEmail) return res.status(409).json({ error: "An account with this email already exists." });
 
-    // Auto-generate a unique username from the email prefix
-    const base = normalizedEmail.split("@")[0].replace(/[^a-z0-9_]/g, "_").slice(0, 20) || "user";
-    let username = base;
-    let suffix = 2;
-    while (await storage.getUserByUsername(username)) {
-      username = `${base}${suffix++}`;
-    }
+    // Check username uniqueness
+    const reserved = ["admin", "administrator", "root", "api", "support", "help", "system", "aisparky", "sparky"];
+    if (reserved.includes(username)) return res.status(409).json({ error: "That username is reserved. Please choose a different one." });
+    const existingUsername = await storage.getUserByUsername(username);
+    if (existingUsername) return res.status(409).json({ error: "That username is already taken. Please choose a different one." });
 
     const hashed = await bcrypt.hash(password, 12);
     const allUsers = await storage.getAllUsers();
@@ -467,14 +477,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   /* ── auth: login ── */
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
+    if (!email || !password) return res.status(400).json({ error: "Email/username and password are required." });
 
-    // Primary: look up by email; fallback to username for legacy accounts
+    // Look up by email first, then by username (case-insensitive)
     const user =
       (await storage.getUserByEmail(email.toLowerCase().trim())) ??
-      (await storage.getUserByUsername(email.trim()));
+      (await storage.getUserByUsername(email.toLowerCase().trim()));
 
-    if (!user) return res.status(401).json({ error: "Invalid email or password." });
+    if (!user) return res.status(401).json({ error: "Invalid email/username or password." });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Invalid email or password." });
