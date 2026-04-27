@@ -1820,48 +1820,6 @@ const QUICK_SUGGESTIONS = [
   { icon: FlaskConical,label: "Debug & review",    prompt: "What are the most common React performance pitfalls and how do I fix them?", color: "text-rose-600 dark:text-rose-400",     bg: "bg-rose-500/10 dark:bg-rose-500/8"    },
 ];
 
-const STARTER_TEMPLATES = [
-  {
-    icon: Code2,
-    label: "Code Review",
-    category: "Technical",
-    desc: "Paste your code for a detailed review",
-    prompt: "Please review the following code for bugs, performance issues, and best practices. Provide specific, actionable feedback:\n\n```\n// Paste your code here\n```",
-    color: "text-blue-600 dark:text-blue-400",
-    bgGradient: "from-blue-500/10 to-blue-500/5",
-    border: "border-blue-500/20",
-  },
-  {
-    icon: PenLine,
-    label: "Email Draft",
-    category: "Writing",
-    desc: "Write a professional email in seconds",
-    prompt: "Help me write a professional email. Here are the details:\n- To: [recipient]\n- Purpose: [what you want to achieve]\n- Tone: [formal/friendly/urgent]\n- Key points to include: [list your points]",
-    color: "text-violet-600 dark:text-violet-400",
-    bgGradient: "from-violet-500/10 to-violet-500/5",
-    border: "border-violet-500/20",
-  },
-  {
-    icon: BarChart2,
-    label: "Resume Help",
-    category: "Career",
-    desc: "Improve a bullet point or section",
-    prompt: "Help me improve this resume bullet point to be more impactful and results-oriented:\n\n[Paste your bullet point here]\n\nJob I'm applying for: [Job title]",
-    color: "text-emerald-600 dark:text-emerald-400",
-    bgGradient: "from-emerald-500/10 to-emerald-500/5",
-    border: "border-emerald-500/20",
-  },
-  {
-    icon: Lightbulb,
-    label: "Study Plan",
-    category: "Learning",
-    desc: "Build a structured learning roadmap",
-    prompt: "Create a detailed 4-week study plan to learn [topic]. I'm a [beginner/intermediate/advanced] learner with [X hours/week] available. Include resources, milestones, and daily exercises.",
-    color: "text-amber-600 dark:text-amber-400",
-    bgGradient: "from-amber-500/10 to-amber-500/5",
-    border: "border-amber-500/20",
-  },
-];
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -1928,54 +1886,6 @@ function EmptyState({ onSuggest, userName }: { onSuggest: (text: string) => void
         </div>
       </div>
 
-      {/* Feature highlights */}
-      <div className="w-full max-w-2xl mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {[
-          { icon: "📚", label: "Knowledge Base", desc: "Upload & search your docs" },
-          { icon: "🔍", label: "Cohere Rerank",  desc: "Smarter KB search results" },
-          { icon: "🎤", label: "Voice Chat",     desc: "Talk instead of type" },
-          { icon: "📎", label: "File Uploads",   desc: "Share images & PDFs" },
-        ].map((f) => (
-          <div key={f.label} className="flex flex-col items-center text-center gap-1 px-3 py-3 rounded-xl border border-border/40 bg-muted/20">
-            <span className="text-xl">{f.icon}</span>
-            <span className="text-[11px] font-semibold text-foreground">{f.label}</span>
-            <span className="text-[10px] text-muted-foreground/60 leading-tight">{f.desc}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Starter Templates */}
-      <div className="w-full max-w-2xl mb-6">
-        <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-3">Starter Templates</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {STARTER_TEMPLATES.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.label}
-                onClick={() => onSuggest(t.prompt)}
-                data-testid={`template-${t.label.toLowerCase().replace(/\s+/g, "-")}`}
-                className={cn(
-                  "group flex items-start gap-3 px-4 py-3.5 rounded-xl border text-left transition-all hover:shadow-md hover:scale-[1.01]",
-                  `bg-gradient-to-br ${t.bgGradient}`,
-                  t.border,
-                )}
-              >
-                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5", t.bgGradient.split(" ")[0].replace("from-", "bg-").replace("/10", "/20"))}>
-                  <Icon className={cn("w-4 h-4", t.color)} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-semibold text-foreground">{t.label}</span>
-                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full", t.bgGradient.split(" ")[0].replace("from-", "bg-").replace("/10", "/20"), t.color)}>{t.category}</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">{t.desc}</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Quick prompts */}
       <div className="w-full max-w-2xl">
