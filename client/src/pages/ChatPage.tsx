@@ -480,16 +480,6 @@ export default function ChatPage() {
     }
   }, [conversations]);
 
-  /* ── Restore last active conversation on mount (after conversations load) ── */
-  const hasRestoredRef = useRef(false);
-  useEffect(() => {
-    if (!user || conversations.length === 0 || hasRestoredRef.current) return;
-    hasRestoredRef.current = true;
-    const savedId = getActiveConversationId();
-    if (savedId && conversations.find((c) => c.id === savedId)) {
-      handleSelectConversation(savedId);
-    }
-  }, [conversations, user, handleSelectConversation]);
 
   const handleNewChat = () => {
     abortRef.current?.abort();
