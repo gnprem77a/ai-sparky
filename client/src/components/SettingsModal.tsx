@@ -3,8 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   X, Save, Lock, Bot, Eye, EyeOff, Palette, Zap, Brain, SlidersHorizontal,
-  Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command, Globe,
-  Sun, Moon, Crown,
+  Keyboard, Database, Check, Trash2, Download, AlertTriangle, Command, Globe, Crown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MODELS, type ModelId } from "@/components/ModelSelector";
@@ -86,7 +85,7 @@ function Toggle({ checked, onChange, testId }: { checked: boolean; onChange: (v:
 export function SettingsModal({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>("prompt");
   const { lang, setLang } = useLanguage();
-  const { theme, toggleTheme } = useTheme();
+  useTheme();
 
   const [colorTheme, setColorTheme] = useState<string>(() =>
     localStorage.getItem("color-theme") || "default"
@@ -623,33 +622,6 @@ export function SettingsModal({ onClose }: Props) {
           {/* ── Appearance ── */}
           {tab === "appearance" && (
             <div className="space-y-6">
-              <div>
-                <p className="text-sm font-medium text-foreground mb-1">Color Mode</p>
-                <p className="text-xs text-muted-foreground mb-3">Switch between light and dark interface.</p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => { if (theme !== "light") toggleTheme(); }}
-                    data-testid="button-theme-light"
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
-                      theme === "light" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
-                    )}
-                  >
-                    <Sun className="w-4 h-4" /> Light
-                  </button>
-                  <button
-                    onClick={() => { if (theme !== "dark") toggleTheme(); }}
-                    data-testid="button-theme-dark"
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
-                      theme === "dark" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted/30"
-                    )}
-                  >
-                    <Moon className="w-4 h-4" /> Dark
-                  </button>
-                </div>
-              </div>
-
               <div>
                 <p className="text-sm font-medium text-foreground mb-1">Accent Color</p>
                 <p className="text-xs text-muted-foreground mb-3">Choose a color theme for buttons and highlights.</p>

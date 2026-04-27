@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Crown, Shield, User, Lock, Palette, MessageSquare,
   Eye, EyeOff, Check, Save, LogOut, ChevronRight, Zap, Calendar,
-  Hash, Bot, Type, Key, Sun, Moon, Brain, Plus, Trash2,
+  Hash, Bot, Type, Key, Brain, Plus, Trash2,
   Bell, Download, AlertTriangle, Sparkles, BarChart2, TrendingUp,
 } from "lucide-react";
 
@@ -175,7 +175,7 @@ function SectionCard({ icon, title, children, id }: { icon: React.ReactNode; tit
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  useTheme();
   const [, navigate] = useLocation();
 
   useEffect(() => {
@@ -427,9 +427,9 @@ export default function ProfilePage() {
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
 
         {/* ── Hero ── */}
-        <div className={cn("rounded-2xl border overflow-hidden", isPro ? "border-amber-500/30 shadow-lg shadow-amber-500/10" : "border-border/50 bg-card/60")}>
+        <div className={cn("rounded-2xl border overflow-hidden", isPro ? "border-amber-500/30 shadow-xl shadow-amber-500/10" : "border-border/60 shadow-lg shadow-black/30 ring-1 ring-white/[0.04]")}>
           {/* Animated banner */}
-          <div className={cn("relative h-32 overflow-hidden", isPro ? "bg-gradient-to-br from-amber-600/20 via-yellow-500/10 to-amber-800/15" : "bg-gradient-to-br from-primary/8 via-violet-500/5 to-indigo-500/8")}>
+          <div className={cn("relative h-40 overflow-hidden", isPro ? "bg-gradient-to-br from-amber-600/20 via-yellow-500/10 to-amber-800/15" : "bg-gradient-to-br from-primary/10 via-violet-600/6 to-indigo-600/8")}>
             <HeroCanvas isPro={isPro} />
             {/* Pro watermark */}
             {isPro && (
@@ -449,8 +449,8 @@ export default function ProfilePage() {
           </div>
           <div className={cn("px-6 pb-6 -mt-10", isPro && "bg-gradient-to-b from-amber-500/[0.04] to-transparent")}>
             <div className={cn(
-              "w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold shadow-xl border-4 border-background",
-              isPro ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-amber-400/40 pro-avatar-glow" : "bg-gradient-to-br from-primary to-violet-500 text-white"
+              "w-24 h-24 rounded-2xl flex items-center justify-center text-4xl font-bold shadow-2xl border-4 border-background",
+              isPro ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-amber-400/50 pro-avatar-glow" : "bg-gradient-to-br from-primary to-violet-600 text-white shadow-primary/30"
             )}>
               {avatarLetter}
             </div>
@@ -626,38 +626,6 @@ export default function ProfilePage() {
         {/* ── Appearance ── */}
         <SectionCard id="appearance" icon={<Palette className="w-4 h-4" />} title="Appearance">
           <div className="space-y-5">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
-                {theme === "dark" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />} Mode
-              </label>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => { if (theme !== "light") toggleTheme(); }}
-                  data-testid="button-theme-light"
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
-                    theme === "light"
-                      ? "border-primary/60 bg-primary/10 text-primary"
-                      : "border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
-                  )}
-                >
-                  <Sun className="w-4 h-4" /> Light
-                </button>
-                <button
-                  onClick={() => { if (theme !== "dark") toggleTheme(); }}
-                  data-testid="button-theme-dark"
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-all",
-                    theme === "dark"
-                      ? "border-primary/60 bg-primary/10 text-primary"
-                      : "border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
-                  )}
-                >
-                  <Moon className="w-4 h-4" /> Dark
-                </button>
-              </div>
-            </div>
-
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-3">
                 <Palette className="w-3.5 h-3.5" /> Color Theme

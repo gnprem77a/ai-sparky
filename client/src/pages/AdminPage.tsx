@@ -2287,7 +2287,9 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border/60 bg-card/60 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-border/60 bg-card/80 backdrop-blur-md sticky top-0 z-10 relative">
+        {/* Premium top accent */}
+        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
         <div className="max-w-5xl mx-auto px-6 pt-4 pb-0 flex items-center gap-4">
           <button
             onClick={() => navigate("/")}
@@ -2346,13 +2348,13 @@ export default function AdminPage() {
         {activeTab === "overview" && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {stats.map((stat) => (
-              <div key={stat.label} className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
-                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", stat.bg)}>
-                  <stat.icon className={cn("w-4.5 h-4.5", stat.color)} style={{ width: 18, height: 18 }} />
+              <div key={stat.label} className="rounded-2xl border border-border/60 bg-card p-5 flex items-center gap-3 shadow-sm ring-1 ring-white/[0.03] hover:border-border transition-colors">
+                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm", stat.bg)}>
+                  <stat.icon className={cn("w-5 h-5", stat.color)} style={{ width: 20, height: 20 }} />
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-foreground">{stat.value}</p>
-                  <p className="text-[11px] text-muted-foreground font-medium leading-tight">{stat.label}</p>
+                  <p className="text-2xl font-bold text-foreground tabular-nums">{stat.value}</p>
+                  <p className="text-[11px] text-muted-foreground font-medium leading-tight mt-0.5">{stat.label}</p>
                 </div>
               </div>
             ))}

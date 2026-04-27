@@ -24,7 +24,7 @@ client/src/
     ChatInput.tsx       - Bottom input with attach menu, prompt library, model selector, voice input (Web Speech API), waveform panel with timer
     ModelSelector.tsx   - Model options with proOnly flags
     CodeBlock.tsx       - Lazy-loaded syntax highlighter (Prism)
-    SettingsModal.tsx   - 3-tab modal: System Prompt, Appearance (fontSize/name), Account
+    SettingsModal.tsx   - 3-tab modal: System Prompt, Appearance (color theme/fontSize/name), Account (no light/dark toggle — dark-only)
     PromptLibrary.tsx   - Saved prompt library popover (CRUD + insert into input)
   pages/
     ChatPage.tsx        - Main chat: streaming, abort+partial save, typing cursor, elapsed timer, suggestions
@@ -32,7 +32,7 @@ client/src/
     AdminPage.tsx       - Admin dashboard: user/plan management + token usage analytics
     SharedConversationPage.tsx - Public read-only view (/share/:token)
   hooks/
-    use-theme.ts        - Dark/light mode toggle
+    use-theme.ts        - Dark-only (always forces `.dark` class on `<html>`; no toggle)
     use-auth.ts         - Auth state (me, login, register, logout) with plan info
   lib/
     chat-storage.ts     - Type definitions, utilities, export helpers
@@ -108,7 +108,7 @@ server/
 - **More Tools**: `get_weather(location)` via wttr.in free API; `fetch_url(url)` with HTML stripping (8000 char limit)
 - **Mobile Responsive**: Non-essential header buttons hidden on small screens (sm: breakpoints); sidebar uses shadcn Sheet for mobile drawer
 - **Export Dropdown**: Single FileDown icon button in header opens a dropdown with "Download Markdown" and "Export as PDF" options; visible on all screen sizes
-- **Custom Chat Themes**: Settings → Appearance tab has Color Mode (Light/Dark toggle) + Accent Color picker with 7 themes (Default, Ocean, Sunset, Forest, Midnight, Rose, Hacker); theme classes applied to `document.documentElement`; persisted in `localStorage("color-theme")`; initialized in index.html IIFE before React loads
+- **Theme**: Dark-only — no light/dark toggle anywhere; `use-theme.ts` always forces `.dark` class; `index.css` `:root` and `.dark` both use the same premium dark palette (near-black bg, vivid violet primary). Accent Color picker in Settings → Appearance has 7 themes (Default, Ocean, Sunset, Forest, Midnight, Rose, Hacker); persisted in `localStorage("color-theme")`
 - **Conversation Summary**: Sparkles icon button in header; calls `POST /api/summarize` with current messages; returns 3–5 bullet-point TL;DR from Claude Haiku (InvokeModelCommand, non-streaming); displayed in a Dialog modal
 
 ### Admin

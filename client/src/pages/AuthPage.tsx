@@ -291,8 +291,11 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Premium ambient glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-primary/6 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-[350px] h-[300px] bg-violet-600/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="w-full max-w-sm relative z-10">
 
         {/* Back link */}
         <button
@@ -306,17 +309,20 @@ export default function AuthPage() {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/logo.png" alt="AI Sparky" className="w-16 h-16 rounded-2xl shadow-2xl shadow-primary/30 mb-4 object-cover" />
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          <div className="relative mb-4">
+            <div className="absolute inset-0 rounded-2xl bg-primary/25 blur-2xl scale-150 pointer-events-none" />
+            <img src="/logo.png" alt="AI Sparky" className="relative w-16 h-16 rounded-2xl shadow-2xl shadow-primary/40 object-cover ring-1 ring-white/10" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             {forgotMode ? "Reset password" : isLogin ? t("auth.login") : t("auth.register")}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1.5">
             {resendMode ? "We'll send you a new verification link" : forgotMode ? "We'll send you a link to reset your password" : t("auth.tagline")}
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-border bg-card shadow-lg p-6">
+        <div className="rounded-2xl border border-border/70 bg-card shadow-xl shadow-black/30 p-6 ring-1 ring-white/[0.04]">
 
           {resendMode ? (
             resendModeSent ? (

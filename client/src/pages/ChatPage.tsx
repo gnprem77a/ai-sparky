@@ -14,7 +14,7 @@ import { type ModelId } from "@/components/ModelSelector";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useLocation } from "wouter";
-import { Plus, ChevronDown, Settings, Download, Crown, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Sun, Moon, Square, Upload, MailCheck, RefreshCw, WifiOff } from "lucide-react";
+import { Plus, ChevronDown, Settings, Download, Crown, Search, X, ChevronUp, FileText, Printer, Columns2, Pin, Sparkles, FileDown, Megaphone, MoreHorizontal, Square, Upload, MailCheck, RefreshCw, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -56,7 +56,7 @@ export default function ChatPage() {
 
   const { user, logout } = useAuth();
   const { toast } = useToast();
-  const { theme, toggleTheme } = useTheme();
+  useTheme();
   const [, navigate] = useLocation();
   const { setOpenMobile, isMobile, openMobile } = useSidebar();
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -1430,16 +1430,6 @@ ${messagesHtml}
               </>
             )}
 
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleTheme}
-              data-testid="button-toggle-theme"
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              className="h-9 w-9 text-muted-foreground"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
             <Button
               size="icon"
               variant="ghost"
