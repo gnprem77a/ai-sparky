@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Database, Key, Ticket, Loader2 } from "lucide-react";
+import { Plus, Trash2, MessageSquareDashed, Search, X, Pin, PinOff, Share2, Check, Link, Tag, Filter, Upload, Image as ImageIcon, Folder, ChevronRight, ChevronDown, MoreVertical, Settings, LogOut, LogIn, Shield, UserCircle, Key, Ticket, Loader2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -872,14 +872,6 @@ export function AppSidebar({
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
-                  <a href="/kb" data-testid="link-knowledge-base" className="group">
-                    <Database className="w-4 h-4 text-blue-400 group-hover:text-blue-400" />
-                    <span>Knowledge Base</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild>
                   <a href="/api-access" data-testid="link-api-access" className="group">
                     <Key className="w-4 h-4 text-amber-400 group-hover:text-amber-400" />
                     <span>API Access</span>
@@ -890,19 +882,6 @@ export function AppSidebar({
           </div>
         )}
 
-        {/* Guest nav: just KB */}
-        {!user && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <a href="/kb" data-testid="link-knowledge-base">
-                  <Database className="w-4 h-4 text-blue-400" />
-                  <span>Knowledge Base</span>
-                </a>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
 
         {/* Profile trigger + popup */}
         <div ref={profileMenuRef} className="relative">

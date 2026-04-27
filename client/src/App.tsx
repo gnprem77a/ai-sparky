@@ -15,8 +15,6 @@ const AdminPage = lazy(() => import("@/pages/AdminPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const GalleryPage = lazy(() => import("@/pages/GalleryPage"));
 const SharedConversationPage = lazy(() => import("@/pages/SharedConversationPage"));
-const SharedKnowledgeBasePage = lazy(() => import("@/pages/SharedKnowledgeBasePage"));
-const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 const ApiAccessPage = lazy(() => import("@/pages/ApiAccessPage"));
 const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage"));
 const VerifyEmailPage = lazy(() => import("@/pages/VerifyEmailPage"));
@@ -102,13 +100,6 @@ function AppInner() {
     );
   }
 
-  if (location.startsWith("/kb/shared/")) {
-    return (
-      <Suspense fallback={null}>
-        <SharedKnowledgeBasePage />
-      </Suspense>
-    );
-  }
 
   if (isLoading) {
     return <PageLoader />;
@@ -119,13 +110,6 @@ function AppInner() {
       return (
         <Suspense fallback={null}>
           <AuthPage />
-        </Suspense>
-      );
-    }
-    if (location === "/kb" || location.startsWith("/kb")) {
-      return (
-        <Suspense fallback={null}>
-          <KnowledgeBasePage />
         </Suspense>
       );
     }
@@ -151,9 +135,6 @@ function AppInner() {
         </Route>
         <Route path="/gallery">
           <GalleryPage />
-        </Route>
-        <Route path="/kb">
-          <KnowledgeBasePage />
         </Route>
         <Route path="/api-access">
           <ApiAccessPage />
