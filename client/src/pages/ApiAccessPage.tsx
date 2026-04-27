@@ -51,14 +51,12 @@ const MODEL_LABELS: Record<string, string> = {
   sonnet: "Claude Sonnet 4.5",
   fast: "Claude Haiku",
   creative: "GPT-5.3",
-  balanced: "Mistral Large 3",
 };
 
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   powerful: { input: 5.00, output: 25.00 },
   fast: { input: 0.80, output: 4.00 },
   creative: { input: 2.00, output: 8.00 },
-  balanced: { input: 1.00, output: 3.00 },
 };
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
@@ -226,7 +224,7 @@ export default function ApiAccessPage() {
   const curlExample = `curl -X POST ${baseUrl}/api/v1/chat \\
   -H "Authorization: Bearer ${displayKey}" \\
   -H "Content-Type: application/json" \\
-  -d '{"message": "Hello!", "model": "balanced"}'`;
+  -d '{"message": "Hello!", "model": "fast"}'`;
 
   const curlStreamExample = `curl -X POST ${baseUrl}/api/v1/chat \\
   -H "Authorization: Bearer ${displayKey}" \\
@@ -243,7 +241,7 @@ response = requests.post(
     headers={"Authorization": f"Bearer {API_KEY}"},
     json={
         "message": "Hello!",
-        "model": "balanced",        # powerful | fast | creative | balanced | minimax | kimi
+        "model": "fast",           # powerful | fast | creative | minimax | kimi
         "systemPrompt": "You are a helpful assistant."
     }
 )
@@ -259,7 +257,7 @@ print("Balance remaining:", response.headers["X-Balance-Remaining"])`;
   },
   body: JSON.stringify({
     message: "Hello!",
-    model: "balanced",   // powerful | fast | creative | balanced
+    model: "fast",      // powerful | fast | creative
     systemPrompt: "You are a helpful assistant."
   })
 });
@@ -278,7 +276,7 @@ async function chat(message) {
     BASE_URL,
     {
       message,
-      model: "balanced",   // powerful | fast | creative | balanced | minimax | kimi
+      model: "fast",      // powerful | fast | creative | minimax | kimi
       systemPrompt: "You are a helpful assistant."
     },
     {
@@ -301,7 +299,7 @@ $baseUrl = "${baseUrl}/api/v1/chat";
 
 $payload = json_encode([
     "message"      => "Hello!",
-    "model"        => "balanced",   // powerful | fast | creative | balanced | minimax | kimi
+    "model"        => "fast",        // powerful | fast | creative | minimax | kimi
     "systemPrompt" => "You are a helpful assistant."
 ]);
 
@@ -339,7 +337,7 @@ request["Authorization"] = "Bearer #{API_KEY}"
 request["Content-Type"]  = "application/json"
 request.body = JSON.generate(
   message:      "Hello!",
-  model:        "balanced",   # powerful | fast | creative | balanced | minimax | kimi
+  model:        "fast",         # powerful | fast | creative | minimax | kimi
   systemPrompt: "You are a helpful assistant."
 )
 
@@ -367,7 +365,7 @@ const (
 func main() {
   payload, _ := json.Marshal(map[string]interface{}{
     "message":      "Hello!",
-    "model":        "balanced", // powerful | fast | creative | balanced | minimax | kimi
+    "model":        "fast",        // powerful | fast | creative | minimax | kimi
     "systemPrompt": "You are a helpful assistant.",
   })
 
@@ -796,7 +794,6 @@ func main() {
                       { slug: "powerful", label: "Claude Opus 4.7", maxTok: "32,000" },
                       { slug: "fast", label: "Claude Haiku", maxTok: "4,096" },
                       { slug: "creative", label: "GPT-5.3", maxTok: "8,192" },
-                      { slug: "balanced", label: "Mistral Large 3", maxTok: "8,192" },
                     ].map(({ slug, label, maxTok }) => {
                       const p = MODEL_PRICING[slug];
                       return (
@@ -940,7 +937,6 @@ func main() {
                     {[
                       { slug: "powerful", label: "Claude Opus 4.7",  ctx: "185K",  maxOut: "32,000",  note: "Complex reasoning & analysis",       apiOnly: false },
                       { slug: "sonnet",   label: "Claude Sonnet 4.5",ctx: "185K",  maxOut: "16,000",  note: "Smart & efficient, most tasks",       apiOnly: false },
-                      { slug: "balanced", label: "Mistral Large 3",  ctx: "100K",  maxOut: "8,192",   note: "Coding, math & structured data",      apiOnly: false },
                       { slug: "creative", label: "GPT-5.3",          ctx: "100K",  maxOut: "8,192",   note: "Creative writing & research",         apiOnly: false },
                       { slug: "fast",     label: "Claude Haiku",     ctx: "185K",  maxOut: "4,096",   note: "Quick answers, low latency",          apiOnly: false },
                       { slug: "minimax",  label: "MiniMax-M2.5",    ctx: "1,000K",maxOut: "16,384",  note: "Very long documents & context",       apiOnly: false },
@@ -967,7 +963,7 @@ func main() {
               <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/8 border border-blue-500/15 text-blue-400 text-xs">
                 <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span>
-                  All models are available both in the chat UI and via API. Omit <code className="font-mono">model</code> to use <code className="font-mono">balanced</code> by default. MiniMax and Kimi require their providers to be configured in the admin panel.
+                  All models are available both in the chat UI and via API. Omit <code className="font-mono">model</code> to use <code className="font-mono">fast</code> by default. MiniMax and Kimi require their providers to be configured in the admin panel.
                 </span>
               </div>
             </div>
@@ -1020,7 +1016,7 @@ func main() {
                 {[
                   { field: "message", type: "string", req: true,  desc: "Single user message (alternative to messages array)" },
                   { field: "messages", type: "array",  req: false, desc: "Array of {role, content} objects for multi-turn conversations" },
-                  { field: "model",   type: "string", req: false, desc: "Model slug: powerful | fast | creative | balanced | minimax | kimi (default: balanced)" },
+                  { field: "model",   type: "string", req: false, desc: "Model slug: powerful | fast | creative | minimax | kimi (default: fast)" },
                   { field: "systemPrompt", type: "string", req: false, desc: "Optional system instruction prepended to the conversation" },
                   { field: "stream",  type: "boolean", req: false, desc: "Set true to enable SSE streaming (default: false)" },
                   { field: "maxTokens", type: "number", req: false, desc: "Override max output tokens — capped per model" },
@@ -1068,7 +1064,6 @@ func main() {
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { slug: "balanced",  label: "Balanced",  hint: "Best value" },
                   { slug: "fast",      label: "Fast",      hint: "Lowest cost" },
                   { slug: "powerful",  label: "Powerful",  hint: "Highest quality" },
                   { slug: "creative",  label: "Creative",  hint: "Creative tasks" },

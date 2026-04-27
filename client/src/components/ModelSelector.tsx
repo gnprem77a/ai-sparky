@@ -1,8 +1,8 @@
-import { Sparkles, Scale, Brain, Palette, Zap, Lock, Crown, Search, Layers, FlaskConical } from "lucide-react";
+import { Sparkles, Brain, Palette, Zap, Lock, Crown, Search, Layers, FlaskConical } from "lucide-react";
 import { MODEL_REGISTRY } from "@shared/models";
 import { cn } from "@/lib/utils";
 
-export type ModelId = "auto" | "balanced" | "powerful" | "creative" | "fast" | "sonnet" | "minimax" | "kimi";
+export type ModelId = "auto" | "powerful" | "creative" | "fast" | "sonnet" | "minimax" | "kimi";
 
 export interface ModelOption {
   id: ModelId;
@@ -54,17 +54,6 @@ export const MODELS: ModelOption[] = [
     iconColor: "text-rose-400",
     proOnly: false,
     isNew: true,
-  },
-  {
-    id: "balanced",
-    friendlyName: "Balanced",
-    exactName: MODEL_REGISTRY.balanced.exactName,
-    description: MODEL_REGISTRY.balanced.description,
-    badgeLabel: MODEL_REGISTRY.balanced.badgeLabel,
-    icon: <Scale className="w-4 h-4" />,
-    iconBg: "bg-violet-500/10",
-    iconColor: "text-violet-400",
-    proOnly: false,
   },
   {
     id: "creative",
@@ -120,7 +109,6 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   // ── Friendly badge labels ──────────────────────────────────────
   "Opus 4.7":    { color: "text-amber-400",   bg: "bg-amber-500/10"   },
   "Sonnet 4.5":  { color: "text-rose-400",    bg: "bg-rose-500/10"    },
-  "Mistral L3":  { color: "text-violet-400",  bg: "bg-violet-500/10"  },
   "GPT 5.3":     { color: "text-emerald-400", bg: "bg-emerald-500/10" },
   "Haiku":       { color: "text-blue-400",    bg: "bg-blue-500/10"    },
   "Auto":        { color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
@@ -135,10 +123,6 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   "claude-3-5-haiku-20241022": { color: "text-blue-400",    bg: "bg-blue-500/10"    },
   "claude-haiku-3-5":          { color: "text-blue-400",    bg: "bg-blue-500/10"    },
 
-  // ── Raw Mistral model IDs ──────────────────────────────────────
-  "Mistral-Large-3":           { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "mistral-large-3":           { color: "text-violet-400",  bg: "bg-violet-500/10"  },
-  "mistral-large":             { color: "text-violet-400",  bg: "bg-violet-500/10"  },
 
   // ── Raw GPT model IDs ─────────────────────────────────────────
   "gpt-5.3-chat":              { color: "text-emerald-400", bg: "bg-emerald-500/10" },
@@ -157,7 +141,6 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
 
   // ── Computed from MODEL_REGISTRY (stays in sync) ──────────────
   [MODEL_REGISTRY.powerful.badgeLabel]: { color: "text-amber-400",   bg: "bg-amber-500/10"   },
-  [MODEL_REGISTRY.balanced.badgeLabel]: { color: "text-violet-400",  bg: "bg-violet-500/10"  },
   [MODEL_REGISTRY.creative.badgeLabel]: { color: "text-emerald-400", bg: "bg-emerald-500/10" },
   [MODEL_REGISTRY.fast.badgeLabel]:     { color: "text-blue-400",    bg: "bg-blue-500/10"    },
   [MODEL_REGISTRY.minimax.badgeLabel]:  { color: "text-teal-400",    bg: "bg-teal-500/10"    },
@@ -178,8 +161,6 @@ const RAW_TO_FRIENDLY: Record<string, string> = {
   "claude-sonnet-4-5":   "Sonnet 4.5",
   "claude-sonnet":       "Sonnet 4.5",
   "claude-haiku-prod2":  "Haiku",
-  "Mistral-Large-3":     "Mistral L3",
-  "mistral-large-3":     "Mistral L3",
   "gpt-5.3-chat":        "GPT 5.3",
   "gpt-5.3":             "GPT 5.3",
   "FW-MiniMax-M2.5":     "MiniMax M2.5",

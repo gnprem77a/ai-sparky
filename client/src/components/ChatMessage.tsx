@@ -398,7 +398,6 @@ function ToolCallsDisplay({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; i
 
 const RETRY_MODELS = [
   { key: "fast",     label: "Fast",     desc: "Quick & efficient",   color: "text-green-400",  proOnly: false },
-  { key: "balanced", label: "Balanced", desc: "Smart everyday",      color: "text-blue-400",   proOnly: true  },
   { key: "powerful", label: "Powerful", desc: "Most capable",        color: "text-violet-400", proOnly: true  },
   { key: "creative", label: "Creative", desc: "Imaginative output",  color: "text-rose-400",   proOnly: true  },
 ];

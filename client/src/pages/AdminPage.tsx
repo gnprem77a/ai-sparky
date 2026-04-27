@@ -361,7 +361,7 @@ const PROVIDER_DEFAULTS: Record<string, {
   "openai-compatible": {
     apiUrl: "",
     modelPlaceholder: "model-id",
-    modelSuggestions: ["mistral-large-latest", "llama-3.3-70b-instruct", "deepseek-chat", "qwen-max"],
+    modelSuggestions: ["llama-3.3-70b-instruct", "deepseek-chat", "qwen-max"],
     keyPlaceholder: "API key or Bearer token",
     keyLabel: "API Key",
     keyRequired: false,
@@ -373,7 +373,7 @@ const PROVIDER_DEFAULTS: Record<string, {
   custom: {
     apiUrl: "",
     modelPlaceholder: "model-name",
-    modelSuggestions: ["gpt-5.3-chat", "Mistral-Large-3", "Cohere-rerank-v4.0-pro", "embed-v-4-0"],
+    modelSuggestions: ["gpt-5.3-chat", "Cohere-rerank-v4.0-pro", "embed-v-4-0"],
     keyPlaceholder: "Bearer token (optional)",
     keyLabel: "API Key (optional)",
     keyRequired: false,
@@ -506,7 +506,7 @@ function ProviderFormModal({
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
           {/* Provider type selector */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Display Name" required hint='Name determines which model slot this provider fills. e.g. "opus" → Powerful, "sonnet" → Sonnet, "haiku" → Fast, "mistral" → Balanced, "gpt-4o" → Powerful, "kimi" → Kimi'>
+            <Field label="Display Name" required hint='Name determines which model slot this provider fills. e.g. "opus" → Powerful, "sonnet" → Sonnet, "haiku" → Fast, "gpt-4o" → Powerful, "kimi" → Kimi'>
               <input
                 type="text"
                 value={form.name}
