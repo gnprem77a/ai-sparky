@@ -365,10 +365,24 @@ export default function ChatPage() {
     activeIdRef.current = activeId;
   }, [activeId]);
 
-  /* ── Auto-scroll ── */
+  /* ── Auto-scroll on new messages ── */
   useEffect(() => {
-    if (localAutoScroll && isAtBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (localAutoScroll && isAtBottom)
+      bottomRef.current?.scrollIntoView({ behavior: isStreaming ? "instant" : "smooth" });
   }, [messages.length, isStreaming, localAutoScroll, isAtBottom]);
+
+  /* ── Streaming auto-scroll: follow content as it grows ── */
+  useEffect(() => {
+    if (!isStreaming || !localAutoScroll) return;
+    const container = messagesContainerRef.current;
+    const id = setInterval(() => {
+      if (!container) return;
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      if (scrollHeight - scrollTop - clientHeight < 120)
+        container.scrollTop = scrollHeight;
+    }, 80);
+    return () => clearInterval(id);
+  }, [isStreaming, localAutoScroll]);
 
   /* ── Track scroll position for "scroll to bottom" button ── */
   useEffect(() => {
@@ -530,7 +544,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleEditMessage = async (messageId: string, newContent: string) => {
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
     if (!activeId || isStreaming || isSubmittingRef.current) return;
 
     isSubmittingRef.current = true;
@@ -575,7 +589,8 @@ export default function ChatPage() {
     } catch { /* non-fatal */ }
 
     await streamAssistantReply(activeId, updatedMsgs, newAssistantMsgId);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, isStreaming, messages]);
 
   const handleStop = () => {
     abortRef.current?.abort();
@@ -900,7 +915,7 @@ ${messagesHtml}
             if (parsed.text) {
               pendingText += parsed.text;
               if (!flushTimeout) {
-                flushTimeout = setTimeout(flush, 50);
+                flushTimeout = setTimeout(flush, 80);
               }
             }
             if (parsed.toolCall) {
@@ -1482,7 +1497,7 @@ ${messagesHtml}
             )}
 
             {/* Messages */}
-            <div className="flex-1 relative overflow-y-auto overscroll-contain custom-scrollbar" style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties} ref={messagesContainerRef}>
+            <div className="flex-1 relative overflow-y-auto overscroll-contain custom-scrollbar" style={{ WebkitOverflowScrolling: "touch", willChange: "scroll-position" } as React.CSSProperties} ref={messagesContainerRef}>
               {isLoadingMessages ? (
                 <div className="flex items-center justify-center h-full gap-2">
                   <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
