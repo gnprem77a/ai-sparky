@@ -1,8 +1,8 @@
-import { Sparkles, Brain, Zap, Lock, Crown, Search, Layers, FlaskConical } from "lucide-react";
+import { Sparkles, Brain, Zap, Lock, Crown, Search, Layers, FlaskConical, Wand2, Scale } from "lucide-react";
 import { MODEL_REGISTRY } from "@shared/models";
 import { cn } from "@/lib/utils";
 
-export type ModelId = "auto" | "powerful" | "fast" | "sonnet" | "minimax" | "kimi";
+export type ModelId = "auto" | "powerful" | "fast" | "sonnet" | "balanced" | "creative" | "minimax" | "kimi";
 
 export interface ModelOption {
   id: ModelId;
@@ -54,6 +54,28 @@ export const MODELS: ModelOption[] = [
     iconColor: "text-rose-400",
     proOnly: false,
     isNew: true,
+  },
+  {
+    id: "balanced",
+    friendlyName: "Balanced",
+    exactName: MODEL_REGISTRY.balanced.exactName,
+    description: MODEL_REGISTRY.balanced.description,
+    badgeLabel: MODEL_REGISTRY.balanced.badgeLabel,
+    icon: <Scale className="w-4 h-4" />,
+    iconBg: "bg-emerald-500/10",
+    iconColor: "text-emerald-400",
+    proOnly: false,
+  },
+  {
+    id: "creative",
+    friendlyName: "Creative",
+    exactName: MODEL_REGISTRY.creative.exactName,
+    description: MODEL_REGISTRY.creative.description,
+    badgeLabel: MODEL_REGISTRY.creative.badgeLabel,
+    icon: <Wand2 className="w-4 h-4" />,
+    iconBg: "bg-purple-500/10",
+    iconColor: "text-purple-400",
+    proOnly: false,
   },
   {
     id: "fast",
@@ -112,7 +134,16 @@ export const BADGE_STYLE: Record<string, { color: string; bg: string }> = {
   "claude-haiku-3-5":          { color: "text-blue-400",    bg: "bg-blue-500/10"    },
 
 
-  // ── Raw GPT model IDs ─────────────────────────────────────────
+  // ── Balanced (Mistral Large 3) ────────────────────────────────
+  "Mistral L3":              { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  "Mistral-Large-3":         { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  "mistral-large-3":         { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+  [MODEL_REGISTRY.balanced.badgeLabel]: { color: "text-emerald-400", bg: "bg-emerald-500/10" },
+
+  // ── Creative (GPT 5.3) ────────────────────────────────────────
+  "GPT 5.3":                 { color: "text-purple-400",  bg: "bg-purple-500/10"  },
+  "gpt-5.3-chat":            { color: "text-purple-400",  bg: "bg-purple-500/10"  },
+  [MODEL_REGISTRY.creative.badgeLabel]: { color: "text-purple-400",  bg: "bg-purple-500/10"  },
 
   // ── MiniMax ───────────────────────────────────────────────────
   "MiniMax M2.5":              { color: "text-teal-400",   bg: "bg-teal-500/10"   },
@@ -146,6 +177,9 @@ const RAW_TO_FRIENDLY: Record<string, string> = {
   "claude-sonnet-4-5":   "Sonnet 4.5",
   "claude-sonnet":       "Sonnet 4.5",
   "claude-haiku-prod2":  "Haiku",
+  "Mistral-Large-3":     "Mistral L3",
+  "mistral-large-3":     "Mistral L3",
+  "gpt-5.3-chat":        "GPT 5.3",
   "FW-MiniMax-M2.5":     "MiniMax M2.5",
   "MiniMax-M2.5":        "MiniMax M2.5",
   "minimax-m2.5":        "MiniMax M2.5",

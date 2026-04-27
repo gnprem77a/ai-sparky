@@ -235,29 +235,36 @@ export default function AuthPage() {
   /* ── "Check your email" screen (shown after successful register) ── */
   if (pendingVerification) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-sm">
+      <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+        {/* Ambient glows */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-primary/6 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-[300px] h-[250px] bg-violet-600/5 rounded-full blur-[100px] pointer-events-none" />
+
+        <div className="w-full max-w-sm relative z-10">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <Mail className="w-8 h-8 text-primary" />
+            <div className="relative mb-4">
+              <div className="absolute inset-0 rounded-2xl bg-primary/30 blur-2xl scale-150 pointer-events-none" />
+              <div className="relative w-16 h-16 rounded-2xl bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center shadow-2xl shadow-primary/20">
+                <Mail className="w-8 h-8 text-primary" />
+              </div>
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Check your email</h1>
             <p className="text-sm text-muted-foreground mt-1 text-center">One more step to activate your account</p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card shadow-lg p-6 text-center space-y-4">
+          <div className="rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm shadow-2xl shadow-black/40 ring-1 ring-white/5 p-6 text-center space-y-4">
             <p className="text-sm text-muted-foreground leading-relaxed">
               We sent a verification link to{" "}
               <span className="font-medium text-foreground">{pendingEmail}</span>.
               Click the link in the email to activate your account.
             </p>
 
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400">
               Check your spam/junk folder if you don't see it within a minute.
             </div>
 
             {resendSent ? (
-              <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
+              <div className="flex items-center justify-center gap-2 text-sm text-green-400">
                 <CheckCircle2 className="w-4 h-4" />
                 Verification email resent!
               </div>
@@ -268,7 +275,7 @@ export default function AuthPage() {
                   onClick={() => handleResend(pendingEmail)}
                   disabled={resendLoading}
                   data-testid="button-resend-verification"
-                  className="flex items-center justify-center gap-1.5 mx-auto text-sm text-primary hover:underline font-medium disabled:opacity-60"
+                  className="flex items-center justify-center gap-1.5 mx-auto text-sm text-primary hover:underline font-medium disabled:opacity-60 transition-colors"
                 >
                   {resendLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                   Resend verification email
