@@ -32,7 +32,6 @@ function isProActive(user: { plan: string; planExpiresAt: string | null } | null
 }
 
 import { UpgradeModal } from "@/components/UpgradeModal";
-import { OnboardingModal } from "@/components/OnboardingModal";
 import { AssistantNameModal } from "@/components/AssistantNameModal";
 import { useToast } from "@/hooks/use-toast";
 
@@ -1767,7 +1766,6 @@ ${messagesHtml}
         onNavigate={(convId) => { setActiveId(convId); setGlobalSearchOpen(false); }}
       />
       <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} reason={upgradeReason} />
-      {user && <OnboardingModal onStartWithPrompt={(prompt) => setInput(prompt)} />}
       {showAssistantNameModal && (
         <AssistantNameModal onDone={() => {
           sessionStorage.removeItem("justRegistered");
